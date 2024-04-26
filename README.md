@@ -10,4 +10,4 @@
 > python src/db_building/insee_data_processing.py
 
 ## To load a first version of Vectorial Database from S3 bucket
-> mc cp s3/projet-llm-insee-open-data/data/chroma_database/chroma_db  ./src/data/chroma_db --recursive
+> mc cp s3/projet-llm-insee-open-data/data/chroma_database/chroma_db  ./src/data --recursive
