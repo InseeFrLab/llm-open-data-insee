@@ -160,4 +160,4 @@ cython_debug/
 #.idea/
 
 # Temporary Databe - from parquet file
-./src/data/*.csv
+src/data/data_complete.csv
