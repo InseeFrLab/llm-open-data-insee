@@ -161,3 +161,4 @@ cython_debug/
 
 # Temporary Databe - from parquet file
 src/data/data_complete.csv
+src/data/chroma_db
