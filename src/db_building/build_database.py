@@ -9,6 +9,10 @@ from config import DB_DIR
 
 from doc_building import build_documents_from_dataframe
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+logging.info(f"The database will be stored in {DB_DIR}")
+
 def build_database_from_dataframe(df: pd.DataFrame):
     logging.info("Start building the database")
     not_null_df = df[  (df['titre'].notnull()) & (df['id'].notnull())    ]
@@ -21,4 +25,5 @@ def build_database_from_dataframe(df: pd.DataFrame):
                                         model_kwargs={"device": EMB_DEVICE}),
     )
     logging.info("The database has been built")
+    db.persist()
     return db

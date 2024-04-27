@@ -1,1 +1,1 @@
-DB_DIR = "../db"
+RELATIVE_DB_DIR = "db/chroma_db"
