@@ -12,7 +12,7 @@ coloredlogs==15.0.1
 cramjam==2.8.3
 dataclasses-json==0.6.4
 Deprecated==1.2.14
-fastapi==0.110.1
+fastapi==0.110.3
 fastparquet==2024.2.0
 filelock==3.13.3
 flatbuffers==24.3.25
