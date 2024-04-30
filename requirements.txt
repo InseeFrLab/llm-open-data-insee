@@ -10,7 +10,7 @@ chromadb==0.4.22
 click==8.1.7
 coloredlogs==15.0.1
 cramjam==2.8.3
-dataclasses-json==0.6.4
+dataclasses-json==0.6.5
 Deprecated==1.2.14
 fastapi==0.110.1
 fastparquet==2024.2.0
