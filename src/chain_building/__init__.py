@@ -1,1 +1,2 @@
 from .build_chain import build_chain
+from .build_chain_with_logging import build_chain_with_logging
