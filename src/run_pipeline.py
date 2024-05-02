@@ -1,36 +1,11 @@
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnablePassthrough, RunnableParallel, RunnableLambda
-
-from langchain.vectorstores import Chroma
-from transformers import (
-    AutoTokenizer,
-    pipeline,
-    AutoConfig,
-    AutoModelForCausalLM,
-    BitsAndBytesConfig,
-)
-from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
-from langchain_core.output_parsers import StrOutputParser
-import torch
-import json
-from typing import List
-from langchain.docstore.document import Document
-import datetime
 import os
+import mlflow
+from model_building import build_llm_model
+from chain_building import load_retriever, build_chain
+from utils import loading_utilities
+from langchain_core.prompts import PromptTemplate
 
-# Vector database
-DB_DIR = "data/chroma_db"
-
-# Embedding model
-EMB_DEVICE = "cuda"
-EMB_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-
-# LLM
-MODEL_DEVICE = {"": 0}
-MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.2"
-
-HF_TOKEN = ""
+from config import DB_DIR, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME
 
 
 # PROMPT Template
@@ -51,178 +26,39 @@ Question: {question}
 """
 
 
-def build_llm_model():
-    """
-    Create the llm model
-    """
-    torch.cuda.empty_cache()
+EXPERIMENT_NAME = "CHAIN"
 
-    # Load LLM config
-    config = AutoConfig.from_pretrained(MODEL_NAME, trust_remote_code=True, token=HF_TOKEN)
-
-    # Load quantization config
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype="float16",
-        bnb_4bit_use_double_quant=False,
-    )
-
-    # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME, use_fast=True, device_map="auto", token=HF_TOKEN
-    )
-
-    # Check if tokenizer has a pad_token; if not, set it to eos_token
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    # Load LLM
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME, config=config, quantization_config=quantization_config, token=HF_TOKEN
-    )
-
-    # Create a pipeline with  tokenizer and model
-    pipeline_HF = pipeline(
-        task="text-generation",  # TextGenerationPipeline HF pipeline
-        model=model,
-        tokenizer=tokenizer,
-        max_new_tokens=2000,
-        temperature=0.2,
-        return_full_text=False,
-        device_map="auto",
-        do_sample=True,
-    )
-
-    # Create a LangChain Runnable pipeline
-
-    langchain_llm = HuggingFacePipeline(pipeline=pipeline_HF)
-
-    return langchain_llm
+assert (
+    "MLFLOW_TRACKING_URI" in os.environ
+), "Please set the MLFLOW_TRACKING_URI environment variable."
+assert (
+    "MLFLOW_S3_ENDPOINT_URL" in os.environ
+), "Please set the MLFLOW_S3_ENDPOINT_URL environment variable."
+assert "HF_TOKEN" in os.environ, "Please set the HF_TOKEN environment variable."
 
 
-def format_docs(docs) -> str:
-    """
-    Format the retrieved document before giving their content to complete the prompt
-    """
-    return "\n\n".join(doc.page_content for doc in docs)
+mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+mlflow.set_experiment(EXPERIMENT_NAME)
 
+with mlflow.start_run() as run:
+    # Load Chroma DB
+    loading_utilities.load_chroma_db(s3_path=DB_DIR, persist_directory=DB_DIR_LOCAL)
 
-def log_interaction(result):
-    """
-    Logs interaction details into a JSON file and returns the original result.
-    """
-    log_file_path = "logs/conversation_logs.json"
+    # Generate prompt template
+    prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
 
-    # Extracting necessary details from the result
-    user_query = result["question"]
-    generated_answer = result["answer"]
-    retrieved_documents = result["context"]
-    prompt_template = prompt.template  # Ensure 'prompt' is accessible here
-    embedding_model_name = EMB_MODEL_NAME
-    LLM_name = MODEL_NAME
+    # Create a pipeline with tokenizer and LLM
+    llm = build_llm_model(quantization_config=True, config=True, token=os.environ["HF_TOKEN"])
 
-    # Call to save the logs
-    print(f"saving outputs in {log_file_path}")
-    save_logs(
-        user_query,
-        retrieved_documents,
-        prompt_template,
-        generated_answer,
-        embedding_model_name,
-        LLM_name,
-        filename=log_file_path,
-    )
+    retriever = load_retriever(DB_DIR_LOCAL)
 
-    return result
+    llm_chain = build_chain(retriever, prompt, llm)
 
+    question = "Je cherche à connaitre le bombre (et eventuellement les caractéristiques) des véhicules 'primes à la conversion' dans plusieurs départements d'occitanie, en particulier l'aveyron."
+    llm_chain.invoke(question)
 
-def save_logs(
-    user_query: str = None,
-    retrieved_documents: List[Document] = None,
-    prompt_template: str = None,
-    generated_answer: str = None,
-    embedding_model_name: str = None,
-    LLM_name: str = None,
-    filename="./logs/conversation_logs.json",
-):
-    """
-    Save details of a RAG conversation to a json file.
-
-    Args:
-    user_query (str): The user's input query.
-    retrieved_documents (list[Document]): List of documents retrieved based on the user query.
-    prompt_template (str): The template used to generate the prompt for the language model.
-    generated_answer (str): The answer generated by the language model.
-    RAG_pipeline : (HF pipeline)
-    filename (str): The filename where the log will be saved.
-
-    Returns:
-    None
-    """
-    # Ensure the path for the log file exists
-    if not os.path.exists(os.path.dirname(filename)):
-        os.makedirs(os.path.dirname(filename))
-
-    retrieved_documents_text = [d.page_content for d in retrieved_documents]
-    retrieved_documents_metadata = [d.metadata for d in retrieved_documents]
-
-    # Prepare the content to be logged as a dictionary
-    log_entry = {
-        "user_query": user_query,
-        "retrieved_docs_text": retrieved_documents_text,
-        "prompt": prompt_template,
-        "generated_answer": generated_answer,
-        "embedding_model": embedding_model_name,
-        "llm": LLM_name,
-        "retrieved_doc_metadata": retrieved_documents_metadata,
-        "timestamp": datetime.datetime.now().isoformat(),
-    }
-
-    # Open the file in append mode and write the dictionary as a JSON object
-    with open(filename, "a", encoding="utf-8") as file:
-        json.dump(log_entry, file, ensure_ascii=False, indent=4)
-        file.write("\n")
-
-
-def build_chain(hf_embeddings, vectorstore, retriever, prompt, llm):
-    """
-    Build a LLM chain based on Langchain package and INSEE data
-    """
-    # Create a Langchain LLM Chain
-    rag_chain_from_docs = (
-        RunnablePassthrough.assign(context=(lambda x: format_docs(x["context"])))
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-
-    # Create a Langchain LLM Chain which return sources and store them into a log file
-    rag_chain_with_source = RunnableParallel(
-        {"context": retriever, "question": RunnablePassthrough()}
-    ).assign(answer=rag_chain_from_docs) | RunnableLambda(log_interaction)
-
-    return rag_chain_with_source
-
-
-# Load Embedding model
-hf_embeddings = HuggingFaceEmbeddings(
-    model_name=EMB_MODEL_NAME, model_kwargs={"device": EMB_DEVICE}
-)
-# Load vector database
-vectorstore = Chroma(
-    collection_name="insee_data", embedding_function=hf_embeddings, persist_directory=str(DB_DIR)
-)
-# Set up a retriever
-retriever = vectorstore.as_retriever(
-    search_type="mmr", search_kwargs={"score_threshold": 0.5, "k": 10}
-)
-# Generate prompt template
-prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-
-# Create a pipeline with tokenizer and LLM
-llm = build_llm_model()
-
-llm_chain = build_chain(hf_embeddings, vectorstore, retriever, prompt, llm)
-
-llm_chain.invoke("Quels sont les chiffres du tourisme en France métropolitaine?")
+    mlflow.log_param("DB_DIR", DB_DIR)
+    mlflow.log_param("RAG_PROMPT_TEMPLATE", RAG_PROMPT_TEMPLATE)
+    mlflow.log_param("LLM_NAME", MODEL_NAME)
+    mlflow.log_param("EMB_MODEL_NAME", EMB_MODEL_NAME)
+    # TODO: Rajouter ce qu'il y a dans les logs + réponse
