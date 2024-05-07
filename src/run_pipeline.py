@@ -5,25 +5,7 @@ from chain_building import load_retriever, build_chain
 from utils import loading_utilities
 from langchain_core.prompts import PromptTemplate
 
-from config import DB_DIR, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME
-
-
-# PROMPT Template
-RAG_PROMPT_TEMPLATE = """
-<s>[INST]
-Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
-Réponds en Français seulement.
-Utilise les informations obtenues dans le contexte, réponds de manière argumentée à la question posée.
-La réponse doit être développée et citer ses sources.
-
-Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
-Voici le contexte sur lequel tu dois baser ta réponse :
-Contexte: {context}
-        ---
-Voici la question à laquelle tu dois répondre :
-Question: {question}
-[/INST]
-"""
+from config import DB_DIR, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE
 
 
 EXPERIMENT_NAME = "CHAIN"
