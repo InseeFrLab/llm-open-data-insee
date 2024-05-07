@@ -1,2 +1,3 @@
-from .build_chain import build_chain
-from .build_chain_with_logging import build_chain_with_logging
+from .build_chain import build_chain, load_retriever
+
+__all__ = ["load_retriever", "build_chain"]

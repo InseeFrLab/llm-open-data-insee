@@ -1,6 +1,5 @@
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.chains import LLMChain
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
 from langchain_core.output_parsers.string import StrOutputParser
@@ -15,28 +14,31 @@ from utils import format_docs
 
 
 def build_chain_with_logging():
-    """ 
+    """
     Runs the chain and logs the results to a JSON file
     """
-    hf_embeddings = HuggingFaceEmbeddings(model_name=EMB_MODEL_NAME, model_kwargs={"device": EMB_DEVICE})
-    vectorstore = Chroma(collection_name="insee_data",
-                         embedding_function=hf_embeddings,
-                         persist_directory=str(DB_DIR),
-                        )
-    retriever = vectorstore.as_retriever(search_type="mmr",
-                                         search_kwargs = {"score_threshold" : 0.5, "k":10}
-                                        )
+    hf_embeddings = HuggingFaceEmbeddings(
+        model_name=EMB_MODEL_NAME, model_kwargs={"device": EMB_DEVICE}
+    )
+    vectorstore = Chroma(
+        collection_name="insee_data",
+        embedding_function=hf_embeddings,
+        persist_directory=str(DB_DIR),
+    )
+    retriever = vectorstore.as_retriever(
+        search_type="mmr", search_kwargs={"score_threshold": 0.5, "k": 10}
+    )
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
 
     llm = build_llm_model()
-    
+
     rag_chain_from_docs = (
         RunnablePassthrough.assign(context=(lambda x: format_docs(x["context"])))
         | prompt
-        | llm 
+        | llm
         | StrOutputParser()
     )
-    # Create a chain that returns sources 
+    # Create a chain that returns sources
     # and stores them into a log file
     rag_chain_with_source = RunnableParallel(
         {"context": retriever, "question": RunnablePassthrough()}
