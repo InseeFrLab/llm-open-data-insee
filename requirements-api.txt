@@ -1,7 +1,6 @@
 accelerate
 bitsandbytes
 chromadb
-python-dotenv
 fastapi
 langchain
 langchain-community

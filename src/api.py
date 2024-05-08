@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
 import s3fs
 from fastapi import FastAPI
 from langchain_core.prompts import PromptTemplate
@@ -18,9 +17,6 @@ from chain_building.build_chain import (
 
 
 PROJECT_PATH = Path(__file__).resolve().parents[1]
-
-# Load env variables from .env file
-load_dotenv()
 
 # S3 configuration
 S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
