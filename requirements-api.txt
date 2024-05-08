@@ -1,0 +1,10 @@
+accelerate
+bitsandbytes
+chromadb
+python-dotenv
+fastapi
+langchain
+langchain-community
+langchain-core
+sentence-transformers
+transformers
