@@ -38,13 +38,21 @@ chain = build_chain(retriever, prompt, llm)
 
 # Queries objects
 class RAGQueryInput(BaseModel):
-    text: str
+    question: str
 
 
 class RAGQueryOutput(BaseModel):
-    context: list[str]
+    context: dict
     question: str
     answer: str
+
+
+def extract_context_as_dict(response):
+    dict_context = {}
+    for i, doc in enumerate(response['context']):
+        dict_context[i] = doc.metadata
+        dict_context[i]['content'] = doc.page_content
+    return dict_context
 
 
 # Build API
@@ -52,15 +60,20 @@ app = FastAPI()
 
 
 @app.get("/")
-async def get_status():
+def get_status():
     return {"status": "running"}
 
 
 @app.post('/chat')
-async def query_rag(query: RAGQueryInput) -> RAGQueryOutput:
-    response = await chain.ainvoke(query.text)
-    return response
+def query_rag(query: RAGQueryInput) -> RAGQueryOutput:
+    response = chain.invoke(query.question)
+    response_formatted = {
+        'answer': response['answer'],
+        'context': extract_context_as_dict(response),
+        'question': response['question']
+    }
+    return response_formatted
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=5000, log_level="info")
+    uvicorn.run("api:app", host="0.0.0.0", port=8000, log_level="info")
