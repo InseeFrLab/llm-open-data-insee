@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import s3fs
 from fastapi import FastAPI
 from langchain_core.prompts import PromptTemplate
+from pydantic import BaseModel
 
 from config import RAG_PROMPT_TEMPLATE
 from model_building import build_llm_model
@@ -33,6 +34,7 @@ retriever = load_retriever(DB_PATH_LOCAL)
 llm = build_llm_model(quantization_config=True, config=True, token=os.environ["HF_TOKEN"])
 chain = build_chain(retriever, prompt, llm)
 
+
 # Queries objects
 class RAGQueryInput(BaseModel):
     text: str
@@ -43,8 +45,10 @@ class RAGQueryOutput(BaseModel):
     output: str
     # intermediate_steps: list[str]
 
+
 # Build API
 app = FastAPI()
+
 
 @app.get("/")
 async def get_status():
