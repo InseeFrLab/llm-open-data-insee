@@ -6,6 +6,7 @@ import s3fs
 from fastapi import FastAPI
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel
+import uvicorn
 
 from config import RAG_PROMPT_TEMPLATE
 from model_building import build_llm_model
@@ -41,9 +42,9 @@ class RAGQueryInput(BaseModel):
 
 
 class RAGQueryOutput(BaseModel):
-    input: str
-    output: str
-    # intermediate_steps: list[str]
+    context: list[str]
+    question: str
+    answer: str
 
 
 # Build API
@@ -59,3 +60,7 @@ async def get_status():
 async def query_rag(query: RAGQueryInput) -> RAGQueryOutput:
     response = await chain.ainvoke(query.text)
     return response
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=5000, log_level="info")
