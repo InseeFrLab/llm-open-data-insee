@@ -22,6 +22,8 @@ jobs:
         with:
           images: inseefrlab/llm-open-data-insee
           tags: |
+            # set latest tag for main branch
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
             # propagate valid semver tags
             type=semver,pattern={{raw}}
 
