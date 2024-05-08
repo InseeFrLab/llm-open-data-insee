@@ -1,4 +1,4 @@
-name: Build API image
+name: Build API
 
 on:
   push:
