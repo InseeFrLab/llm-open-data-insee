@@ -57,6 +57,14 @@ def load_retriever(persist_directory):
     return retriever
 
 
+def extract_context_as_dict(response):
+    dict_context = {}
+    for i, doc in enumerate(response['context']):
+        dict_context[i] = doc.metadata
+        dict_context[i]['content'] = doc.page_content
+    return dict_context
+
+
 def save_logs(
     user_query: str = None,
     retrieved_documents: List[Document] = None,

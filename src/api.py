@@ -10,7 +10,11 @@ import uvicorn
 
 from config import RAG_PROMPT_TEMPLATE
 from model_building import build_llm_model
-from chain_building import load_retriever, build_chain
+from chain_building.build_chain import (
+    load_retriever,
+    build_chain,
+    extract_context_as_dict
+    )
 
 
 PROJECT_PATH = Path(__file__).resolve().parents[1]
@@ -36,7 +40,7 @@ llm = build_llm_model(quantization_config=True, config=True, token=os.environ["H
 chain = build_chain(retriever, prompt, llm)
 
 
-# Queries objects
+# Validation of API input and output
 class RAGQueryInput(BaseModel):
     question: str
 
@@ -45,14 +49,6 @@ class RAGQueryOutput(BaseModel):
     context: dict
     question: str
     answer: str
-
-
-def extract_context_as_dict(response):
-    dict_context = {}
-    for i, doc in enumerate(response['context']):
-        dict_context[i] = doc.metadata
-        dict_context[i]['content'] = doc.page_content
-    return dict_context
 
 
 # Build API
