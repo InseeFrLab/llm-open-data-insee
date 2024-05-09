@@ -29,6 +29,11 @@ spec:
                 secretKeyRef:
                   name: s3-creds-api
                   key: secretKey
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-creds-api
+                  key: token
           resources:
             limits:
               memory: "30Gi"
