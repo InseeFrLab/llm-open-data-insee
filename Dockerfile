@@ -1,5 +1,7 @@
 FROM inseefrlab/onyxia-vscode-pytorch:py3.12.2-gpu
 
+USER root
+
 WORKDIR /api
 
 COPY requirements-api.txt .
