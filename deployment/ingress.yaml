@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rag-insee-data-ingress
+spec:
+  tls:
+    - hosts:
+        - rag-insee-data.lab.sspcloud.fr
+  rules:
+    - host: rag-insee-data.lab.sspcloud.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rag-insee-data-service
+                port:
+                  number: 80
