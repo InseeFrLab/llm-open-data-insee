@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-insee-data-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-insee-data
+  template:
+    metadata:
+      labels:
+        app: rag-insee-data
+    spec:
+      containers:
+        - name: api
+          image: inseefrlab/llm-open-data-insee:latest
+          imagePullPolicy: Always
+          env:
+            - name: AWS_S3_ENDPOINT
+              value: minio.lab.sspcloud.fr
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds-api
+                  key: accessKey
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds-api
+                  key: secretKey
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-creds-api
+                  key: token
+          resources:
+            limits:
+              memory: "30Gi"
+              cpu: "5000m"
+      nodeSelector: 
+        nvidia.com/gpu.product: NVIDIA-H100-PCIe
