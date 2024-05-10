@@ -5,7 +5,7 @@ from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnableP
 from langchain_core.output_parsers.string import StrOutputParser
 
 from config import EMB_MODEL_NAME, EMB_DEVICE
-from config import DB_DIR
+from config import DB_DIR_S3
 from config import RAG_PROMPT_TEMPLATE
 
 from model_building import build_llm_model
@@ -23,7 +23,7 @@ def build_chain_with_logging():
     vectorstore = Chroma(
         collection_name="insee_data",
         embedding_function=hf_embeddings,
-        persist_directory=str(DB_DIR),
+        persist_directory=str(DB_DIR_S3),
     )
     retriever = vectorstore.as_retriever(
         search_type="mmr", search_kwargs={"score_threshold": 0.5, "k": 10}

@@ -7,7 +7,7 @@ from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel
 import uvicorn
 
-from config import RAG_PROMPT_TEMPLATE
+from config import RAG_PROMPT_TEMPLATE, DB_DIR_S3
 from model_building import build_llm_model
 from chain_building.build_chain import (
     load_retriever,
@@ -23,7 +23,7 @@ S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
 fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
 
 # Import Chroma DB from S3
-DB_PATH_S3 = os.path.join(os.environ["S3_BUCKET"], os.environ["DB_KEY_S3"])
+DB_PATH_S3 = os.path.join(os.environ["S3_BUCKET"], DB_DIR_S3)
 DB_PATH_LOCAL = os.path.join(PROJECT_PATH, "data", "chroma_db")
 fs.get(DB_PATH_S3, DB_PATH_LOCAL, recursive=True)
 

@@ -5,13 +5,13 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import EMB_MODEL_NAME, EMB_DEVICE
-from config import DB_DIR
+from config import DB_DIR_S3
 
 from doc_building import build_documents_from_dataframe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-logging.info(f"The database will be stored in {DB_DIR}")
+logging.info(f"The database will be stored in {DB_DIR_S3}")
 
 
 def build_database_from_dataframe(df: pd.DataFrame):
@@ -22,7 +22,7 @@ def build_database_from_dataframe(df: pd.DataFrame):
     logging.info("   Storing the Document objects")
     db = Chroma.from_documents(
         documents=all_splits,
-        persist_directory=str(DB_DIR),
+        persist_directory=str(DB_DIR_S3),
         embedding=HuggingFaceEmbeddings(
             model_name=EMB_MODEL_NAME, model_kwargs={"device": EMB_DEVICE}
         ),

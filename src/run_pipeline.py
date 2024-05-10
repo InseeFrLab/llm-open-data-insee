@@ -5,7 +5,7 @@ from chain_building import load_retriever, build_chain
 from utils import loading_utilities
 from langchain_core.prompts import PromptTemplate
 
-from config import DB_DIR, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE
+from config import DB_DIR_S3, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE
 
 
 EXPERIMENT_NAME = "CHAIN"
@@ -24,7 +24,7 @@ mlflow.set_experiment(EXPERIMENT_NAME)
 
 with mlflow.start_run() as run:
     # Load Chroma DB
-    loading_utilities.load_chroma_db(s3_path=DB_DIR, persist_directory=DB_DIR_LOCAL)
+    loading_utilities.load_chroma_db(s3_path=DB_DIR_S3, persist_directory=DB_DIR_LOCAL)
 
     # Generate prompt template
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
@@ -39,7 +39,7 @@ with mlflow.start_run() as run:
     question = "Je cherche à connaitre le bombre (et eventuellement les caractéristiques) des véhicules 'primes à la conversion' dans plusieurs départements d'occitanie, en particulier l'aveyron."
     llm_chain.invoke(question)
 
-    mlflow.log_param("DB_DIR", DB_DIR)
+    mlflow.log_param("DB_DIR_S3", DB_DIR_S3)
     mlflow.log_param("RAG_PROMPT_TEMPLATE", RAG_PROMPT_TEMPLATE)
     mlflow.log_param("LLM_NAME", MODEL_NAME)
     mlflow.log_param("EMB_MODEL_NAME", EMB_MODEL_NAME)
