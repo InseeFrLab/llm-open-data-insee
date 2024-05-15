@@ -10,23 +10,23 @@ from src.chain_building.build_chain import (
     build_chain
     )
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Set up RAG chain
+prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+retriever = load_retriever(emb_model_name="sentence-transformers/all-MiniLM-L6-v2",
+                           persist_directory="data/chroma_db")
+llm = build_llm_model(model_name="mistralai/Mistral-7B-Instruct-v0.2",
+                      quantization_config=True,
+                      config=True,
+                      token=os.environ["HF_TOKEN"])
+chain = build_chain(retriever, prompt, llm)
+
 
 @cl.on_chat_start
 async def on_chat_start():
-
-    # Generate prompt template
-    prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-
-    # Create a pipeline with tokenizer and LLM
-    retriever = load_retriever(emb_model_name="sentence-transformers/all-MiniLM-L6-v2",
-                               persist_directory="data/chroma_db")
-    llm = build_llm_model(model_name="mistralai/Mistral-7B-Instruct-v0.2",
-                          quantization_config=True,
-                          config=True,
-                          token=os.environ["HF_TOKEN"])
-    chain = build_chain(retriever, prompt, llm)
-
-    # Declare runnable in chainlit
     cl.user_session.set("chain", chain)
 
 
