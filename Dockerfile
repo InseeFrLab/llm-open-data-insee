@@ -2,13 +2,13 @@ FROM inseefrlab/onyxia-vscode-pytorch:py3.12.2-gpu
 
 USER root
 
-WORKDIR /api
+WORKDIR /app
 
-COPY requirements-api.txt .
+COPY requirements-app.txt .
 
-RUN pip install --no-cache-dir --upgrade -r requirements-api.txt
+RUN pip install --no-cache-dir --upgrade -r requirements-app.txt
 
-COPY ./src /api/src
+COPY . /app/
 
 EXPOSE 8000
-CMD ["uvicorn", "src.api:app",  "--proxy-headers", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT [ "entrypoint.sh" ]
