@@ -8,10 +8,8 @@ from transformers import (
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 import torch
 
-from config import MODEL_NAME
 
-
-def build_llm_model(quantization_config: bool = False, config: bool = False, token=None):
+def build_llm_model(model_name, quantization_config: bool = False, config: bool = False, token=None):
     """
     Create the llm model
     """
@@ -28,7 +26,7 @@ def build_llm_model(quantization_config: bool = False, config: bool = False, tok
         if quantization_config
         else None,
         # Load LLM config
-        "config": AutoConfig.from_pretrained(MODEL_NAME, trust_remote_code=True, token=token)
+        "config": AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token)
         if config
         else None,
         "token": token,
@@ -36,7 +34,7 @@ def build_llm_model(quantization_config: bool = False, config: bool = False, tok
 
     # Load LLM tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME, use_fast=True, device_map="auto", token=configs["token"]
+        model_name, use_fast=True, device_map="auto", token=configs["token"]
     )
 
     # Check if tokenizer has a pad_token; if not, set it to eos_token
@@ -44,7 +42,7 @@ def build_llm_model(quantization_config: bool = False, config: bool = False, tok
         tokenizer.pad_token = tokenizer.eos_token
 
     # Load LLM
-    model = AutoModelForCausalLM.from_pretrained(MODEL_NAME, **configs)
+    model = AutoModelForCausalLM.from_pretrained(model_name, **configs)
 
     # Create a pipeline with  tokenizer and model
     pipeline_HF = pipeline(

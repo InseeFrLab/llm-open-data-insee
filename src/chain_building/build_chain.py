@@ -3,13 +3,14 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 from langchain_core.output_parsers import StrOutputParser
 
-from config import EMB_MODEL_NAME, EMB_DEVICE
 
-
-def load_retriever(persist_directory):
+def load_retriever(emb_model_name,
+                   persist_directory="data/chroma_db",
+                   device="cuda"
+                   ):
     # Load Embedding model
     embeddings = HuggingFaceEmbeddings(
-        model_name=EMB_MODEL_NAME, model_kwargs={"device": EMB_DEVICE}
+        model_name=emb_model_name, model_kwargs={"device": device}
     )
     # Load vector database
     vectorstore = Chroma(

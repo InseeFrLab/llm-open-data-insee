@@ -1,20 +1,14 @@
 import os
-from pathlib import Path
 
 from langchain_core.prompts import PromptTemplate
-from langchain.schema.runnable.config import RunnableConfig
 import chainlit as cl
 
-from config import RAG_PROMPT_TEMPLATE
-from model_building import build_llm_model
-from chain_building.build_chain import (
+from src.config import RAG_PROMPT_TEMPLATE
+from src.model_building import build_llm_model
+from src.chain_building.build_chain import (
     load_retriever,
     build_chain
     )
-
-
-PROJECT_PATH = Path(__file__).resolve().parents[1]
-DB_PATH_LOCAL = os.path.join(PROJECT_PATH, "data", "chroma_db")
 
 
 @cl.on_chat_start
@@ -24,8 +18,12 @@ async def on_chat_start():
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
 
     # Create a pipeline with tokenizer and LLM
-    retriever = load_retriever(DB_PATH_LOCAL)
-    llm = build_llm_model(quantization_config=True, config=True, token=os.environ["HF_TOKEN"])
+    retriever = load_retriever(emb_model_name="sentence-transformers/all-MiniLM-L6-v2",
+                               persist_directory="data/chroma_db")
+    llm = build_llm_model(model_name="mistralai/Mistral-7B-Instruct-v0.2",
+                          quantization_config=True,
+                          config=True,
+                          token=os.environ["HF_TOKEN"])
     chain = build_chain(retriever, prompt, llm)
 
     # Declare runnable in chainlit
