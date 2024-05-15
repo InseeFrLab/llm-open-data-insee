@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir --upgrade -r requirements-app.txt && \
     chmod +x entrypoint.sh
 
 EXPOSE 8000
-ENTRYPOINT [ "entrypoint.sh" ]
+ENTRYPOINT [ "./entrypoint.sh" ]
