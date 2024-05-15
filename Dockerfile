@@ -4,11 +4,10 @@ USER root
 
 WORKDIR /app
 
-COPY requirements-app.txt .
-
-RUN pip install --no-cache-dir --upgrade -r requirements-app.txt
-
 COPY . /app/
+
+RUN pip install --no-cache-dir --upgrade -r requirements-app.txt && \
+    chmod +x entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT [ "entrypoint.sh" ]
