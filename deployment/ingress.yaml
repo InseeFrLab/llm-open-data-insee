@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: rag-insee-data-ingress
+  name: rag-insee-data
 spec:
   tls:
     - hosts:
@@ -14,6 +14,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: rag-insee-data-service
+                name: rag-insee-data
                 port:
                   number: 80
