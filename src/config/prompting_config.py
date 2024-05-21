@@ -1,5 +1,6 @@
 BASIC_RAG_PROMPT_TEMPLATE = """
-Instruction: Answer the question based on the relevant context:
+<s>[INST]
+Instruction: Réponds à la question en te basant sur le contexte donné:
 
 {context}
 
