@@ -17,8 +17,6 @@ spec:
           image: inseefrlab/llm-open-data-insee:latest
           imagePullPolicy: Always
           env:
-            - name: S3_BUCKET
-              value: projet-llm-insee-open-data
             - name: AWS_S3_ENDPOINT
               value: minio.lab.sspcloud.fr
             - name: AWS_ACCESS_KEY_ID
