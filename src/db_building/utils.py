@@ -1,10 +1,10 @@
 import pandas as pd
+import numpy as np 
 
-from tqdm import tqdm
-import re
-from typing import List, Tuple
+from tqdm import tqdm 
+import re 
+from typing import List, Tuple 
 from bs4 import BeautifulSoup
-from collections import Counter
 
 HIGH_LEVEL_TAGS = [
     "description-generale-variables",
@@ -21,27 +21,26 @@ CHUNK_TAGS = [
 ]
 
 
-def extract_text_tag(xmlstring, tag="paragraphe"):
-    """
+def extract_text_tag(xmlstring, tag = "paragraphe"):
+    """ 
     Extract the elements between xml tag , note that the html and xml file associated to the same page are different, xml files do not have any attribute like paragraphe-chapeau, ...
     """
-    # tag paragraphe without attribute
+    #tag paragraphe without attribute
     pattern = "<" + tag + ">(.*?)</" + tag + ">"
     return re.findall(pattern, xmlstring)
-
 
 def get_soup(xml_string: str) -> BeautifulSoup:
     soup = BeautifulSoup(xml_string, features="xml")
     return soup
 
 
+from collections import Counter
 def html_tag_finder(xmlstring):
-    """
+    """ 
     find all the html type in a xmlstring
     """
-    pattern = "<[^<>]+>"
+    pattern = '<[^<>]+>'
     return Counter(re.findall(pattern, xmlstring))
-
 
 def extract_tables(row) -> List:
     """
@@ -61,9 +60,11 @@ def extract_tables(row) -> List:
     # Extract tables
     tables = []
     for el in soup.find_all("Tableau"):
-        tables.append({"xml": el.extract().decode(), "id": identifier})
+        tables.append({
+            "xml": el.extract().decode(),
+            "id": identifier
+        })
     return tables
-
 
 def extract_links(row) -> List:
     """
@@ -76,7 +77,7 @@ def extract_links(row) -> List:
         List: Links.
     """
     xml_string = str(row["xml_content"])
-    # identifier = row["id"]
+    identifier = row["id"]
 
     soup = get_soup(xml_string)
     links = []
@@ -86,16 +87,23 @@ def extract_links(row) -> List:
     for el in soup.find_all("fichiers-donnees"):
         title = el.find("titre").get_text()
         uri = el.find("uri").get_text()
-        links.append({"title": title, "uri": uri, "type": "data"})
+        links.append({
+            "title": title,
+            "uri": uri,
+            "type": "data"
+        })
 
     # External links
     for el in soup.find_all("lien-externe"):
         uri = el.get("url")
         title = el.get_text()
-        links.append({"title": title, "uri": uri, "type": "external"})
+        links.append({
+            "title": title,
+            "uri": uri,
+            "type": "external"
+        })
 
     return links
-
 
 def extract_chunks(row) -> List:
     """
@@ -128,9 +136,11 @@ def extract_chunks(row) -> List:
                     if tag_chunk is None:
                         break
                     if tag_chunk.text.strip() != "":
-                        chunks.append(
-                            {"xml": tag_chunk.extract().decode(), "tag": tag, "id": identifier}
-                        )
+                        chunks.append({
+                            "xml": tag_chunk.extract().decode(),
+                            "tag": tag,
+                            "id": identifier
+                        })
                     elif tag_chunk.text.strip() == "":
                         _ = tag_chunk.extract()
             # Here we might be removing some content
@@ -140,16 +150,20 @@ def extract_chunks(row) -> List:
     # Remaining chunks
     for chunk_tag in CHUNK_TAGS:
         while True:
+
             chunk = soup.find(chunk_tag)
             if chunk is None:
                 break
             if chunk.text.strip() != "":
-                chunks.append({"xml": chunk.extract().decode(), "tag": "other", "id": identifier})
+                chunks.append({
+                    "xml": chunk.extract().decode(),
+                    "tag": "other",
+                    "id": identifier
+                })
             elif chunk.text.strip() == "":
                 _ = chunk.extract()
 
     return chunks
-
 
 def extract_xml(row) -> Tuple:
     """
@@ -168,6 +182,7 @@ def extract_xml(row) -> Tuple:
     return chunks, tables, links
 
 
+
 def url_builder(row: pd.Series):
     category = row.categorie
 
@@ -177,59 +192,58 @@ def url_builder(row: pd.Series):
     i = row.id
 
     dict_url = {
-        "Publications grand public": "statistiques",
-        "Communiqués de presse": "information",
-        "Chiffres-clés": "statistiques",
-        "Chiffres détaillés": "statistiques",
-        "Actualités": "statistiques",
-        "L'Insee et la statistique publique": "information",
-        "Services": "information",
-        "Méthodes": "information",
-        "Dossiers de presse": "information",
-        "Courrier des statistiques": "information",
-        "Géographie": "information",
-        "Séries chronologiques": "statistiques",
-        "Sources": "information",
-        "Publications pour expert": "information",
-        "Cartes interactives": "",
-        "Outils interactifs": "statistiques",
+        "Publications grand public":"statistiques" ,
+        "Communiqués de presse":"information",    
+        "Chiffres-clés":"statistiques",
+        "Chiffres détaillés":"statistiques",                       
+        "Actualités": "statistiques",                    
+        "L'Insee et la statistique publique": "information",    
+        "Services":"information" ,                           
+        "Méthodes":"information",                       
+        "Dossiers de presse" : "information",            
+        "Courrier des statistiques": "information",               
+        "Géographie":"information",                     
+        "Séries chronologiques":"statistiques",                 
+        "Sources":"information",
+        "Publications pour expert": "information",                                
+        "Cartes interactives":"",                 
+        "Outils interactifs": "statistiques"                
     }
 
     if category in set(dict_url.keys()):
+
         base_url = "https://www.insee.fr/fr/"
 
-        section = dict_url[category]
+        section =  dict_url[category]
 
         if section is None or len(section) == 0:
             return None
 
-        url = base_url + section + "/" + i
+        url = base_url + section + "/" + i 
 
-        return url
+        return url 
     else:
         return None
 
-
-def url_builder_metadata(row: pd.Series):
-    """
-    rebuild valid URL for metadata
+def url_builder_metadata(row:pd.Series):
+    """ 
+    rebuild valid URL for metadata 
     base url looks like : https://www.insee.fr/fr/metadonnees/
     """
-
+  
     base_url = "https://www.insee.fr/fr/metadonnees/"
-    pattern_source = r"^s"
-    pattern_indicator = r"^p"
+    pattern_source = r'^s'
+    pattern_indicator = r'^p'
 
     row_id = row.id
 
     if re.match(pattern_source, row_id):
         return base_url + "source/serie/{id}".format(id=row_id)
-
+    
     if re.match(pattern_indicator, row_id):
         return base_url + "source/indicateur/{id}/description".format(id=row_id)
-
+    
     return None
-
 
 def complete_url_builder(table):
     urls = []
@@ -238,61 +252,79 @@ def complete_url_builder(table):
         if url is None:
             url = url_builder_metadata(row)
 
-        urls.append(url)  # add URL or None
+        urls.append(url) #add URL or None
 
     return pd.Series(urls)
 
-
-def paragraph_cleaning(paras, mode=""):
-    if mode == "bs":  # read a beautiful soup module
+def paragraph_cleaning(paras, mode=''):
+    if mode == "bs": # read a beautiful soup module
         paras = [p.text.replace("\n", " ") for p in paras]
         paras = [p.replace("\t", "") for p in paras]
-
-    html_tag_re = re.compile(r"<[^>]+>")
-    paras = [p.replace("\xa0", "") for p in paras]  # remove \xa0
-    paras = [html_tag_re.sub("", p) for p in paras]  # remove html tag
+        
+    html_tag_re = re.compile(r'<[^>]+>')
+    paras = [p.replace(u'\xa0', u'') for p in paras] # remove \xa0 
+    paras = [html_tag_re.sub('', p) for p in paras]  # remove html tag
     paras = [re.sub(r" +", " ", s) for s in paras]
     return " ".join(paras)
 
-
 def extract_paragraphs(table):
-    """
+    """ 
     extract the paragraphs from the database and associate a relevant url to get access to the paragraph on INSEE website.
+    add metadatas associated to textual informations.  
     """
-    id_origin = []
-    paragraphs = []
-    url_source = []
-    titles_para = []
+    results = {"id_origin": [],
+                "paragraphs": [],
+                "url_source": [],
+                "title": [],
+                "categories": [],
+                "dateDiffusion": [],
+                "themes": [],
+                "collections": [],
+                "libelleAffichageGeo": [],
+                "intertitres": [],
+                "authors": [], 
+                "subtitle": []            
+    }
 
-    results = {}
-
-    url_bool = "url" in table.columns
+    url_bool = ("url" in table.columns)
 
     if "xml_content" in table.columns:
         for i, row in tqdm(table.iterrows()):
             xmlstring = str(row["xml_content"])
 
-            title = str(row["titre"]).replace("\xa0", "")
+            title = str(row["titre"]).replace(u'\xa0', u'')
             paras = extract_text_tag(xmlstring, tag="paragraphe")
 
-            if len(paras) == 0:  # handle badly indented documents by using an xml parser
+            if len(paras) == 0 : # handle badly indented documents by using an xml parser
                 tag = "paragraphe"
                 soup = BeautifulSoup(xmlstring, "xml")
                 paras = soup.find_all(tag)
                 para = paragraph_cleaning(paras, mode="bs")
-            else:
+            else: 
                 para = paragraph_cleaning(paras)
 
-            if len(para) > 0:
-                paragraphs.append(para)
-                id_origin.append(row.id)
-                titles_para.append(title)
+            if len(para) > 0: # filtering to only keep documents with textual informations. 
+                results["paragraphs"].append(para)
+                results["id_origin"].append(row.id)
+                results["title"].append(title)
+                results["categories"].append(row.categorie)
+                results["dateDiffusion"].append(row.dateDiffusion)
+                results["themes"].append(row.theme)
+                results["collections"].append(row.collection)
+                results["libelleAffichageGeo"].append(row.libelleAffichageGeo)
+                results["intertitres"].append(row.xml_intertitre)
+
+                # authors: 
+                input_string = row.xml_auteurs
+                try: 
+                    split_list = input_string.split(',')
+                    results["authors"].append([item.strip() for item in split_list])
+                except AttributeError:
+                    results["authors"].append([])
+
+                results["subtitle"].append(row.sousTitre)
 
                 if url_bool:
-                    url_source.append(row["url"])
+                    results["url_source"].append(row["url"])
 
-        results["document"] = paragraphs
-        results["id_origin"] = id_origin
-        results["title"] = titles_para
-        results["url_source"] = url_source
         return results
