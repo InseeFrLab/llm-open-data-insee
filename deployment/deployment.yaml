@@ -35,8 +35,11 @@ spec:
                   name: hf-creds-api
                   key: token
           resources:
+            requests:
+              memory: "8Gi"
+              cpu: "2000m"
             limits:
-              memory: "30Gi"
-              cpu: "5000m"
+              memory: "100Gi"
+              cpu: "12000m"
       nodeSelector: 
         nvidia.com/gpu.product: NVIDIA-H100-PCIe
