@@ -256,6 +256,7 @@ def complete_url_builder(table):
 
     return pd.Series(urls)
 
+
 def paragraph_cleaning(paras, mode=''):
     if mode == "bs": # read a beautiful soup module
         paras = [p.text.replace("\n", " ") for p in paras]
@@ -267,7 +268,17 @@ def paragraph_cleaning(paras, mode=''):
     paras = [re.sub(r" +", " ", s) for s in paras]
     return " ".join(paras)
 
-def extract_paragraphs(table):
+import ast 
+from typing import List 
+
+def theme_parsing(parsed_list):
+    try:
+        parsed_list = ast.literal_eval(parsed_list)
+        return "/".join(parsed_list)
+    except (ValueError, SyntaxError) as e:
+        return "" 
+
+def extract_paragraphs(table : pd.DataFrame) -> pd.DataFrame:
     """ 
     extract the paragraphs from the database and associate a relevant url to get access to the paragraph on INSEE website.
     add metadatas associated to textual informations.  
@@ -290,41 +301,36 @@ def extract_paragraphs(table):
 
     if "xml_content" in table.columns:
         for i, row in tqdm(table.iterrows()):
-            xmlstring = str(row["xml_content"])
+            try:
+                xmlstring = str(row["xml_content"])
 
-            title = str(row["titre"]).replace(u'\xa0', u'')
-            paras = extract_text_tag(xmlstring, tag="paragraphe")
+                title = str(row["titre"]).replace(u'\xa0', u'')
+                paras = extract_text_tag(xmlstring, tag="paragraphe")
 
-            if len(paras) == 0 : # handle badly indented documents by using an xml parser
-                tag = "paragraphe"
-                soup = BeautifulSoup(xmlstring, "xml")
-                paras = soup.find_all(tag)
-                para = paragraph_cleaning(paras, mode="bs")
-            else: 
-                para = paragraph_cleaning(paras)
+                if len(paras) == 0: # handle badly indented documents by using an xml parser
+                    tag = "paragraphe"
+                    soup = BeautifulSoup(xmlstring, "xml")
+                    paras = soup.find_all(tag)
+                    para = paragraph_cleaning(paras, mode="bs")
+                else: 
+                    para = paragraph_cleaning(paras)
 
-            if len(para) > 0: # filtering to only keep documents with textual informations. 
-                results["paragraphs"].append(para)
-                results["id_origin"].append(row.id)
-                results["title"].append(title)
-                results["categories"].append(row.categorie)
-                results["dateDiffusion"].append(row.dateDiffusion)
-                results["themes"].append(row.theme)
-                results["collections"].append(row.collection)
-                results["libelleAffichageGeo"].append(row.libelleAffichageGeo)
-                results["intertitres"].append(row.xml_intertitre)
+                if len(para) > 0: # filtering to only keep documents with textual informations. 
+                    results["paragraphs"].append(para)
+                    results["id_origin"].append(row.id)
+                    results["title"].append(title)
+                    results["categories"].append(row.categorie)
+                    results["dateDiffusion"].append(row.dateDiffusion)
+                    results["themes"].append(theme_parsing(row.theme))
+                    results["collections"].append(row.collection)
+                    results["libelleAffichageGeo"].append(row.libelleAffichageGeo)
+                    results["intertitres"].append(row.xml_intertitre)
+                    results["authors"].append(theme_parsing(row.xml_auteurs))
+                    results["subtitle"].append(row.sousTitre)
 
-                # authors: 
-                input_string = row.xml_auteurs
-                try: 
-                    split_list = input_string.split(',')
-                    results["authors"].append([item.strip() for item in split_list])
-                except AttributeError:
-                    results["authors"].append([])
-
-                results["subtitle"].append(row.sousTitre)
-
-                if url_bool:
-                    results["url_source"].append(row["url"])
-
-        return results
+                    if url_bool:
+                        results["url_source"].append(row["url"])
+            except Exception as e:
+                print('issue at this row : ', row)
+                print(f"Error : {e}")
+        return pd.DataFrame.from_dict(results)

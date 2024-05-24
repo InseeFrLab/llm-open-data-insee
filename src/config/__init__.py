@@ -4,6 +4,8 @@ from .embed_config import EMB_MODEL_NAME, EMB_DEVICE
 from .data_paths_config import LOG_FILE_PATH
 from .s3_config import S3_ENDPOINT_URL, S3_BUCKET
 from .prompting_config import BASIC_RAG_PROMPT_TEMPLATE, RAG_PROMPT_TEMPLATE
+from .loading_config import CHUNK_SIZE, CHUNK_OVERLAP, MARKDOWN_SEPARATORS
+
 
 __all__ = [
     "DB_DIR_S3",
@@ -17,4 +19,7 @@ __all__ = [
     "S3_BUCKET",
     "BASIC_RAG_PROMPT_TEMPLATE",
     "RAG_PROMPT_TEMPLATE",
+    "CHUNK_SIZE",
+    "CHUNK_OVERLAP",
+    "MARKDOWN_SEPARATORS"
 ]

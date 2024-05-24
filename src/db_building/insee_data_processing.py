@@ -3,20 +3,21 @@ import s3fs
 
 import pandas as pd
 
-# import sys
-# sys.path.append("./src")
+import sys
+sys.path.append("./src")
 
-from config import S3_ENDPOINT_URL
-from utils import complete_url_builder
-
+from config import S3_ENDPOINT_URL, S3_BUCKET
+from utils_db import complete_url_builder
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     # Create filesystem object
     fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": S3_ENDPOINT_URL})
+    BUCKET = S3_BUCKET + "/data/raw_data"
 
-    BUCKET = "projet-llm-insee-open-data/data/raw_data"
+    #S3_BUCKET = "projet-llm-insee-open-data/data/raw_data"
+
     FILE_KEY_S3 = "applishare_extract.parquet"
     FILE_PATH_S3 = BUCKET + "/" + FILE_KEY_S3
 
