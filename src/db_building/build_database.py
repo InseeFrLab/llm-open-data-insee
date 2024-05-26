@@ -7,7 +7,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import EMB_MODEL_NAME, EMB_DEVICE
-from config import DB_DIR_S3
+from config import  COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
 
 from doc_building import build_documents_from_dataframe
 from .utils_db import extract_paragraphs
@@ -62,7 +62,6 @@ def build_database_from_dataframe(
     logging.info("The database has been built")
     db.persist()
     return db
-
 
 def build_database_from_csv(
     path: str, persist_directory: str = str(DB_DIR_S3), max_pages: str = None
@@ -122,3 +121,27 @@ def build_database_from_csv(
         logging.info("Error Database : database File not found")
         logging.info(f"The path '{path}' does not exist.")
         return None
+
+def reload_database_from_local_dir(embed_model_name: str = EMB_MODEL_NAME,
+                    collection_name: str = COLLECTION_NAME,
+                    persist_directory: str = DB_DIR_LOCAL,
+                    embed_device: str = EMB_DEVICE
+                   ) -> Chroma:
+    embedding_model = HuggingFaceEmbeddings(
+        model_name=embed_model_name,
+        multi_process=True,
+        model_kwargs={"device": embed_device},
+        encode_kwargs={"normalize_embeddings": True},
+        show_progress=True
+    )
+    db = Chroma(
+        collection_name=collection_name,
+        persist_directory=persist_directory,
+        embedding_function=embedding_model
+    )
+    logging.info(
+        f"The database (collection {collection_name}) "
+        f"has been reloaded from directory {persist_directory}"
+    )
+    db.persist()
+    return db

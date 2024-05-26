@@ -1,4 +1,4 @@
-from .db_config import DB_DIR_S3, DB_DIR_LOCAL
+from .db_config import COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
 from .llm_config import MODEL_NAME, MODEL_DEVICE
 from .embed_config import EMB_MODEL_NAME, EMB_DEVICE
 from .data_paths_config import LOG_FILE_PATH
@@ -8,6 +8,7 @@ from .loading_config import CHUNK_SIZE, CHUNK_OVERLAP, MARKDOWN_SEPARATORS
 
 
 __all__ = [
+    "COLLECTION_NAME"
     "DB_DIR_S3",
     "DB_DIR_LOCAL",
     "MODEL_NAME",
