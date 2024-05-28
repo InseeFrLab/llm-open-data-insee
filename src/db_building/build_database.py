@@ -8,13 +8,13 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import EMB_MODEL_NAME, EMB_DEVICE, COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
 
-from doc_building import (
-    build_documents_from_dataframe,
-    compute_autokonenizer_chunk_size
-)
+from doc_building import build_documents_from_dataframe, compute_autokonenizer_chunk_size
 from .utils_db import extract_paragraphs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+alias_chunk_size = compute_autokonenizer_chunk_size
 
 
 def build_database_from_dataframe(
