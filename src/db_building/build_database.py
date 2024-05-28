@@ -6,10 +6,12 @@ from chromadb.config import Settings
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-from config import EMB_MODEL_NAME, EMB_DEVICE
-from config import  COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
+from config import EMB_MODEL_NAME, EMB_DEVICE, COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
 
-from doc_building import build_documents_from_dataframe
+from doc_building import (
+    build_documents_from_dataframe,
+    compute_autokonenizer_chunk_size
+)
 from .utils_db import extract_paragraphs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -63,8 +65,13 @@ def build_database_from_dataframe(
     db.persist()
     return db
 
+
 def build_database_from_csv(
-    path: str, persist_directory: str = str(DB_DIR_S3), max_pages: str = None
+    path: str,
+    persist_directory: str = str(DB_DIR_S3),
+    embedding_model: str = str(EMB_MODEL_NAME),
+    collection_name: str = COLLECTION_NAME,
+    max_pages: str = None,
 ) -> Chroma:
     logging.info(f"The database will be stored in {persist_directory}")
 
@@ -99,14 +106,12 @@ def build_database_from_csv(
         logging.info("Storing the Document objects")
 
         embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
-            model_name=EMB_MODEL_NAME,
+            model_name=embedding_model,
             model_kwargs={"device": EMB_DEVICE},
             encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
             show_progress=False,
         )
 
-        # collection_name = "insee_data_" + str(EMB_MODEL_NAME.split("/")[-1])
-        collection_name = "insee_data"
         db = Chroma.from_documents(
             collection_name=collection_name,
             documents=all_splits,
@@ -122,22 +127,24 @@ def build_database_from_csv(
         logging.info(f"The path '{path}' does not exist.")
         return None
 
-def reload_database_from_local_dir(embed_model_name: str = EMB_MODEL_NAME,
-                    collection_name: str = COLLECTION_NAME,
-                    persist_directory: str = DB_DIR_LOCAL,
-                    embed_device: str = EMB_DEVICE
-                   ) -> Chroma:
+
+def reload_database_from_local_dir(
+    embed_model_name: str = EMB_MODEL_NAME,
+    collection_name: str = COLLECTION_NAME,
+    persist_directory: str = DB_DIR_LOCAL,
+    embed_device: str = EMB_DEVICE,
+) -> Chroma:
     embedding_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
         multi_process=True,
         model_kwargs={"device": embed_device},
         encode_kwargs={"normalize_embeddings": True},
-        show_progress=True
+        show_progress=True,
     )
     db = Chroma(
         collection_name=collection_name,
         persist_directory=persist_directory,
-        embedding_function=embedding_model
+        embedding_function=embedding_model,
     )
     logging.info(
         f"The database (collection {collection_name}) "
