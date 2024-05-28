@@ -6,7 +6,7 @@ import shutil
 
 import mlflow
 import pandas as pd
-from config import COLLECTION_NAME, EMB_MODEL_NAME
+from config import COLLECTION_NAME, EMB_MODEL_NAME, DB_DIR_S3
 from db_building import build_database_from_csv
 from doc_building import compute_autokonenizer_chunk_size
 
@@ -14,6 +14,10 @@ from doc_building import compute_autokonenizer_chunk_size
 EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
 MAX_NUMBER_PAGES = 100
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
+path_s3 = f"s3/projet-llm-insee-open-data/{DB_DIR_S3}"
+
+if MAX_NUMBER_PAGES is not None:
+    path_s3 = path_s3.replace("chroma_database", "test_chroma")
 
 # Rustine temporaire
 os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
@@ -73,3 +77,5 @@ with mlflow.start_run() as run:
 
     chroma_dir = Path(CHROMA_DB_LOCAL_DIRECTORY)
     mlflow.log_artifacts(chroma_dir, artifact_path="chroma")
+
+    mlflow.log_param("path_saving_s3", path_s3)
