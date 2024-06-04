@@ -70,9 +70,11 @@ class RetrievalEvaluator:
                     retrieved_docs = vector_db.similarity_search_by_vector(embedding=query_embedding, 
                                                                            k=nb_retrieved)
                     retrieved_sources = [doc.metadata["source"] for doc in retrieved_docs]
-                    logging.info(f"      Relevant sources have been retrieved for question {i} ")
+                    if i % 50 == 0:
+                        logging.info(f"      Relevant sources have been retrieved for question {i} ")
                     for k in configuration.k_values:
-                        logging.info(f"      Computing measures at level {k} in {configuration.k_values} ")
+                        if i % 50 == 0:
+                            logging.info(f"      Computing measures at level {k} in {configuration.k_values}  for question {i}")
                         recall_at_k = recall(retrieved_sources[:k], [golden_source])
                         precision_at_k = precision(retrieved_sources[:k], [golden_source])
                         individual_recalls.append(recall_at_k)
