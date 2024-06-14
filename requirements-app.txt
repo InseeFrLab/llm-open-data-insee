@@ -7,3 +7,5 @@ langchain-community
 langchain-core
 sentence-transformers
 transformers
+rank_bm25
+

@@ -54,7 +54,7 @@ def build_database_from_dataframe(
     )
 
     # collection_name = "insee_data_" + str(EMB_MODEL_NAME.split("/")[-1])
-    collection_name = "insee_data"
+    collection_name = COLLECTION_NAME
     db = Chroma.from_documents(
         collection_name=collection_name,
         documents=all_splits,
@@ -134,6 +134,7 @@ def reload_database_from_local_dir(
     persist_directory: str = DB_DIR_LOCAL,
     embed_device: str = EMB_DEVICE,
 ) -> Chroma:
+
     embedding_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
         multi_process=True,
@@ -146,9 +147,9 @@ def reload_database_from_local_dir(
         persist_directory=persist_directory,
         embedding_function=embedding_model,
     )
+
     logging.info(
         f"The database (collection {collection_name}) "
         f"has been reloaded from directory {persist_directory}"
     )
-    db.persist()
     return db

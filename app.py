@@ -3,7 +3,7 @@ import os
 from langchain_core.prompts import PromptTemplate
 import chainlit as cl
 
-from src.config import RAG_PROMPT_TEMPLATE
+from src.config import RAG_PROMPT_TEMPLATE, EMB_MODEL_NAME, MODEL_NAME
 from src.model_building import build_llm_model
 from src.chain_building.build_chain import (
     load_retriever,
@@ -14,14 +14,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 @cl.on_chat_start
 async def on_chat_start():
     # Set up RAG chain
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-    retriever = load_retriever(emb_model_name="sentence-transformers/all-MiniLM-L6-v2",
+    retriever = load_retriever(emb_model_name=EMB_MODEL_NAME,
                                persist_directory="data/chroma_db")
-    llm = build_llm_model(model_name="mistralai/Mistral-7B-Instruct-v0.2",
+    llm = build_llm_model(model_name=MODEL_NAME,
                           quantization_config=True,
                           config=True,
                           token=os.environ["HF_TOKEN"])

@@ -5,6 +5,13 @@ from typing import Dict
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.evaluation import InformationRetrievalEvaluator
 
+#Langchain 
+from langchain.docstore.document import Document as LangchainDocument
+
+#reranking
+from rank_bm25 import BM25Okapi, BM25L, BM25Plus
+from ragatouille import RAGPretrainedModel
+
 def use_sbert_retrieval_evaluator(df: pd.DataFrame, 
                                   model: SentenceTransformer) -> Dict:
     """
@@ -36,3 +43,45 @@ def use_sbert_retrieval_evaluator(df: pd.DataFrame,
         name="Test"
     )
     return ir_evaluator(model)
+
+
+def rerank_with_ColBERT(reranker, query : str, retrieved_docs : List[LangchainDocument], filter_k : int ):
+    relevant_docs = [doc.page_content for doc in retrieved_docs]  # keep only text
+    reranked_docs = reranker.rerank(query=query, documents=relevant_docs, k=filter_k)
+    content_to_doc = {doc.page_content: doc for doc in retrieved_docs if isinstance(doc.page_content, str)}
+    return [content_to_doc[doc["content"]] for doc in reranked_docs]
+
+
+def rerank_with_BM25(model_class, query : str, retrieved_docs : List[LangchainDocument], filter_k : int):
+    relevant_docs = [doc.page_content for doc in retrieved_docs]
+    bm25 = model_class(relevant_docs)
+    tokenized_query = query.split()
+    return bm25.get_top_n(tokenized_query, retrieved_docs, n=filter_k)
+
+
+def rerank_with_metadata(reranker, query : str, retrieved_docs : List[LangchainDocument], filter_k : int , params : Dict):
+    """
+    note if the metadata is missing we use a "content" information (always exists) as a fallback  
+    """
+    new_data = []
+    for doc in retrieved_docs:
+        metadata_field = params.get("use_metadata")
+        if metadata_field in doc.metadata:
+            page_content = doc.metadata[metadata_field]
+        else:
+            page_content = doc.page_content
+        
+        new_data.append(
+            LangchainDocument(
+                page_content = page_content, 
+                metadata = {"source": doc.metadata.get("source", "unknown")}
+                )
+            )
+    #load reranker 
+    new_retrieved_docs = rerank_with_ColBERT(reranker=reranker, query=query, retrieved_docs = new_data, filter_k=filter_k)
+
+    source_to_doc_map = {doc.metadata.get("source", "unknown"): doc for doc in retrieved_docs}
+    #reorder the original retrieved documents based on thee new reranked docs
+    reordered_docs = [source_to_doc_map[new_doc.metadata["source"]] for new_doc in new_retrieved_docs if new_doc.metadata["source"] in source_to_doc_map]
+
+    return reordered_docs
