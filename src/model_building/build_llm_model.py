@@ -1,6 +1,6 @@
 import os
 import logging
-
+import sys
 import s3fs
 from transformers import (
     AutoConfig,
@@ -12,11 +12,20 @@ from transformers import (
 )
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 
-from config import S3_ENDPOINT_URL, S3_BUCKET
+# Add the project root directory to sys.path
+root_dir = os.path.abspath(os.path.join(os.path.dirname(""), './src'))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
+try:
+    from config import S3_ENDPOINT_URL, S3_BUCKET
+except ImportError as e:
+    print(f"ImportError: {e}")
+    print("Current sys.path:", sys.path)
+    raise
 
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
 logger = logging.getLogger(__name__)
-
 
 def cache_model_from_hf_hub(model_name, s3_bucket=S3_BUCKET, s3_cache_dir="models/hf_hub"):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.

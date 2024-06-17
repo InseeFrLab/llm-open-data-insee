@@ -2,6 +2,9 @@ import os
 
 from langchain_core.prompts import PromptTemplate
 import chainlit as cl
+import sys 
+
+sys.path.append(".")
 
 from src.config import RAG_PROMPT_TEMPLATE, EMB_MODEL_NAME, MODEL_NAME
 from src.model_building import build_llm_model
@@ -19,7 +22,7 @@ async def on_chat_start():
     # Set up RAG chain
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
     retriever = load_retriever(emb_model_name=EMB_MODEL_NAME,
-                               persist_directory="data/chroma_db")
+                               persist_directory="./data/chroma_db")
     llm = build_llm_model(model_name=MODEL_NAME,
                           quantization_config=True,
                           config=True,

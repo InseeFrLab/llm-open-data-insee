@@ -39,12 +39,14 @@ def load_retriever(
     return retriever
 
 
-def format_docs(docs) -> str:
-    """
-    Format the retrieved document before giving their content to complete the prompt
-    """
-    return "\n\n".join(docs)
+# def format_docs(docs) -> str:
+#     '''
+#     Format the retrieved document before giving their content to complete the prompt
+#     '''
+#     return "\n\n".join(docs)
 
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
 
 def build_chain(retriever, prompt, llm):
     """
@@ -52,14 +54,14 @@ def build_chain(retriever, prompt, llm):
     """
     # Create a Langchain LLM Chain
     chain = (
-        {"context": format_docs | retriever, "question": RunnablePassthrough()}
+        RunnablePassthrough.assign(context=(lambda x: format_docs(x["context"])))
         | prompt
         | llm
         | StrOutputParser()
     )
 
     rag_chain_with_source = RunnableParallel(
-        {"context": format_docs | retriever, "question": RunnablePassthrough()}
+        {"context": retriever, "question": RunnablePassthrough()}
     ).assign(answer=chain)
 
     return rag_chain_with_source

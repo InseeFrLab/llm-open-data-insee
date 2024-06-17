@@ -36,7 +36,7 @@ with mlflow.start_run() as run:
 
     llm_chain = build_chain(retriever, prompt, llm)
 
-    question = "Je cherche à connaitre le bombre (et eventuellement les caractéristiques) des véhicules 'primes à la conversion' dans plusieurs départements d'occitanie, en particulier l'aveyron."
+    question = "Je cherche à connaitre le nombre (et eventuellement les caractéristiques) des véhicules 'primes à la conversion' dans plusieurs départements d'occitanie, en particulier l'aveyron."
     llm_chain.invoke(question)
 
     mlflow.log_param("DB_DIR_S3", DB_DIR_S3)
