@@ -2,28 +2,38 @@ import os
 
 from langchain_core.prompts import PromptTemplate
 import chainlit as cl
-import sys 
 
-sys.path.append(".")
-
-from src.config import RAG_PROMPT_TEMPLATE, EMB_MODEL_NAME, MODEL_NAME
 from src.model_building import build_llm_model
 from src.chain_building.build_chain import (
     load_retriever,
     build_chain
     )
 
-from dotenv import load_dotenv
 
-load_dotenv()
+RAG_PROMPT_TEMPLATE = """
+<s>[INST]
+Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
+Réponds en Français seulement.
+Utilise les informations obtenues dans le contexte, réponds de manière argumentée à la question posée.
+La réponse doit être développée et citer ses sources.
+
+Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
+Voici le contexte sur lequel tu dois baser ta réponse :
+Contexte: {context}
+        ---
+Voici la question à laquelle tu dois répondre :
+Question: {question}
+[/INST]
+"""
+
 
 @cl.on_chat_start
 async def on_chat_start():
     # Set up RAG chain
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-    retriever = load_retriever(emb_model_name=EMB_MODEL_NAME,
+    retriever = load_retriever(emb_model_name=os.environ["EMB_MODEL_NAME"],
                                persist_directory="./data/chroma_db")
-    llm = build_llm_model(model_name=MODEL_NAME,
+    llm = build_llm_model(model_name=os.environ["LLM_MODEL_NAME"],
                           quantization_config=True,
                           config=True,
                           token=os.environ["HF_TOKEN"])
@@ -45,23 +55,6 @@ async def on_message(message: cl.Message):
     await msg.send()
 
 
-# @cl.on_message
-# async def on_message(message: cl.Message):
-#     runnable = cl.user_session.get("runnable")
-
-#     msg = cl.Message(content="")
-
-#     for chunk in await cl.make_async(runnable.stream)(
-#         {"question": message.content},
-#         config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(
-#             stream_final_answer=True
-#         )]),
-#     ):
-#         await msg.stream_token(chunk)
-
-#     await msg.send()
-
-
 @cl.set_starters
 async def set_starters():
     return [
@@ -81,4 +74,3 @@ async def set_starters():
             icon="/public/insee_logo.png",
             ),
         ]
-

@@ -34,6 +34,12 @@ spec:
                 secretKeyRef:
                   name: hf-creds-api
                   key: token
+            - name: S3_BUCKET
+              value: projet-llm-insee-open-data
+            - name: EMB_MODEL_NAME
+              value: OrdalieTech/Solon-embeddings-large-0.1
+            - name: LLM_MODEL_NAME
+              value: mistralai/Mistral-7B-Instruct-v0.2
           resources:
             requests:
               memory: "8Gi"
