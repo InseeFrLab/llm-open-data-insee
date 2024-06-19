@@ -7,7 +7,7 @@ from transformers import (
 )
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
 
-from fetch_llm_model import cache_model_from_hf_hub
+from .fetch_llm_model import cache_model_from_hf_hub
 
 
 def build_llm_model(

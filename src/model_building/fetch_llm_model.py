@@ -4,14 +4,13 @@ import os
 import s3fs
 from transformers import AutoModel
 
-from .config import S3_ENDPOINT_URL, S3_BUCKET
 
-
-logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p")
+logging.basicConfig(format="%(asctime)s %(message)s",
+                    datefmt="%Y-%m-%d %I:%M:%S %p")
 logger = logging.getLogger(__name__)
 
 
-def cache_model_from_hf_hub(model_name, s3_bucket=S3_BUCKET, s3_cache_dir="models/hf_hub"):
+def cache_model_from_hf_hub(model_name, s3_endpoint, s3_bucket, s3_cache_dir="models/hf_hub"):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.
 
     Args:
@@ -19,7 +18,7 @@ def cache_model_from_hf_hub(model_name, s3_bucket=S3_BUCKET, s3_cache_dir="model
         s3_bucket (str): Name of the S3 bucket to use.
         s3_cache_dir (str): Path of the cache directory on S3.
     """
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": S3_ENDPOINT_URL})
+    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": s3_endpoint})
 
     LOCAL_HF_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
     model_name_hf_cache = "models--" + "--".join(model_name.split("/"))
@@ -47,5 +46,6 @@ if __name__ == '__main__':
     cache_model_from_hf_hub(
         os.environ["LLM_MODEL_NAME"],
         s3_bucket=os.environ["S3_BUCKET"],
-        s3_cache_dir="models/hf_hub"
+        s3_cache_dir="models/hf_hub",
+        s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}'
         )
