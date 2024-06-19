@@ -62,4 +62,23 @@ async def on_message(message: cl.Message):
 #     await msg.send()
 
 
+@cl.set_starters
+async def set_starters():
+    return [
+        cl.Starter(
+            label="Definition",
+            message="Quelle est la définition du déficit public?",
+            icon="/public/insee_logo.png",
+            ),
+        cl.Starter(
+            label="Chiffre",
+            message="Quelles sont les statistiques sur l'espérance de vie en France ?",
+            icon="/public/insee_logo.png",
+            ),
+        cl.Starter(
+            label="Méthodologie",
+            message="Comment l'INSEE collecte-t-elle les données sur l'emploi ?",
+            icon="/public/insee_logo.png",
+            ),
+        ]
 
