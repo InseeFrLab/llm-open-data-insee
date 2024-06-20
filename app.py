@@ -49,7 +49,7 @@ async def on_message(message: cl.Message):
     chain = cl.user_session.get("chain")
 
     # Process user query
-    inputs = {"question": message.content}
+    inputs = message.content
     result = await chain.ainvoke(inputs)
     msg = cl.Message(content=result["answer"], disable_feedback=True)
     await msg.send()
