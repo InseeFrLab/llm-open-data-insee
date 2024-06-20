@@ -7,7 +7,7 @@ from transformers import (
     AutoTokenizer,
     pipeline,
     BitsAndBytesConfig,
-    TextIteratorStreamer
+    TextStreamer
 )
 from langchain_huggingface import HuggingFacePipeline
 #from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
@@ -17,7 +17,6 @@ from .fetch_llm_model import cache_model_from_hf_hub
 root_dir = os.path.abspath(os.path.join(os.path.dirname(""), './src'))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
-
 
 def build_llm_model(
     model_name, 
@@ -59,7 +58,7 @@ def build_llm_model(
     )
     streamer = None 
     if streaming:
-        streamer = TextIteratorStreamer(tokenizer=tokenizer, skip_prompt=True)
+        streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)
 
     # Check if tokenizer has a pad_token; if not, set it to eos_token
     if tokenizer.pad_token is None:

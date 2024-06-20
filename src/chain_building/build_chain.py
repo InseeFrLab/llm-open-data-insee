@@ -2,7 +2,10 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
+from results_logging import log_chain_results
 
+from utils import format_docs
 
 def create_vectorstore(
     emb_model_name: str,
@@ -39,16 +42,7 @@ def load_retriever(
     return retriever
 
 
-# def format_docs(docs) -> str:
-#     '''
-#     Format the retrieved document before giving their content to complete the prompt
-#     '''
-#     return "\n\n".join(docs)
-
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
-
-def build_chain(retriever, prompt, llm):
+def build_chain(retriever, prompt, llm, bool_log: bool = False):
     """
     Build a LLM chain based on Langchain package and INSEE data
     """
@@ -64,4 +58,7 @@ def build_chain(retriever, prompt, llm):
         {"context": retriever, "question": RunnablePassthrough()}
     ).assign(answer=chain)
 
-    return rag_chain_with_source
+    if bool_log:
+        return rag_chain_with_source | RunnableLambda(log_chain_results).bind(prompt=prompt)
+    else:
+        return rag_chain_with_source

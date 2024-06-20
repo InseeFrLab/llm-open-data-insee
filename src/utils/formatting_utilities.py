@@ -1,3 +1,2 @@
-def format_docs(docs) -> str:
-    """Convert the retrieved documents to a string to be inserted into the prompt"""
-    return "\n\n".join(doc.page_content for doc in docs)
+def format_docs(docs):
+    return "\n\n".join([f"Doc{i}:\nTitle: {doc.metadata["title"]}\nContent:\n{doc.page_content}" for i, doc in enumerate(docs)])

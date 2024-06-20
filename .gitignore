@@ -169,3 +169,6 @@ cython_debug/
 # Ignore notebooks not in the notebooks folder
 *.ipynb
 !notebooks/*.ipynb
+
+#ignore log files 
+data/conversation_logs.json
