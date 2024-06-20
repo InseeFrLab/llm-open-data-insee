@@ -14,6 +14,9 @@ from src.chain_building.build_chain import (
     load_retriever,
     build_chain
     )
+from src.chain_building.build_chain_with_logging import (
+    build_chain_with_logging
+)
 
 from dotenv import load_dotenv
 
@@ -25,26 +28,43 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 if not HF_TOKEN:
     raise ValueError("Hugging Face token not found in environment variables.")
 
+@cl.action_callback("log")
+async def on_action(action: cl.Action):
+    await cl.Message(content="Vous avez autorisé de transmettre vos conversations à l'équipe du SSP Cloud")
+
+    return "Thank you for clicking on the action button!"
+
 @cl.on_chat_start
 async def on_chat_start():
     # Set up RAG chain
+    """
+    await cl.Message(content="Bienvenue sur la ChatBot de l'INSEE!").send()
+    await cl.spleep(1)
 
-    try:
-        prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-        retriever = load_retriever(emb_model_name=EMB_MODEL_NAME, persist_directory="./data/chroma_db")
-        llm = build_llm_model(
-            model_name=MODEL_NAME,
-            quantization_config=True,
-            config=True,
-            token=HF_TOKEN,
-            streaming=False 
-            )
-        chain = build_chain(retriever, prompt, llm)
+    # Ask the user if they want to log their answer
+    buttons = [
+        cl.Action(name="log", value="log", description="Vos intéractions avec le ChatBot seront enregistrées"),
+        cl.Action(name="no_log", value="no_log", description="Vos intéractions avec le ChatBot ne seront pas enregistrées")
+    ]
+    await cl.Message(
+        content="Acceptez vous que vos intéractions soient enregistrées?",
+        action=buttons
+    ).send()
+    """
+    prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+    retriever = load_retriever(emb_model_name=EMB_MODEL_NAME, persist_directory="./data/chroma_db")
+    llm = build_llm_model(
+        model_name=MODEL_NAME,
+        quantization_config=True,
+        config=True,
+        token=HF_TOKEN,
+        streaming=False 
+        )
+    chain = build_chain(retriever, prompt, llm)
 
-        # Set RAG chain in chainlit session
-        cl.user_session.set("chain", chain)
-    except Exception as e:
-        print(f"Error during chat start: {e}")
+    # Set RAG chain in chainlit session
+    cl.user_session.set("chain", chain)
+
 
 """
 @cl.on_message
@@ -81,48 +101,50 @@ async def on_message(message: cl.Message):
     """
     Handle incoming messages and process the response using the RAG chain.
     """
-    try:
-        chain = cl.user_session.get("chain")
-        if not chain:
-            raise ValueError("Chain not found in user session.")
+    #initilize Asynchronous Callback Handler 
+    cb = cl.AsyncLangchainCallbackHandler(
+        stream_final_answer=True, answer_prefix_tokens=["Answer"]
+    )
+    # Retrieve the chain from the user session
+    chain = cl.user_session.get("chain")
 
-        # Initialize variables
-        msg = cl.Message(content="")
-        sources = list()
-        titles = list()
+    res = await chain.acall(message.content, callbacks=[cb])
 
-        async for chunk in chain.astream(
-            message.content, 
-            config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
-            ):
+    if not cb.answer_reached:
+        await cl.Message(content=res["text"]).send()
 
-            if 'answer' in chunk:
-                await msg.stream_token(chunk["answer"])
-            
-            # print("chunck keys : ", chunk.keys())
-            if "context" in chunk:
-                docs = chunk["context"]
-                #print("number of retrieved documents : ", len(docs))
-                for i, doc in enumerate(docs):
-                    #print(f"\nDoc {i} : {doc.metadata}")
-                    meta = doc.metadata # json.loads(doc.metadata) 
-                    sources.append(meta.get("source",None)) 
-                    titles.append(meta.get("title",None)) 
-            
-        #await msg.send()
+    """  # Initialize variables
+    msg = cl.Message(content="")
+    sources = list()
+    titles = list()
 
-        msg_sources = cl.Message(
-            content=add_sources_to_messages(
-                                    message="", 
-                                    sources=sources, 
-                                    titles=titles),
-                                    disable_feedback=True)
-        await msg_sources.send()
+    async for chunk in chain.astream(
+        message.content, 
+        config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler(stream_final_answer=True)]),
+        ):
 
-    except Exception as e:
-        error_msg = cl.Message(content=f"An error occurred: {e}", disable_feedback=True)
-        await error_msg.send()
+        if 'answer' in chunk:
+            await msg.stream_token(chunk["answer"])
+        
+        # print("chunck keys : ", chunk.keys())
+        if "context" in chunk:
+            docs = chunk["context"]
+            #print("number of retrieved documents : ", len(docs))
+            for i, doc in enumerate(docs):
+                #print(f"\nDoc {i} : {doc.metadata}")
+                meta = doc.metadata # json.loads(doc.metadata) 
+                sources.append(meta.get("source",None)) 
+                titles.append(meta.get("title",None)) 
+        
+    #await msg.send()
 
+    msg_sources = cl.Message(
+        content=add_sources_to_messages(
+                                message="", 
+                                sources=sources, 
+                                titles=titles),
+                                disable_feedback=True)
+    await msg_sources.send()"""
 
 @cl.set_starters
 async def set_starters():

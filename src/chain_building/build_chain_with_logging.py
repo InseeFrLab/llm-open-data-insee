@@ -13,25 +13,11 @@ from results_logging import log_chain_results
 from utils import format_docs
 
 
-def build_chain_with_logging():
+def build_chain_with_logging(retriever, prompt, llm):
     """
     Runs the chain and logs the results to a JSON file
     """
-    hf_embeddings = HuggingFaceEmbeddings(
-        model_name=EMB_MODEL_NAME, model_kwargs={"device": EMB_DEVICE}
-    )
-    vectorstore = Chroma(
-        collection_name="insee_data",
-        embedding_function=hf_embeddings,
-        persist_directory=str(DB_DIR_S3),
-    )
-    retriever = vectorstore.as_retriever(
-        search_type="mmr", search_kwargs={"score_threshold": 0.5, "k": 10}
-    )
-    prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-
-    llm = build_llm_model()
-
+    
     rag_chain_from_docs = (
         RunnablePassthrough.assign(context=(lambda x: format_docs(x["context"])))
         | prompt
