@@ -5,5 +5,6 @@ chromadb
 langchain
 langchain-community
 langchain-core
+langchain-huggingface
 sentence-transformers
 transformers

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Import vector DB
+# Fetch vector DB from S3
 export MC_HOST_s3=https://$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY@$AWS_S3_ENDPOINT
 mc cp --recursive s3/$S3_BUCKET/data/chroma_database/chroma_db/ data/chroma_db
 
-# Used cached LLM from S3 if available
+# Fetch cached LLM from S3 if available
 MODEL_NAME_HF=$(echo "$MODEL_NAME" | sed 's|/|--|g' | sed 's|^|models--|')
 MODEL_PATH_S3=s3/$S3_BUCKET/models/hf_hub/$MODEL_NAME_HF
 if mc ls $MODEL_PATH_S3 > /dev/null 2>&1; then
