@@ -1,17 +1,24 @@
 """
 Script to anonymize Insee Contact data.
 """
+from typing import Dict, List
 import re
-import os
-import s3fs
 import pandas as pd
 import json
+from utils import fs
 
 
-def detect_email_signature(message, message_ner):
+def detect_email_signature(
+    message: str,
+    message_ner: List[Dict]
+):
     """
     Returns first position of email signature in message.
+    For now take a `message` string as input and returns
+    the message without a signature identified as all text
+    after the keyword "cordialement"
     """
+    # TODO: use the `message_ner` argument
     search_term = "cordialement"
     lines = message.split("\n")
     signature_line_index = None
@@ -30,14 +37,23 @@ def detect_email_signature(message, message_ner):
         return -1
 
     # Calculate the character index of the first character after "cordialement"
-    char_index = sum(len(line) + 1 for line in lines[:signature_line_index])  # +1 for the newline character
+    char_index = sum(len(line) + 1 for line in lines[:signature_line_index])
     char_index += signature_position_in_line
     return char_index
 
 
-def add_signature_key_to_ner(message, message_ner):
+def add_signature_key_to_ner(
+    message: str,
+    message_ner: List[Dict]
+):
     """
-    Adds a key 'signature' to the named entities in the message.
+    Adds a key 'signature' to the named entities in the message
+    which belong to the signature: entities after which there is no
+    text content which is not an entity.
+
+    Args:
+        message (str): Message.
+        message_ner (List[Dict]): Message NER.
     """
     # Init at False
     for entity in message_ner:
@@ -55,11 +71,18 @@ def add_signature_key_to_ner(message, message_ner):
 
 
 def anonymize_insee_contact_message(
-    message, message_ner
-):
+    message: str, message_ner: List[Dict]
+) -> str:
     """
-    message_ner is a list of dictionaries, each dictionary contains the named entities
+    Anonymize a message given a NER output. `message_ner` is a
+    list of dictionaries, each dictionary contains the named entities
     with keys 'entity_group', 'score', 'word', 'start', 'end'.
+
+    Args:
+        message (str): Message.
+        message_ner (List[Dict]): Message NER.
+    Returns:
+        str: Anonymized message.
     """
     add_signature_key_to_ner(message, message_ner)
 
@@ -96,40 +119,54 @@ def anonymize_insee_contact_message(
 
 
 if __name__ == "__main__":
-    fs = s3fs.S3FileSystem(
-        client_kwargs={"endpoint_url": "https://" + os.environ["AWS_S3_ENDPOINT"]}
-    )
-
+    # Anonymize evaluation data and export it to a .csv file
+    # for manual evaluation
     path = "projet-llm-insee-open-data/data/insee_contact/data_2019_eval.csv"
     with fs.open(path) as f:
         df = pd.read_csv(f)
     df = df.fillna("")
 
-    with fs.open('projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json', 'rb') as f:
+    # Load NER data
+    with fs.open(
+        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json',
+        'rb'
+    ) as f:
         exchange1_ner = json.load(f)
-    with fs.open('projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json', 'rb') as f:
+    with fs.open(
+        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json',
+        'rb'
+    ) as f:
         exchange2_ner = json.load(f)
 
+    # Anonymize exchanges
     anonymized_exchange1 = []
     anonymized_exchange2 = []
     for message, ner in zip(df["Exchange1"], exchange1_ner):
         anonymized_exchange1.append(anonymize_insee_contact_message(message, ner))
     for message, ner in zip(df["Exchange2"], exchange2_ner):
         anonymized_exchange2.append(anonymize_insee_contact_message(message, ner))
+
+    # Export anonymized questions along with original ones for evaluation
     eval_df_exchange_1 = pd.DataFrame(
         {
             "raw": df["Exchange1"],
             "anonymized": anonymized_exchange1,
         }
     )
-    with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange1.csv", "w") as f:
+    with fs.open(
+        "projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange1.csv",
+        "w"
+    ) as f:
         eval_df_exchange_1.to_csv(f, index=False)
-
+    # Export anonymized answers along with original ones for evaluation
     eval_df_exchange_2 = pd.DataFrame(
         {
             "raw": df["Exchange2"],
             "anonymized": anonymized_exchange2,
         }
     )
-    with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange2.csv", "w") as f:
+    with fs.open(
+        "projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange2.csv",
+        "w"
+    ) as f:
         eval_df_exchange_2.to_csv(f, index=False)

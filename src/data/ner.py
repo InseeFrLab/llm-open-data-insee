@@ -4,35 +4,40 @@ Apply named entity recognition to data in order to identify:
     - addresses;
     - email addresses;
 """
+from typing import Dict, List
 import json
-import s3fs
-import os
+from utils import fs
 import numpy as np
 import pandas as pd
-from transformers import pipeline
+from transformers import pipeline, TokenClassificationPipeline
 
 
-def custom_ner(text: str):
+ner = pipeline(
+    task='ner',
+    model="cmarkea/distilcamembert-base-ner",
+    tokenizer="cmarkea/distilcamembert-base-ner",
+    aggregation_strategy="simple"
+)
+
+
+def custom_ner(ner_pipeline: TokenClassificationPipeline, text: str) -> List[Dict]:
     """
     Ner except return empty string if text is empty.
 
     Args:
+        ner_pipeline (TokenClassificationPipeline): NER pipeline.
         text (str): Text.
-    """
-    ner = pipeline(
-        task='ner',
-        model="cmarkea/distilcamembert-base-ner",
-        tokenizer="cmarkea/distilcamembert-base-ner",
-        aggregation_strategy="simple"
-    )
 
+    Returns:
+        Dict: NER output.
+    """
     if (text == "") or (text is None):
         return ""
     else:
         return ner(text)
 
 
-def ner_series(strings: pd.Series):
+def ner_series(strings: pd.Series) -> pd.Series:
     """
     Apply named entity recognition to data in order to identify:
 
@@ -41,8 +46,13 @@ def ner_series(strings: pd.Series):
     - ORG: organization;
     - MISC: miscellaneous entities (movies title, books, etc.);
     - O: background (Outside entity).
+
+    Args:
+        strings (pd.Series): Series of strings to apply NER on.
+    Returns:
+        pd.Series: Series of NER outputs.
     """
-    output = strings.apply(lambda x: custom_ner(x))
+    output = strings.apply(lambda x: custom_ner(ner, x))
     for sublist in output:
         for dictionary in sublist:
             for key, value in dictionary.items():
@@ -52,15 +62,19 @@ def ner_series(strings: pd.Series):
 
 
 if __name__ == "__main__":
-    fs = s3fs.S3FileSystem(
-        client_kwargs={"endpoint_url": "https://" + os.environ["AWS_S3_ENDPOINT"]}
-    )
-
+    # Apply NER on data from Insee Contact
     path = "projet-llm-insee-open-data/data/insee_contact/data_2019_eval.csv"
     with fs.open(path) as f:
         df = pd.read_csv(f)
 
-    with fs.open('projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json', 'w') as fp:
+    # Save NER outputs
+    with fs.open(
+        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json',
+        'w'
+    ) as fp:
         json.dump(ner_series(df["Exchange1"].fillna("")).to_list(), fp)
-    with fs.open('projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json', 'w') as fp:
+    with fs.open(
+        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json',
+        'w'
+    ) as fp:
         json.dump(ner_series(df["Exchange2"].fillna("")).to_list(), fp)
