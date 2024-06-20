@@ -9,3 +9,7 @@ python -m src.model_building.fetch_llm_model 2>&1
 
 # Run app
 chainlit run app.py --host 0.0.0.0 --port 8000 -h
+
+# Run dev app 
+chainlit run dev_app.py --host 0.0.0.0 --port 8000 -h -w
+

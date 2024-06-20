@@ -1,14 +1,4 @@
-import os
-
-from langchain_core.prompts import PromptTemplate
-from langchain.schema.runnable.config import RunnableConfig
-import chainlit as cl
-import sys 
-import json
-
-sys.path.append(".")
-
-from src.config import RAG_PROMPT_TEMPLATE, EMB_MODEL_NAME, MODEL_NAME
+from src.config import EMB_MODEL_NAME, MODEL_NAME
 from src.model_building import build_llm_model
 from src.chain_building.build_chain import (
     load_retriever,
@@ -18,9 +8,34 @@ from src.chain_building.build_chain_with_logging import (
     build_chain_with_logging
 )
 
+import os
+from langchain_core.prompts import PromptTemplate
+# from langchain.schema.runnable.config import RunnableConfig
+import chainlit as cl
+import sys 
+import logging
+
+sys.path.append(".")
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
+RAG_PROMPT_TEMPLATE = """
+<s>[INST]
+Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
+Réponds en Français seulement.
+Utilise les informations obtenues dans le contexte, réponds de manière argumentée à la question posée.
+La réponse doit être développée et citer ses sources.
+
+Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
+Voici le contexte sur lequel tu dois baser ta réponse :
+Contexte: {context}
+        ---
+Voici la question à laquelle tu dois répondre :
+Question: {question}
+[/INST]
+"""
 
 # Retrieve Hugging Face token from environment variables
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -28,31 +43,32 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 if not HF_TOKEN:
     raise ValueError("Hugging Face token not found in environment variables.")
 
-@cl.action_callback("log")
-async def on_action(action: cl.Action):
-    await cl.Message(content="Vous avez autorisé de transmettre vos conversations à l'équipe du SSP Cloud")
-
-    return "Thank you for clicking on the action button!"
-
 @cl.on_chat_start
 async def on_chat_start():
     # Set up RAG chain
-    """
     await cl.Message(content="Bienvenue sur la ChatBot de l'INSEE!").send()
-    await cl.spleep(1)
+    await cl.sleep(1)
 
-    # Ask the user if they want to log their answer
-    buttons = [
-        cl.Action(name="log", value="log", description="Vos intéractions avec le ChatBot seront enregistrées"),
-        cl.Action(name="no_log", value="no_log", description="Vos intéractions avec le ChatBot ne seront pas enregistrées")
-    ]
-    await cl.Message(
-        content="Acceptez vous que vos intéractions soient enregistrées?",
-        action=buttons
-    ).send()
-    """
+    res = await cl.AskActionMessage(
+        content="Autorisez-vous le partage de vos intéractions avec le ChatBot!",
+        actions=[
+            cl.Action(name="log", value="log", label="✅ Accepter"),
+            cl.Action(name="no log", value="no_log", label="❌ Refuser"),
+        ],
+        ).send()
+
+    bool_log = False
+    if res and res.get("value") == "log":
+        await cl.Message(content="Vous avez choisi de partager vos intéractions.").send()
+        bool_log = True
+    else:
+        await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
+
+    # load chain components
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+    logging.info("prompt loaded")
     retriever = load_retriever(emb_model_name=EMB_MODEL_NAME, persist_directory="./data/chroma_db")
+    logging.info("retriever loaded")
     llm = build_llm_model(
         model_name=MODEL_NAME,
         quantization_config=True,
@@ -60,11 +76,15 @@ async def on_chat_start():
         token=HF_TOKEN,
         streaming=False 
         )
-    chain = build_chain(retriever, prompt, llm)
+    logging.info("llm loaded")
+
+    if bool_log:
+        chain = build_chain(retriever, prompt, llm)
+    else:
+        chain = build_chain_with_logging(retriever, prompt, llm)
 
     # Set RAG chain in chainlit session
     cl.user_session.set("chain", chain)
-
 
 """
 @cl.on_message
@@ -79,17 +99,18 @@ async def on_message(message: cl.Message):
     await msg.send()
 """
 
-def add_sources_to_messages(message: str, sources: list, titles: list):
+def add_sources_to_messages(message: str, sources: list, titles: list, topk : int = 5):
     """
     Append a list of sources and titles to a Chainlit message.
 
     Args:
-    - message (cl.Message): The Chainlit message object to which the sources and titles will be added.
+    - message (str): The Chainlit message content to which the sources and titles will be added.
     - sources (list): A list of sources to append to the message.
     - titles (list): A list of titles to append to the message.
+    - topk (int) : number of displayed sources. 
     """
     if len(sources) == len(titles):
-        formatted_sources = "\n\nSources:\n" + "\n".join([f"{i+1}. {title} ({source})" for i, (source, title) in enumerate(zip(sources, titles))])
+        formatted_sources = f"\n\nSources (Top {topk}):\n" + "\n".join([f"{i+1}. {title} ({source})" for i, (source, title) in enumerate(zip(sources, titles)) if i < topk])
         message += formatted_sources
     else:
         message += "\n\nNo Sources available"
@@ -145,7 +166,7 @@ async def on_message(message: cl.Message):
                                 titles=titles),
                                 disable_feedback=True)
     await msg_sources.send()"""
-
+"""
 @cl.set_starters
 async def set_starters():
     return [
@@ -166,3 +187,4 @@ async def set_starters():
             ),
         ]
 
+"""

@@ -5,7 +5,7 @@ import datetime
 import logging
 import os
 
-from config import MODEL_NAME, EMB_MODEL_NAME, RESULT_LOG_DIR
+from config import MODEL_NAME, EMB_MODEL_NAME, RELATIVE_DATA_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -17,7 +17,7 @@ def save_results_to_json(
     generated_answer: str = None,
     embedding_model_name: str = None,
     LLM_name: str = None,
-    filename=f"{RESULT_LOG_DIR}/conversation_logs.json",
+    filename=f"{RELATIVE_DATA_DIR}/conversation_logs.json",
 ):
     """
     Save details of a RAG conversation to a json file.
@@ -81,7 +81,7 @@ def log_chain_results(result, prompt):
         generated_answer,
         embedding_model_name,
         LLM_name,
-        filename=f"{RESULT_LOG_DIR}/conversation_logs.json",
+        filename=f"{RELATIVE_DATA_DIR}/conversation_logs.json",
     )
 
     return result

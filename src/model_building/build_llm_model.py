@@ -10,7 +10,7 @@ from transformers import (
     TextIteratorStreamer
 )
 from langchain_huggingface import HuggingFacePipeline
-from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
+#from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
 
 # Add the project root directory to sys.path
@@ -29,7 +29,12 @@ def build_llm_model(
     """
     Create the llm model
     """
-    cache_model_from_hf_hub(model_name)
+    cache_model_from_hf_hub(
+        model_name,
+        s3_bucket="projet-llm-insee-open-data",
+        s3_cache_dir="models/hf_hub",
+        s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}'
+    )
 
     configs = {
         # Load quantization config
@@ -52,6 +57,9 @@ def build_llm_model(
     tokenizer = AutoTokenizer.from_pretrained(
         model_name, use_fast=True, device_map="auto", token=configs["token"]
     )
+    streamer = None 
+    if streaming:
+        streamer = TextIteratorStreamer(tokenizer=tokenizer, skip_prompt=True)
 
     # Check if tokenizer has a pad_token; if not, set it to eos_token
     if tokenizer.pad_token is None:
@@ -66,18 +74,13 @@ def build_llm_model(
         model=model,
         tokenizer=tokenizer,
         max_new_tokens=2000,
-        temperature=0.2,
         return_full_text=False,
         device_map="auto",
-        do_sample=True,
-        streamer=TextIteratorStreamer(tokenizer=tokenizer, skip_prompt=True, timeout=0.1) if streaming else None
+        do_sample=True,  
+        streamer=streamer,
+    ) 
+    llm = HuggingFacePipeline(
+        pipeline=pipeline_HF,
+        model_kwargs={"temperature": 0.2}
     )
-    if streaming:
-        llm = CustomHuggingFacePipeline(
-            pipeline=pipeline_HF
-        )
-    else:  
-        llm = HuggingFacePipeline(
-            pipeline=pipeline_HF
-        )
     return llm

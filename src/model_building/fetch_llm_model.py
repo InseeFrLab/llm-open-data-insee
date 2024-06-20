@@ -36,12 +36,12 @@ def cache_model_from_hf_hub(model_name, s3_endpoint, s3_bucket, s3_cache_dir="mo
             logger.info(f"Model {model_name} not found on S3, fetching from HF hub.")
             AutoModel.from_pretrained(model_name)
             dir_model_local = os.path.join(LOCAL_HF_CACHE_DIR, model_name_hf_cache)
-            logger.info(f"Putting model {model_name} on S3.")
+            logger.info(f"Putting model {model_name} on S3.({dir_model_local})")
             fs.put(dir_model_local, dir_model_s3, recursive=True)
     else:
         logger.info(f"Model {model_name} found in local cache.")
 
-
+"""
 if __name__ == '__main__':
     cache_model_from_hf_hub(
         os.environ["LLM_MODEL_NAME"],
@@ -49,3 +49,4 @@ if __name__ == '__main__':
         s3_cache_dir="models/hf_hub",
         s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}'
         )
+"""
