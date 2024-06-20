@@ -36,3 +36,4 @@ ragatouille
 lxml
 mlflow
 chainlit
+langchain-huggingface

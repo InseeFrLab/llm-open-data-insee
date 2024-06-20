@@ -8,4 +8,4 @@ langchain-core
 sentence-transformers
 transformers
 rank_bm25
-
+langchain-huggingface

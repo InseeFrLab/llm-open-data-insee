@@ -1,17 +1,30 @@
+import sys
+import os
+
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoTokenizer,
     pipeline,
     BitsAndBytesConfig,
+    TextIteratorStreamer
 )
-from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
-
+from langchain_huggingface import HuggingFacePipeline
+from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
+
+# Add the project root directory to sys.path
+root_dir = os.path.abspath(os.path.join(os.path.dirname(""), './src'))
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
 
 
 def build_llm_model(
-    model_name, quantization_config: bool = False, config: bool = False, token=None
+    model_name, 
+    quantization_config: bool = False, 
+    config: bool = False,
+    token=None, 
+    streaming: bool = False
 ):
     """
     Create the llm model
@@ -57,6 +70,14 @@ def build_llm_model(
         return_full_text=False,
         device_map="auto",
         do_sample=True,
+        streamer=TextIteratorStreamer(tokenizer=tokenizer, skip_prompt=True, timeout=0.1) if streaming else None
     )
-
-    return HuggingFacePipeline(pipeline=pipeline_HF)
+    if streaming:
+        llm = CustomHuggingFacePipeline(
+            pipeline=pipeline_HF
+        )
+    else:  
+        llm = HuggingFacePipeline(
+            pipeline=pipeline_HF
+        )
+    return llm
