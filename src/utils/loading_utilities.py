@@ -3,7 +3,6 @@ import os
 
 import pandas as pd
 import s3fs
-from transformers import AutoModel
 
 from config import S3_ENDPOINT_URL
 

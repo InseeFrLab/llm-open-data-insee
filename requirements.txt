@@ -6,5 +6,6 @@ langchain
 langchain-community
 langchain-core
 langchain-huggingface
+pandas
 sentence-transformers
 transformers
