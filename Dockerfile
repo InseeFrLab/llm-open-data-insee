@@ -1,4 +1,4 @@
-FROM inseefrlab/onyxia-vscode-pytorch:py3.12.2-gpu
+FROM inseefrlab/onyxia-python-pytorch:py3.12.3-gpu
 
 USER root
 
@@ -6,7 +6,7 @@ WORKDIR /app
 
 COPY . /app/
 
-RUN pip install --no-cache-dir --upgrade -r requirements-app.txt && \
+RUN pip install --no-cache-dir --upgrade -r requirements.txt && \
     chmod +x entrypoint.sh
 
 EXPOSE 8000
