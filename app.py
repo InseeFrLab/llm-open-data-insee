@@ -1,4 +1,5 @@
 import os
+import logging
 
 from langchain_core.prompts import PromptTemplate
 import chainlit as cl
@@ -8,6 +9,13 @@ from src.chain_building.build_chain import (
     load_retriever,
     build_chain
     )
+
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(format="%(asctime)s %(message)s",
+                    datefmt="%Y-%m-%d %I:%M:%S %p",
+                    level=logging.DEBUG
+                    )
 
 
 RAG_PROMPT_TEMPLATE = """
@@ -31,15 +39,15 @@ Question: {question}
 async def on_chat_start():
     # Set up RAG chain
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-    
+
     retriever = load_retriever(emb_model_name=os.environ["EMB_MODEL_NAME"],
                                persist_directory="./data/chroma_db")
-    print("retriever loaded")
+    logger.info("Retriever loaded.")
     llm = build_llm_model(model_name=os.environ["LLM_MODEL_NAME"],
                           quantization_config=True,
                           config=True,
                           token=os.environ["HF_TOKEN"])
-    print("llm loaded")
+    logger.info("LLM loaded.")
     chain = build_chain(retriever, prompt, llm)
 
     # Set RAG chain in chainlit session
