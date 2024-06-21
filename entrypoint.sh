@@ -1,18 +1,32 @@
 #!/bin/bash
 
-# Fetch vector DB from S3
+# S3 configuration
 export MC_HOST_s3=https://$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY@$AWS_S3_ENDPOINT
-mc cp --recursive s3/$S3_BUCKET/data/chroma_database/chroma_db/ data/chroma_db
 
-# Fetch cached models from S3 if available
+# Fetch vector DB from S3
+S3_DB_PATH=s3/$S3_BUCKET/data/chroma_database/chroma_db/
+LOCAL_DB_PATH=data/chroma_db
+if [ ! -d "$LOCAL_DB_PATH" ]; then
+    echo "Fetching vector DB from S3."
+    mc cp --recursive $S3_DB_PATH $LOCAL_DB_PATH
+else
+    echo "Vector DB is already present locally."
+fi
+
+# Fetch models from S3 cache if available
 MODELS=("$LLM_MODEL_NAME" "$EMB_MODEL_NAME")
 for MODEL_NAME in "${MODELS[@]}"; do
     MODEL_NAME_HF=$(echo "$MODEL_NAME" | sed 's|/|--|g' | sed 's|^|models--|')
-    MODEL_PATH_S3=s3/$S3_BUCKET/models/hf_hub/$MODEL_NAME_HF
-    # Fetch the model from S3 if available
-    if mc ls $MODEL_PATH_S3 > /dev/null 2>&1; then
-        echo "Fetching cached model $MODEL_NAME_HF from S3."
-        mc cp --recursive $MODEL_PATH_S3/ $HOME/.cache/huggingface/hub/$MODEL_NAME_HF
+    S3_MODEL_PATH=s3/$S3_BUCKET/models/hf_hub/$MODEL_NAME_HF
+    LOCAL_MODEL_PATH=$HOME/.cache/huggingface/hub/$MODEL_NAME_HF
+
+    if mc ls $S3_MODEL_PATH > /dev/null 2>&1; then
+        if [ ! -d "$LOCAL_MODEL_PATH" ]; then
+            echo "Fetching model $MODEL_NAME_HF from S3."
+            mc cp --recursive $S3_MODEL_PATH/ $LOCAL_MODEL_PATH
+        else
+            echo "Model $MODEL_NAME_HF is already present locally."
+        fi
     fi
 done
 
