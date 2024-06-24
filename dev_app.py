@@ -5,10 +5,8 @@ from src.chain_building.build_chain import (
     build_chain
     )
 
+
 import os
-from langchain_core.prompts import PromptTemplate
-from langchain.schema.runnable.config import RunnableConfig
-import chainlit as cl
 import sys 
 import logging
 
@@ -16,24 +14,33 @@ sys.path.append(".")
 
 from dotenv import load_dotenv
 
+# API and UX functions
+from langchain_core.prompts import PromptTemplate
+from langchain.schema.runnable.config import RunnableConfig
+import chainlit as cl
+from chainlit.input_widget import Select
+
 load_dotenv()
 
-RAG_PROMPT_TEMPLATE = """
-<s>[INST]
+CHATBOT_INSTRUCTION = """
 Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
 Réponds en FRANCAIS UNIQUEMENT.
 Utilise UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
 La réponse doit être développée et citer ses sources.
 
 Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
-Voici le contexte sur lequel tu dois baser ta réponse :
+"""
+USER_INSTRUCTION = """Voici le contexte sur lequel tu dois baser ta réponse :
 Contexte: 
 {context}
-    ---
+---
 Voici la question à laquelle tu dois répondre :
-Question: {question}
-[/INST]
-"""
+Question: {question}"""
+
+CHATBOT_TEMPLATE = [
+    {"role": "system", "content": CHATBOT_INSTRUCTION},
+    {"role": "user", "content": USER_INSTRUCTION},
+]
 
 # Retrieve Hugging Face token from environment variables
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -63,21 +70,47 @@ async def on_chat_start():
         bool_log = False
         await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
 
-    # load chain components
-    prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-    logging.info("      prompt loaded")
-    retriever = load_retriever(emb_model_name=EMB_MODEL_NAME, persist_directory="./data/chroma_db")
-    logging.info("      retriever loaded")
-    llm = build_llm_model(
+
+    llm, tokenizer = build_llm_model(
         model_name=MODEL_NAME,
         quantization_config=True,
         config=True,
         token=HF_TOKEN,
         streaming=False 
         )
-    logging.info("      llm loaded")
-    chain = build_chain(retriever, prompt, llm, bool_log=bool_log)
-    logging.info("      chain built")
+    logging.info("------llm loaded")
+    
+    RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(chat=CHATBOT_TEMPLATE, 
+                                                        tokenize=False,
+                                                        add_generation_prompt=True
+                                                        )
+
+    # load chain components
+    prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+    logging.info("------prompt loaded")
+    retriever = load_retriever(emb_model_name=EMB_MODEL_NAME, persist_directory="./data/chroma_db")
+    logging.info("------retriever loaded")
+
+    # Allow the user to select their preferred reranker model
+    await cl.Message(content="Choisissez votre méthode de reranking en paramètres").send()
+    await cl.sleep(5)
+    reranker_setting = await cl.ChatSettings(
+        [
+            Select(
+                id="Reranker",
+                label="Reranker models",
+                values=["Aucun", "BM25", "Cross-encoder", "ColBERT", "Ensemble"],
+                initial_index=0,
+                description="Choisissez votre modèle de reranker"
+            )
+        ]
+    ).send()
+
+    if reranker_setting:
+        reranker = None if reranker_setting["Reranker"] == "Aucun" else reranker_setting["Reranker"]
+
+    chain = build_chain(retriever, prompt, llm, bool_log=bool_log, reranker=reranker)
+    logging.info("------chain built")
 
     # Set RAG chain in chainlit session
     cl.user_session.set("chain", chain)
@@ -137,6 +170,7 @@ async def on_message(message: cl.Message):
                             disable_feedback=False)
     await msg_sources.send()
 
+"""
 @cl.set_starters
 async def set_starters():
     return [
@@ -156,3 +190,4 @@ async def set_starters():
             icon="/public/insee_logo.png",
             ),
         ]
+"""
