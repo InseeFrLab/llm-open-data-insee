@@ -24,7 +24,7 @@ def build_llm_model(
     config: bool = False,
     token=None, 
     streaming: bool = False
-):
+) -> HuggingFacePipeline, AutoTokenizer:
     """
     Create the llm model
     """
@@ -82,4 +82,4 @@ def build_llm_model(
         pipeline=pipeline_HF,
         model_kwargs={"temperature": 0.2}
     )
-    return llm
+    return llm, tokenizer

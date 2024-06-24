@@ -18,6 +18,7 @@ pandas
 plotly
 pyvis
 ragatouille
+rank_bm25
 requests
 sacremoses
 scikit-learn
