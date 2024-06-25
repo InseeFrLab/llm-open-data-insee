@@ -46,7 +46,7 @@ def cache_model_from_hf_hub(model_name,
             logger.info(f"Putting model {model_name} on S3.")
             fs.put(dir_model_local, dir_model_s3, recursive=True)
     else:
-        logger.info(f"Model {model_name} found in local cache.")
+        logger.info(f"Model {model_name} found in local cache. ")
         if model_name_hf_cache not in available_models_s3:
             # Push from local HF cache to S3
             logger.info(f"Putting model {model_name} on S3.")

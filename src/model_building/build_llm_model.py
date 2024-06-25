@@ -24,7 +24,7 @@ def build_llm_model(
     config: bool = False,
     token=None, 
     streaming: bool = False
-) -> HuggingFacePipeline, AutoTokenizer:
+):
     """
     Create the llm model
     """
