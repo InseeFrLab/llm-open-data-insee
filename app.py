@@ -43,7 +43,7 @@ async def on_chat_start():
     retriever = load_retriever(emb_model_name=os.environ["EMB_MODEL_NAME"],
                                persist_directory="./data/chroma_db")
     logger.info("Retriever loaded.")
-    llm = build_llm_model(model_name=os.environ["LLM_MODEL_NAME"],
+    llm, _  = build_llm_model(model_name=os.environ["LLM_MODEL_NAME"],
                           quantization_config=True,
                           config=True,
                           token=os.environ["HF_TOKEN"])

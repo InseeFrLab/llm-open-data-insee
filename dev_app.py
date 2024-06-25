@@ -5,7 +5,6 @@ from src.chain_building.build_chain import (
     build_chain
     )
 
-
 import os
 import sys 
 import logging
@@ -22,9 +21,13 @@ from chainlit.input_widget import Select
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(format="%(asctime)s %(message)s",
+                    datefmt="%Y-%m-%d %I:%M:%S %p",
+                    level=logging.DEBUG
+                    )
+
 CHATBOT_INSTRUCTION = """
-Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
-Réponds en FRANCAIS UNIQUEMENT.
 Utilise UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
 La réponse doit être développée et citer ses sources.
 
@@ -38,7 +41,9 @@ Voici la question à laquelle tu dois répondre :
 Question: {question}"""
 
 CHATBOT_TEMPLATE = [
-    {"role": "system", "content": CHATBOT_INSTRUCTION},
+    {"role": "user", "content": """Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE. 
+    Réponds en FRANCAIS UNIQUEMENT."""},
+    {"role": "assistant", "content": CHATBOT_INSTRUCTION},
     {"role": "user", "content": USER_INSTRUCTION},
 ]
 
@@ -70,7 +75,6 @@ async def on_chat_start():
         bool_log = False
         await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
 
-
     llm, tokenizer = build_llm_model(
         model_name=MODEL_NAME,
         quantization_config=True,
@@ -80,7 +84,7 @@ async def on_chat_start():
         )
     logging.info("------llm loaded")
     
-    RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(chat=CHATBOT_TEMPLATE, 
+    RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, 
                                                         tokenize=False,
                                                         add_generation_prompt=True
                                                         )
@@ -92,22 +96,26 @@ async def on_chat_start():
     logging.info("------retriever loaded")
 
     # Allow the user to select their preferred reranker model
-    await cl.Message(content="Choisissez votre méthode de reranking en paramètres").send()
     await cl.sleep(5)
-    reranker_setting = await cl.ChatSettings(
-        [
-            Select(
-                id="Reranker",
-                label="Reranker models",
-                values=["Aucun", "BM25", "Cross-encoder", "ColBERT", "Ensemble"],
-                initial_index=0,
-                description="Choisissez votre modèle de reranker"
-            )
-        ]
-    ).send()
+    res= await cl.AskActionMessage(
+            content="Choisissez votre méthode de reranking en paramètresr",
+            actions=[
+                    cl.Action(name="Aucun", value="Aucun", description="Pas de reranker"),
+                    cl.Action(name="BM25", value="BM25", description="Choisir un reranker lexical BM25"),
+                    cl.Action(name="Cross-encoder", value="Cross-encoder", description="Choisir un reranker semantique Cross-encoder"),
+                    cl.Action(name="ColBERT", value="ColBERT", description="Choisir un reranker sémantique ColBERT"),
+                    cl.Action(name="Ensemble", value="Ensemble", description="Choisir un reranker Hybride"),
+            ],
+            timeout=10
+        ).send()
 
-    if reranker_setting:
-        reranker = None if reranker_setting["Reranker"] == "Aucun" else reranker_setting["Reranker"]
+    if res and res.get("value") != "Aucun": 
+        reranker = res.get("value") 
+        await cl.Message(content=f"Vous avez choisi : {reranker}").send()
+        reranker = None if reranker == "Aucun" else reranker
+    else:
+        reranker = None
+        await cl.Message(content=f"Choix par défaut: Aucun").send()
 
     chain = build_chain(retriever, prompt, llm, bool_log=bool_log, reranker=reranker)
     logging.info("------chain built")
@@ -170,24 +178,11 @@ async def on_message(message: cl.Message):
                             disable_feedback=False)
     await msg_sources.send()
 
-"""
-@cl.set_starters
-async def set_starters():
-    return [
-        cl.Starter(
-            label="Demandez une définition",
-            message="Quelle est la définition du déficit public?",
-            icon="/public/insee_logo.png",
-            ),
-        cl.Starter(
-            label="Demandez un chiffre précis",
-            message="Quelles sont les statistiques sur l'espérance de vie en France ?",
-            icon="/public/insee_logo.png",
-            ),
-        cl.Starter(
-            label="Connaitre une méthodologie",
-            message="Comment l'INSEE collecte-t-elle les données sur l'emploi ?",
-            icon="/public/insee_logo.png",
-            ),
-        ]
-"""
+from config import RELATIVE_DATA_DIR
+
+@cl.on_chat_end
+def end():
+    """at the end of the Chat"""
+    log_folder_path = os.path.join(RELATIVE_DATA_DIR, "logs")
+
+    
