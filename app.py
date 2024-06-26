@@ -1,26 +1,17 @@
-from src.config import EMB_MODEL_NAME, MODEL_NAME
-from src.model_building import build_llm_model
-from src.chain_building.build_chain import (
-    load_retriever,
-    build_chain, 
-    build_chain_retriever
-    )
-
 import os
-import sys 
 import logging
 
-sys.path.append(".")
-
-from dotenv import load_dotenv
-
-# API and UX functions
 from langchain_core.prompts import PromptTemplate
 from langchain.schema.runnable.config import RunnableConfig
 import chainlit as cl
-from chainlit.input_widget import Select
 
-load_dotenv(dotenv_path=".env")
+from src.model_building import build_llm_model
+from src.chain_building.build_chain import (
+    load_retriever,
+    build_chain,
+    build_chain_retriever
+    )
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)s %(message)s",
@@ -28,31 +19,28 @@ logging.basicConfig(format="%(asctime)s %(message)s",
                     level=logging.DEBUG
                     )
 
+
 CHATBOT_INSTRUCTION = """
 Utilise UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
 La réponse doit être développée et citer ses sources.
 
 Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
 """
+
 USER_INSTRUCTION = """Voici le contexte sur lequel tu dois baser ta réponse :
-Contexte: 
+Contexte:
 {context}
 ---
 Voici la question à laquelle tu dois répondre :
 Question: {question}"""
 
 CHATBOT_TEMPLATE = [
-    {"role": "user", "content": """Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE. 
+    {"role": "user", "content": """Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
     Réponds en FRANCAIS UNIQUEMENT."""},
     {"role": "assistant", "content": CHATBOT_INSTRUCTION},
     {"role": "user", "content": USER_INSTRUCTION},
 ]
 
-# Retrieve Hugging Face token from environment variables
-HF_TOKEN = os.getenv("HF_TOKEN")
-
-if not HF_TOKEN:
-    raise ValueError("Hugging Face token not found in environment variables.")
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -86,30 +74,32 @@ async def on_chat_start():
             model_name=os.getenv("LLM_MODEL_NAME"),
             quantization_config=True,
             config=True,
-            token=HF_TOKEN,
-            streaming=False 
+            token=os.getenv("HF_TOKEN"),
+            streaming=False
             )
         logging.info("------llm loaded")
-    
-        RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, 
-                                                        tokenize=False,
-                                                        add_generation_prompt=True
-                                                        )
+
+        RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE,
+                                                            tokenize=False,
+                                                            add_generation_prompt=True
+                                                            )
 
         # load chain components
-        prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+        prompt = PromptTemplate(input_variables=["context", "question"],
+                                template=RAG_PROMPT_TEMPLATE)
         logging.info("------prompt loaded")
-        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"), persist_directory="./data/chroma_db")
+        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
+                                   persist_directory="./data/chroma_db")
         logging.info("------retriever loaded")
-    elif chat_profile == "Source_Retriever": 
+    elif chat_profile == "Source_Retriever":
 
-        llm = None 
-        prompt = None 
-        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"), persist_directory="./data/chroma_db")
+        llm = None
+        prompt = None
+        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
+                                   persist_directory="./data/chroma_db")
         logging.info("------retriever loaded")
     else:
         raise "This profile does not exist"
-
 
     # Allow the user to select their preferred reranker model
     await cl.sleep(5)
@@ -119,31 +109,31 @@ async def on_chat_start():
                     cl.Action(name="Aucun", value="Aucun", description="Pas de reranker"),
                     cl.Action(name="BM25", value="BM25", description="Choisir un reranker lexical BM25"),
                     cl.Action(name="Cross-encoder", value="Cross-encoder", description="Choisir un reranker semantique Cross-encoder"),
-                    cl.Action(name="ColBERT", value="ColBERT", description="Choisir un reranker sémantique ColBERT"),
                     cl.Action(name="Ensemble", value="Ensemble", description="Choisir un reranker Hybride"),
             ],
             timeout=15
         ).send()
 
-    if res and res.get("value") != "Aucun": 
-        reranker = res.get("value") 
+    if res and res.get("value") != "Aucun":
+        reranker = res.get("value")
         await cl.Message(content=f"Vous avez choisi : {reranker}").send()
         reranker = None if reranker == "Aucun" else reranker
     else:
         reranker = None
-        await cl.Message(content=f"Choix par défaut: Aucun").send()
+        await cl.Message(content="Choix par défaut: Aucun").send()
 
-    #build specific chain
+    # Build specific chain
     if chat_profile == "RAG":
         chain = build_chain(retriever, prompt, llm, bool_log=bool_log, reranker=reranker)
     else:
-        chain = build_chain_retriever(retriever, bool_log=bool_log, reranker=reranker) 
+        chain = build_chain_retriever(retriever, bool_log=bool_log, reranker=reranker)
     logging.info("------chain built")
 
     # Set RAG chain in chainlit session
     cl.user_session.set("chain", chain)
 
-def add_sources_to_messages(message: str, sources: list, titles: list, topk : int = 5):
+
+def add_sources_to_messages(message: str, sources: list, titles: list, topk: int = 5):
     """
     Append a list of sources and titles to a Chainlit message.
 
@@ -151,15 +141,18 @@ def add_sources_to_messages(message: str, sources: list, titles: list, topk : in
     - message (str): The Chainlit message content to which the sources and titles will be added.
     - sources (list): A list of sources to append to the message.
     - titles (list): A list of titles to append to the message.
-    - topk (int) : number of displayed sources. 
+    - topk (int) : number of displayed sources.
     """
     if len(sources) == len(titles):
-        formatted_sources = f"\n\nSources (Top {topk}):\n" + "\n".join([f"{i+1}. {title} ({source})" for i, (source, title) in enumerate(zip(sources, titles)) if i < topk])
+        sources_titles = [f"{i+1}. {title} ({source})" for i, (source, title)
+                          in enumerate(zip(sources, titles)) if i < topk]
+        formatted_sources = f"\n\nSources (Top {topk}):\n" + "\n".join(sources_titles)
         message += formatted_sources
     else:
         message += "\n\nNo Sources available"
 
     return message
+
 
 @cl.on_message
 async def on_message(message: cl.Message):
@@ -175,32 +168,29 @@ async def on_message(message: cl.Message):
     titles = list()
 
     async for chunk in chain.astream(
-        message.content, 
-        config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]),
+        message.content,
+        config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
         ):
 
         if 'answer' in chunk:
             await msg.stream_token(chunk["answer"])
-        
+
         if "context" in chunk:
             docs = chunk["context"]
             for i, doc in enumerate(docs):
                 meta = doc.metadata
-                sources.append(meta.get("source", None)) 
-                titles.append(meta.get("title", None)) 
-        
+                sources.append(meta.get("source", None))
+                titles.append(meta.get("title", None))
+
     await msg.send()
     await cl.sleep(1)
     msg_sources = cl.Message(content=add_sources_to_messages(
-                            message="", 
-                            sources=sources, 
-                            titles=titles), 
-                            disable_feedback=False)
+                             message="",
+                             sources=sources,
+                             titles=titles),
+                             disable_feedback=False)
     await msg_sources.send()
 
-from config import RELATIVE_DATA_DIR
-import subprocess
-import shutil
 
 @cl.on_chat_end
 def end():
@@ -215,11 +205,9 @@ def end():
         # Print the command's output
         print(result.stdout)
         print("Someone ended this chat: conversation logging file(s) have been copied successfully.")
-        # Remove the existing files 
-        remove_files_in_directory(directory_path=log_folder_path)
-        print("The log files have been removed from the log directory.")
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e.stderr}")
+
 
 @cl.set_chat_profiles
 async def chat_profile():
@@ -235,32 +223,3 @@ async def chat_profile():
             icon="./public/favicon.png",
         ),
     ]
-
-def remove_files_in_directory(directory_path):
-    """
-    Remove all files in the specified directory.
-
-    Args:
-    directory_path (str): The path to the directory where files should be removed.
-
-    Returns:
-    None
-    """
-    # Check if the directory exists
-    if not os.path.exists(directory_path):
-        print(f"Directory {directory_path} does not exist.")
-        return
-
-    # Iterate over all the files in the directory
-    for filename in os.listdir(directory_path):
-        file_path = os.path.join(directory_path, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-                #print(f"Removed file: {file_path}")
-            """elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-                print(f"Removed directory: {file_path}")"""
-        except Exception as e:
-            print(f"Failed to remove {file_path}. Reason: {e}")
-

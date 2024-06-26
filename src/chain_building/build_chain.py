@@ -12,7 +12,7 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_community.retrievers import BM25Retriever
 from typing import Any, List, Optional, Sequence, Dict
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
-from ragatouille import RAGPretrainedModel 
+from ragatouille import RAGPretrainedModel
 from langchain.schema import Document
 from pydantic import BaseModel, Field
 
