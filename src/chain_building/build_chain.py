@@ -65,7 +65,7 @@ def compress_documents_lambda(documents: Sequence[Document], query: str, k: int 
     retriever = BM25Retriever.from_documents(documents, k=k, **kwargs)
     return retriever.get_relevant_documents(query)
 
-def build_chain(retriever, prompt: str, llm , bool_log: bool = False, reranker=None):
+def build_chain(retriever, prompt: str, llm = None, bool_log: bool = False, reranker=None):
     """
     Build a LLM chain based on Langchain package and INSEE data
     """
@@ -130,3 +130,61 @@ def build_chain(retriever, prompt: str, llm , bool_log: bool = False, reranker=N
     else:
         return rag_chain_with_source
 
+def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
+    """ 
+    Build a langchain chain without generation, focusing on retrieving right ressources
+    """
+    
+    # Define the retrieval reranker strategy
+    if reranker is None:
+        retrieval_agent = retriever
+    elif reranker == "BM25":
+        retrieval_agent = (
+            RunnableParallel({"documents": retriever, "query": RunnablePassthrough()})
+            | RunnableLambda(lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=10))
+        )
+    elif reranker == "Cross-encoder":
+        model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
+        compressor = CrossEncoderReranker(model=model, top_n=10)
+        retrieval_agent = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
+    elif reranker == "ColBERT":
+        colBERT = RAGPretrainedModel.from_pretrained(RERANKER_COLBERT)
+        retrieval_agent = ContextualCompressionRetriever(
+            base_compressor=colBERT.as_langchain_document_compressor(k=10), base_retriever=retriever
+        )
+    elif reranker == "Ensemble":
+
+        #BM25
+        reranker_1 = (
+            RunnableParallel({"documents": retriever, "query": RunnablePassthrough()})
+            | RunnableLambda(lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=10))
+        )
+        #Cross encoder
+        compressor = CrossEncoderReranker(
+            model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER), 
+            top_n=10
+        )
+        reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
+
+        #ColBERT
+        reranker_3 = ContextualCompressionRetriever(
+            base_compressor=RAGPretrainedModel.from_pretrained(RERANKER_COLBERT).as_langchain_document_compressor(k=10), 
+            base_retriever=retriever
+        )
+
+        retrieval_agent = EnsembleRetriever(
+            retrievers=[reranker_1, reranker_2, reranker_3], 
+            weigths=[1/3, 1/3, 1/3]
+        )
+    else:
+        raise ValueError("This reranking method is not handled by the ChatBot or does not exist")
+
+    #build the first part of the chain
+    retriever_chain = RunnableParallel(
+        {"context": retrieval_agent, "question": RunnablePassthrough()}
+    )
+
+    if bool_log:
+        return retriever_chain | RunnableLambda(log_chain_results).bind(prompt=None, reranker=reranker)
+    else:
+        return retriever_chain
