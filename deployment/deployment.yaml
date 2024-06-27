@@ -40,6 +40,12 @@ spec:
               value: OrdalieTech/Solon-embeddings-large-0.1
             - name: LLM_MODEL_NAME
               value: mistralai/Mistral-7B-Instruct-v0.2
+            - name: ASK_USER_BEFORE_LOGGING
+              value: 'false'
+            - name: RETRIEVER_ONLY
+              value: 'false'
+            - name: RERANKING_METHOD
+              value: ''
           resources:
             requests:
               memory: "8Gi"

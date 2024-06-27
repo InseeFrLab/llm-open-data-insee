@@ -8,9 +8,9 @@ import chainlit as cl
 from src.model_building import build_llm_model
 from src.chain_building.build_chain import (
     load_retriever,
-    build_chain,
-    build_chain_retriever
+    build_chain
     )
+from src.utils.utils import str_to_bool
 
 
 logger = logging.getLogger(__name__)
@@ -46,30 +46,36 @@ CHATBOT_TEMPLATE = [
 async def on_chat_start():
     # Set up RAG chain
     await cl.Message(content="Bienvenue sur la ChatBot de l'INSEE!").send()
-    await cl.sleep(1)
 
-    chat_profile = cl.user_session.get("chat_profile")
-    await cl.Message(
-        content=f"Vous avez choisi d'utiliser le mode {chat_profile}"
-    ).send()
+    # Logging configuration
+    BOOL_LOG = True
+    ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
+    if ASK_USER_BEFORE_LOGGING:
+        res = await cl.AskActionMessage(
+            content="Autorisez-vous le partage de vos intéractions avec le ChatBot!",
+            actions=[
+                cl.Action(name="log", value="log", label="✅ Accepter"),
+                cl.Action(name="no log", value="no_log", label="❌ Refuser"),
+            ],
+            ).send()
+        if res and res.get("value") == "log":
+            await cl.Message(content="Vous avez choisi de partager vos intéractions.").send()
+        if res and res.get("value") == "no_log":
+            BOOL_LOG = False
+            await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
 
-    res = await cl.AskActionMessage(
-        content="Autorisez-vous le partage de vos intéractions avec le ChatBot!",
-        actions=[
-            cl.Action(name="log", value="log", label="✅ Accepter"),
-            cl.Action(name="no log", value="no_log", label="❌ Refuser"),
-        ],
-        ).send()
+    # Build chat model
+    RETRIEVER_ONLY = str_to_bool(os.getenv("RETRIEVER_ONLY", 'false'))
+    if RETRIEVER_ONLY:
+        logging.info("------ chatbot mode : retriever only")
+        llm = None
+        prompt = None
+        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
+                                   persist_directory="./data/chroma_db")
+        logging.info("------retriever loaded")
+    else:
+        logging.info("------ chatbot mode : RAG")
 
-    bool_log = False
-    if res and res.get("value") == "log":
-        await cl.Message(content="Vous avez choisi de partager vos intéractions.").send()
-        bool_log = True
-    if res and res.get("value") == "no_log":
-        bool_log = False
-        await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
-
-    if chat_profile == "RAG":
         llm, tokenizer = build_llm_model(
             model_name=os.getenv("LLM_MODEL_NAME"),
             quantization_config=True,
@@ -83,50 +89,16 @@ async def on_chat_start():
                                                             tokenize=False,
                                                             add_generation_prompt=True
                                                             )
-
-        # load chain components
         prompt = PromptTemplate(input_variables=["context", "question"],
                                 template=RAG_PROMPT_TEMPLATE)
         logging.info("------prompt loaded")
         retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
                                    persist_directory="./data/chroma_db")
         logging.info("------retriever loaded")
-    elif chat_profile == "Source_Retriever":
 
-        llm = None
-        prompt = None
-        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
-                                   persist_directory="./data/chroma_db")
-        logging.info("------retriever loaded")
-    else:
-        raise "This profile does not exist"
-
-    # Allow the user to select their preferred reranker model
-    await cl.sleep(5)
-    res = await cl.AskActionMessage(
-            content="Choisissez votre méthode de reranking en paramètresr",
-            actions=[
-                    cl.Action(name="Aucun", value="Aucun", description="Pas de reranker"),
-                    cl.Action(name="BM25", value="BM25", description="Choisir un reranker lexical BM25"),
-                    cl.Action(name="Cross-encoder", value="Cross-encoder", description="Choisir un reranker semantique Cross-encoder"),
-                    cl.Action(name="Ensemble", value="Ensemble", description="Choisir un reranker Hybride"),
-            ],
-            timeout=15
-        ).send()
-
-    if res and res.get("value") != "Aucun":
-        reranker = res.get("value")
-        await cl.Message(content=f"Vous avez choisi : {reranker}").send()
-        reranker = None if reranker == "Aucun" else reranker
-    else:
-        reranker = None
-        await cl.Message(content="Choix par défaut: Aucun").send()
-
-    # Build specific chain
-    if chat_profile == "RAG":
-        chain = build_chain(retriever, prompt, llm, bool_log=bool_log, reranker=reranker)
-    else:
-        chain = build_chain_retriever(retriever, bool_log=bool_log, reranker=reranker)
+    # Build chain
+    RERANKING_METHOD = os.getenv("RERANKING_METHOD", None)
+    chain = build_chain(retriever, prompt, llm, bool_log=BOOL_LOG, reranker=RERANKING_METHOD)
     logging.info("------chain built")
 
     # Set RAG chain in chainlit session
@@ -170,7 +142,7 @@ async def on_message(message: cl.Message):
     async for chunk in chain.astream(
         message.content,
         config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
-        ):
+    ):
 
         if 'answer' in chunk:
             await msg.stream_token(chunk["answer"])
@@ -184,10 +156,7 @@ async def on_message(message: cl.Message):
 
     await msg.send()
     await cl.sleep(1)
-    msg_sources = cl.Message(content=add_sources_to_messages(
-                             message="",
-                             sources=sources,
-                             titles=titles),
+    msg_sources = cl.Message(content=add_sources_to_messages(message="", sources=sources, titles=titles),
                              disable_feedback=False)
     await msg_sources.send()
 
@@ -207,19 +176,3 @@ def end():
         print("Someone ended this chat: conversation logging file(s) have been copied successfully.")
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e.stderr}")
-
-
-@cl.set_chat_profiles
-async def chat_profile():
-    return [
-        cl.ChatProfile(
-            name="RAG",
-            markdown_description="Interroger la base documentaire de insee.fr et obtenir des réponses construites et argumentées grâce à un LLM.",
-            icon="./public/insee_logo.png",
-        ),
-        cl.ChatProfile(
-            name="Source_Retriever",
-            markdown_description="Interroger la base documentaire de insee.fr et obtenir des suggestions d'articles",
-            icon="./public/favicon.png",
-        ),
-    ]
