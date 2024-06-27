@@ -1,11 +1,14 @@
 import logging
-import pandas as pd
 from typing import List
-from langchain_core.documents.base import Document
-from langchain_community.document_loaders import DataFrameLoader
+
+import pandas as pd
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from config import CHUNK_OVERLAP, CHUNK_SIZE, MARKDOWN_SEPARATORS, EMB_MODEL_NAME
+from langchain_community.document_loaders import DataFrameLoader
+from langchain_core.documents.base import Document
 from transformers import AutoTokenizer
+
+from config import (CHUNK_OVERLAP, CHUNK_SIZE, EMB_MODEL_NAME,
+                    MARKDOWN_SEPARATORS)
 
 
 def compute_autokonenizer_chunk_size(embedding_model: str = EMB_MODEL_NAME):

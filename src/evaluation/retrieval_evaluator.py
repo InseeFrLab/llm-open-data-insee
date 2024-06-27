@@ -1,15 +1,12 @@
 import logging
-
-import pandas as pd
-import numpy as np
-
 from typing import Dict, Tuple
-from scipy.sparse import csr_matrix
-from tqdm import tqdm
 
-
+import numpy as np
+import pandas as pd
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores.chroma import Chroma
+from scipy.sparse import csr_matrix
+from tqdm import tqdm
 
 from evaluation import RetrievalConfiguration
 

@@ -1,22 +1,18 @@
-from src.model_building import build_llm_model
-from src.chain_building.build_chain import (
-    load_retriever,
-    build_chain, 
-    build_chain_retriever
-    )
-
-import os
-import sys 
 import logging
+import os
+import sys
+
+from src.chain_building.build_chain import (build_chain, build_chain_retriever,
+                                            load_retriever)
+from src.model_building import build_llm_model
 
 sys.path.append(".")
 
+import chainlit as cl
 from dotenv import load_dotenv
-
+from langchain.schema.runnable.config import RunnableConfig
 # API and UX functions
 from langchain_core.prompts import PromptTemplate
-from langchain.schema.runnable.config import RunnableConfig
-import chainlit as cl
 
 load_dotenv(dotenv_path=".env")
 
@@ -196,8 +192,10 @@ async def on_message(message: cl.Message):
                             disable_feedback=False)
     await msg_sources.send()
 
-from config import RELATIVE_DATA_DIR
 import subprocess
+
+from config import RELATIVE_DATA_DIR
+
 
 @cl.on_chat_end
 def end():

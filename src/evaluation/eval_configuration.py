@@ -1,8 +1,9 @@
-from dataclasses import dataclass, field
 from abc import ABC
+from dataclasses import dataclass, field
 from typing import List
 
-from config import EMB_MODEL_NAME, COLLECTION_NAME
+from config import COLLECTION_NAME, EMB_MODEL_NAME
+
 
 @dataclass
 class EvalConfiguration(ABC):

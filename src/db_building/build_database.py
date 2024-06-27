@@ -1,14 +1,16 @@
 import logging
 import os
+
 import pandas as pd
-
 from chromadb.config import Settings
-from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 
-from config import EMB_MODEL_NAME, EMB_DEVICE, COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
+from config import (COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE,
+                    EMB_MODEL_NAME)
+from doc_building import (build_documents_from_dataframe,
+                          compute_autokonenizer_chunk_size)
 
-from doc_building import build_documents_from_dataframe, compute_autokonenizer_chunk_size
 from .utils_db import extract_paragraphs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

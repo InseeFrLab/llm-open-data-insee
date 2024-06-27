@@ -4,7 +4,6 @@ import os
 import s3fs
 from transformers import AutoModel
 
-
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)s %(message)s",
                     datefmt="%Y-%m-%d %I:%M:%S %p",

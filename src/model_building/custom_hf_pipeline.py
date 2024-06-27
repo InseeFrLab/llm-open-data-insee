@@ -4,15 +4,12 @@ import importlib
 import logging
 from typing import Any, AsyncIterator, List, Mapping, Optional
 
-from langchain_core.outputs import Generation, GenerationChunk, LLMResult
-from langchain_core.pydantic_v1 import Extra
-
-from langchain.callbacks.manager import (
-    AsyncCallbackManagerForLLMRun,
-    CallbackManagerForLLMRun,
-)
+from langchain.callbacks.manager import (AsyncCallbackManagerForLLMRun,
+                                         CallbackManagerForLLMRun)
 from langchain.llms.base import BaseLLM
 from langchain_community.llms.utils import enforce_stop_tokens
+from langchain_core.outputs import Generation, GenerationChunk, LLMResult
+from langchain_core.pydantic_v1 import Extra
 from langchain_huggingface import HuggingFacePipeline
 
 DEFAULT_MODEL_ID = "gpt2"
@@ -59,11 +56,8 @@ class CustomHuggingFacePipeline(BaseLLM):
     ) -> HuggingFacePipeline:
         """Construct the pipeline object from model_id and task."""
         try:
-            from transformers import (
-                AutoModelForCausalLM,
-                AutoModelForSeq2SeqLM,
-                AutoTokenizer,
-            )
+            from transformers import (AutoModelForCausalLM,
+                                      AutoModelForSeq2SeqLM, AutoTokenizer)
             from transformers import pipeline as hf_pipeline
 
         except ImportError:
@@ -189,7 +183,8 @@ class CustomHuggingFacePipeline(BaseLLM):
 
                 if self.pipeline.task == "text-generation":
                     try:
-                        from transformers.pipelines.text_generation import ReturnType
+                        from transformers.pipelines.text_generation import \
+                            ReturnType
 
                         remove_prompt = (
                             self.pipeline._postprocess_params.get("return_type")

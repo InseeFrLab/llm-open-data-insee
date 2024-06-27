@@ -1,12 +1,13 @@
-from pathlib import Path
 import os
+import shutil
 import subprocess
 import tempfile
-import shutil
+from pathlib import Path
 
 import mlflow
 import pandas as pd
-from config import COLLECTION_NAME, EMB_MODEL_NAME, DB_DIR_S3
+
+from config import COLLECTION_NAME, DB_DIR_S3, EMB_MODEL_NAME
 from db_building import build_database_from_csv
 from doc_building import compute_autokonenizer_chunk_size
 

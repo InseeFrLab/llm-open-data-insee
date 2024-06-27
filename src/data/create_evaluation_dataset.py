@@ -3,11 +3,13 @@ Create an evaluation dataset from Label Studio annotations stored
 on S3. An observation of this data set consists in a question/answer
 pair, along with a (potentially empty) list of URLs.
 """
-from pathlib import Path
 import json
+from pathlib import Path
+
 import pandas as pd
-from utils import fs
 from constants import LS_ANNOTATIONS_PATH
+
+from utils import fs
 
 
 def create_insee_contact_eval_dataset():

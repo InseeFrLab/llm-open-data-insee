@@ -4,11 +4,13 @@ For now, we keep only the first part of exchanges:
 question asked by the user and first response.
 """
 import json
+
 import pandas as pd
 from anonymize import anonymize_insee_contact_message
+from constants import LS_DATA_PATH, RAW_DATA
 from ner import ner_series
-from utils import fs, create_ls_task
-from constants import RAW_DATA, LS_DATA_PATH
+
+from utils import create_ls_task, fs
 
 
 def insee_contact_to_s3():

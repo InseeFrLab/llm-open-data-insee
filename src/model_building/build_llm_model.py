@@ -1,15 +1,10 @@
-import sys
 import os
+import sys
 
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    pipeline,
-    BitsAndBytesConfig,
-    TextStreamer
-)
 from langchain_huggingface import HuggingFacePipeline
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          BitsAndBytesConfig, TextStreamer, pipeline)
+
 #from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
 

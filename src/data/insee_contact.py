@@ -1,9 +1,10 @@
 """
 Process raw Insee contact data.
 """
-import s3fs
 import os
+
 import pandas as pd
+import s3fs
 
 
 def process_insee_contact_data(path: str):

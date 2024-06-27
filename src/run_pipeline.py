@@ -1,12 +1,13 @@
 import os
+
 import mlflow
-from model_building import build_llm_model
-from chain_building import load_retriever, build_chain
-from utils import loading_utilities
 from langchain_core.prompts import PromptTemplate
 
-from config import DB_DIR_S3, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE
-
+from chain_building import build_chain, load_retriever
+from config import (DB_DIR_LOCAL, DB_DIR_S3, EMB_MODEL_NAME, MODEL_NAME,
+                    RAG_PROMPT_TEMPLATE)
+from model_building import build_llm_model
+from utils import loading_utilities
 
 EXPERIMENT_NAME = "CHAIN"
 

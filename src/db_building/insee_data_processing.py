@@ -1,13 +1,14 @@
 import logging
-import s3fs
+import sys
 
 import pandas as pd
+import s3fs
 
-import sys
 sys.path.append("./src")
 
-from config import S3_ENDPOINT_URL, S3_BUCKET
 from utils_db import complete_url_builder
+
+from config import S3_BUCKET, S3_ENDPOINT_URL
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

@@ -4,13 +4,14 @@ Apply named entity recognition to data in order to identify:
     - addresses;
     - email addresses;
 """
-from typing import Dict, List
 import json
-from utils import fs
+from typing import Dict, List
+
 import numpy as np
 import pandas as pd
-from transformers import pipeline, TokenClassificationPipeline
+from transformers import TokenClassificationPipeline, pipeline
 
+from utils import fs
 
 ner = pipeline(
     task='ner',

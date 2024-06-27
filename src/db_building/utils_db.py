@@ -1,9 +1,9 @@
-import pandas as pd
+import re
+from typing import List, Tuple
 
-from tqdm import tqdm 
-import re 
-from typing import List, Tuple 
+import pandas as pd
 from bs4 import BeautifulSoup
+from tqdm import tqdm
 
 HIGH_LEVEL_TAGS = [
     "description-generale-variables",
@@ -34,6 +34,8 @@ def get_soup(xml_string: str) -> BeautifulSoup:
 
 
 from collections import Counter
+
+
 def html_tag_finder(xmlstring):
     """ 
     find all the html type in a xmlstring
@@ -267,8 +269,9 @@ def paragraph_cleaning(paras, mode=''):
     paras = [re.sub(r" +", " ", s) for s in paras]
     return " ".join(paras)
 
-import ast 
-from typing import List 
+import ast
+from typing import List
+
 
 def theme_parsing(parsed_list):
     try:

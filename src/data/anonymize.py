@@ -1,10 +1,12 @@
 """
 Script to anonymize Insee Contact data.
 """
-from typing import Dict, List
-import re
-import pandas as pd
 import json
+import re
+from typing import Dict, List
+
+import pandas as pd
+
 from utils import fs
 
 

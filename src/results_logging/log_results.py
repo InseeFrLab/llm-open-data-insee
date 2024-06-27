@@ -1,11 +1,12 @@
 import json
-from typing import List
-from langchain.docstore.document import Document
-from datetime import datetime
 import logging
 import os
+from datetime import datetime
+from typing import List
 
-from config import MODEL_NAME, EMB_MODEL_NAME, RELATIVE_DATA_DIR
+from langchain.docstore.document import Document
+
+from config import EMB_MODEL_NAME, MODEL_NAME, RELATIVE_DATA_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
