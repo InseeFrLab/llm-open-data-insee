@@ -27,7 +27,7 @@ logging.basicConfig(format="%(asctime)s %(message)s",
 
 # S3 configuration
 S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
-fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
+s3_fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
 
 
 CHATBOT_INSTRUCTION = """
@@ -54,14 +54,13 @@ CHATBOT_TEMPLATE = [
 
 @cl.on_chat_start
 async def on_chat_start():
+    await cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!").send()
+
     # Define conversation ID
     session_start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     session_id = cl.user_session.get("id")
     conv_id = f'{session_start_timestamp}_conv_{session_id}'
     cl.user_session.set("conv_id", conv_id)
-
-    # Set up RAG chain
-    await cl.Message(content="Bienvenue sur la ChatBot de l'INSEE!").send()
 
     # Logging configuration
     IS_LOGGING_ON = True
@@ -116,7 +115,7 @@ async def on_chat_start():
     # Build chain
     RERANKING_METHOD = os.getenv("RERANKING_METHOD", None)
     chain = build_chain(retriever, prompt, llm,
-                        IS_LOGGING_ON=IS_LOGGING_ON,
+                        bool_log=IS_LOGGING_ON,
                         reranker=RERANKING_METHOD)
     logging.info("------chain built")
 
@@ -163,15 +162,13 @@ async def on_message(message: cl.Message):
 
     # Log Q/A
     if cl.user_session.get("IS_LOGGING_ON"):
-        prompt_template = chain.prompt.template if chain.prompt else None
         embedding_model_name = os.getenv("EMB_MODEL_NAME")
-        LLM_name = os.getenv("LLM_MODEL_NAME") if chain.llm else None
+        LLM_name = os.getenv("LLM_MODEL_NAME")
         reranker = os.getenv("RERANKING_METHOD", None)
 
         log_conversation_to_s3(
             user_query=message.content,
             retrieved_documents=docs,
-            prompt_template=prompt_template,
             generated_answer=generated_answer,
             embedding_model_name=embedding_model_name,
             LLM_name=LLM_name,
@@ -206,5 +203,5 @@ def log_conversation_to_s3(
     conv_id = cl.user_session.get("conv_id")
     target_path_s3 = os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs",
                                   conv_id, f"{msg_timestamp}.json")
-    with open(target_path_s3, "w") as file_out:
+    with s3_fs.open(target_path_s3, "w") as file_out:
         json.dump(log_entry, file_out, indent=4)

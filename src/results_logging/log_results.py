@@ -12,7 +12,6 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_community.retrievers import BM25Retriever
 from typing import Any, List, Optional, Sequence, Dict
 from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
-from ragatouille import RAGPretrainedModel
 from langchain.schema import Document
 from pydantic import BaseModel, Field
 
@@ -55,7 +54,6 @@ def load_retriever(
     return retriever
 
 RERANKER_CROSS_ENCODER = "dangvantuan/CrossEncoder-camembert-large"
-RERANKER_COLBERT = "antoinelouis/colbertv2-camembert-L4-mmarcoFR"
 
 # Define the compression function
 def compress_documents_lambda(documents: Sequence[Document], query: str, k: int = 5, **kwargs: Dict[str, Any]) -> Sequence[Document]:
@@ -88,11 +86,6 @@ def build_chain(retriever, prompt: str, llm = None, bool_log: bool = False, rera
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
         compressor = CrossEncoderReranker(model=model, top_n=10)
         retrieval_agent = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
-    elif reranker == "ColBERT":
-        colBERT = RAGPretrainedModel.from_pretrained(RERANKER_COLBERT)
-        retrieval_agent = ContextualCompressionRetriever(
-            base_compressor=colBERT.as_langchain_document_compressor(k=10), base_retriever=retriever
-        )
     elif reranker == "Ensemble":
 
         #BM25
@@ -107,15 +100,9 @@ def build_chain(retriever, prompt: str, llm = None, bool_log: bool = False, rera
         )
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
-        #ColBERT
-        reranker_3 = ContextualCompressionRetriever(
-            base_compressor=RAGPretrainedModel.from_pretrained(RERANKER_COLBERT).as_langchain_document_compressor(k=10), 
-            base_retriever=retriever
-        )
-
         retrieval_agent = EnsembleRetriever(
             retrievers=[reranker_1, reranker_2, reranker_3], 
-            weigths=[1/3, 1/3, 1/3]
+            weigths=[1/2, 1/2]
         )
     else:
         raise ValueError("This reranking method is not handled by the ChatBot or does not exist")
@@ -147,11 +134,6 @@ def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
         compressor = CrossEncoderReranker(model=model, top_n=10)
         retrieval_agent = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
-    elif reranker == "ColBERT":
-        colBERT = RAGPretrainedModel.from_pretrained(RERANKER_COLBERT)
-        retrieval_agent = ContextualCompressionRetriever(
-            base_compressor=colBERT.as_langchain_document_compressor(k=10), base_retriever=retriever
-        )
     elif reranker == "Ensemble":
 
         #BM25
@@ -166,15 +148,9 @@ def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
         )
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
-        #ColBERT
-        reranker_3 = ContextualCompressionRetriever(
-            base_compressor=RAGPretrainedModel.from_pretrained(RERANKER_COLBERT).as_langchain_document_compressor(k=10), 
-            base_retriever=retriever
-        )
-
         retrieval_agent = EnsembleRetriever(
             retrievers=[reranker_1, reranker_2, reranker_3], 
-            weigths=[1/3, 1/3, 1/3]
+            weigths=[1/2, 1/2]
         )
     else:
         raise ValueError("This reranking method is not handled by the ChatBot or does not exist")

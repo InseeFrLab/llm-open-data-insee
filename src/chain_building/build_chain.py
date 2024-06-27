@@ -11,8 +11,7 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
-from ragatouille import RAGPretrainedModel
-from results_logging import log_chain_results
+
 from utils import format_docs
 
 
@@ -77,9 +76,6 @@ def build_chain(retriever, prompt: str, llm=None, bool_log: bool = False, rerank
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
         compressor = CrossEncoderReranker(model=model, top_n=10)
         retrieval_agent = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
-    elif reranker == "ColBERT":
-        colBERT = RAGPretrainedModel.from_pretrained(RERANKER_COLBERT)
-        retrieval_agent = ContextualCompressionRetriever(base_compressor=colBERT.as_langchain_document_compressor(k=10), base_retriever=retriever)
     elif reranker == "Ensemble":
         # BM25
         reranker_1 = RunnableParallel({"documents": retriever, "query": RunnablePassthrough()}) | RunnableLambda(
@@ -89,23 +85,14 @@ def build_chain(retriever, prompt: str, llm=None, bool_log: bool = False, rerank
         compressor = CrossEncoderReranker(model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER), top_n=10)
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
-        # ColBERT
-        reranker_3 = ContextualCompressionRetriever(
-            base_compressor=RAGPretrainedModel.from_pretrained(RERANKER_COLBERT).as_langchain_document_compressor(k=10),
-            base_retriever=retriever,
-        )
-
-        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2, reranker_3], weigths=[1 / 3, 1 / 3, 1 / 3])
+        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2], weigths=[1 / 2, 1 / 2])
     else:
         raise ValueError("This reranking method is not handled by the ChatBot or does not exist")
 
     # build the first part of the chain
     rag_chain_with_source = RunnableParallel({"context": retrieval_agent, "question": RunnablePassthrough()}).assign(answer=chain)
 
-    if bool_log:
-        return rag_chain_with_source | RunnableLambda(log_chain_results).bind(prompt=prompt, reranker=reranker)
-    else:
-        return rag_chain_with_source
+    return rag_chain_with_source
 
 
 def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
@@ -124,9 +111,6 @@ def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
         compressor = CrossEncoderReranker(model=model, top_n=10)
         retrieval_agent = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
-    elif reranker == "ColBERT":
-        colBERT = RAGPretrainedModel.from_pretrained(RERANKER_COLBERT)
-        retrieval_agent = ContextualCompressionRetriever(base_compressor=colBERT.as_langchain_document_compressor(k=10), base_retriever=retriever)
     elif reranker == "Ensemble":
         # BM25
         reranker_1 = RunnableParallel({"documents": retriever, "query": RunnablePassthrough()}) | RunnableLambda(
@@ -136,13 +120,7 @@ def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
         compressor = CrossEncoderReranker(model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER), top_n=10)
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
-        # ColBERT
-        reranker_3 = ContextualCompressionRetriever(
-            base_compressor=RAGPretrainedModel.from_pretrained(RERANKER_COLBERT).as_langchain_document_compressor(k=10),
-            base_retriever=retriever,
-        )
-
-        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2, reranker_3], weigths=[1 / 3, 1 / 3, 1 / 3])
+        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2], weigths=[1 / 2, 1 / 2])
     else:
         raise ValueError("This reranking method is not handled by the ChatBot or does not exist")
 
