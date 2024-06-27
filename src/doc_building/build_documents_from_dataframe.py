@@ -1,10 +1,10 @@
 import logging
+
 import pandas as pd
-from typing import List
-from langchain_core.documents.base import Document
-from langchain_community.document_loaders import DataFrameLoader
+from config import CHUNK_OVERLAP, CHUNK_SIZE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from config import CHUNK_OVERLAP, CHUNK_SIZE, MARKDOWN_SEPARATORS, EMB_MODEL_NAME
+from langchain_community.document_loaders import DataFrameLoader
+from langchain_core.documents.base import Document
 from transformers import AutoTokenizer
 
 
@@ -16,7 +16,7 @@ def compute_autokonenizer_chunk_size(embedding_model: str = EMB_MODEL_NAME):
     return autokenizer, chunk_size, chunk_overlap
 
 
-def build_documents_from_dataframe(df: pd.DataFrame) -> List[Document]:
+def build_documents_from_dataframe(df: pd.DataFrame) -> list[Document]:
     """
     df : DataFrame containing page content
     but also additional information which are documents metadata
@@ -47,9 +47,7 @@ def build_documents_from_dataframe(df: pd.DataFrame) -> List[Document]:
         # do not take into account the  Tokenizer's specs from embeddnig model
         logging.info("chunk size : ", CHUNK_SIZE)
         logging.info("chunk overlap size : ", CHUNK_OVERLAP)
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=MARKDOWN_SEPARATORS
-        )
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=MARKDOWN_SEPARATORS)
 
     docs_processed = text_splitter.split_documents(document_list)
 

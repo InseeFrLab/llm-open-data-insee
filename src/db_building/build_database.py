@@ -1,14 +1,13 @@
 import logging
 import os
+
 import pandas as pd
-
 from chromadb.config import Settings
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-
-from config import EMB_MODEL_NAME, EMB_DEVICE, COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
-
+from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME
 from doc_building import build_documents_from_dataframe, compute_autokonenizer_chunk_size
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
+
 from .utils_db import extract_paragraphs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -134,7 +133,6 @@ def reload_database_from_local_dir(
     persist_directory: str = DB_DIR_LOCAL,
     embed_device: str = EMB_DEVICE,
 ) -> Chroma:
-
     embedding_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
         multi_process=True,
@@ -148,8 +146,5 @@ def reload_database_from_local_dir(
         embedding_function=embedding_model,
     )
 
-    logging.info(
-        f"The database (collection {collection_name}) "
-        f"has been reloaded from directory {persist_directory}"
-    )
+    logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
     return db

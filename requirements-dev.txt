@@ -29,3 +29,5 @@ spacy
 tensorboardX
 tqdm
 urllib3
+ruff
+pre-commit

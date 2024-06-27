@@ -1,21 +1,16 @@
 import os
+
 import mlflow
-from model_building import build_llm_model
-from chain_building import load_retriever, build_chain
-from utils import loading_utilities
+from chain_building import build_chain, load_retriever
+from config import DB_DIR_LOCAL, DB_DIR_S3, EMB_MODEL_NAME, MODEL_NAME, RAG_PROMPT_TEMPLATE
 from langchain_core.prompts import PromptTemplate
-
-from config import DB_DIR_S3, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE
-
+from model_building import build_llm_model
+from utils import loading_utilities
 
 EXPERIMENT_NAME = "CHAIN"
 
-assert (
-    "MLFLOW_TRACKING_URI" in os.environ
-), "Please set the MLFLOW_TRACKING_URI environment variable."
-assert (
-    "MLFLOW_S3_ENDPOINT_URL" in os.environ
-), "Please set the MLFLOW_S3_ENDPOINT_URL environment variable."
+assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
+assert "MLFLOW_S3_ENDPOINT_URL" in os.environ, "Please set the MLFLOW_S3_ENDPOINT_URL environment variable."
 assert "HF_TOKEN" in os.environ, "Please set the HF_TOKEN environment variable."
 
 
@@ -36,7 +31,8 @@ with mlflow.start_run() as run:
 
     llm_chain = build_chain(retriever, prompt, llm)
 
-    question = "Je cherche à connaitre le nombre (et eventuellement les caractéristiques) des véhicules 'primes à la conversion' dans plusieurs départements d'occitanie, en particulier l'aveyron."
+    question = "Je cherche à connaitre le nombre (et eventuellement les caractéristiques) des véhicules \
+                'primes à la conversion' dans plusieurs départements d'occitanie, en particulier l'aveyron."
     llm_chain.invoke(question)
 
     mlflow.log_param("DB_DIR_S3", DB_DIR_S3)
