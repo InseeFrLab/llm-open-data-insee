@@ -4,24 +4,23 @@ Apply named entity recognition to data in order to identify:
     - addresses;
     - email addresses;
 """
+
 import json
-from typing import Dict, List
 
 import numpy as np
 import pandas as pd
 from transformers import TokenClassificationPipeline, pipeline
-
 from utils import fs
 
 ner = pipeline(
-    task='ner',
+    task="ner",
     model="cmarkea/distilcamembert-base-ner",
     tokenizer="cmarkea/distilcamembert-base-ner",
-    aggregation_strategy="simple"
+    aggregation_strategy="simple",
 )
 
 
-def custom_ner(ner_pipeline: TokenClassificationPipeline, text: str) -> List[Dict]:
+def custom_ner(ner_pipeline: TokenClassificationPipeline, text: str) -> list[dict]:
     """
     Ner except return empty string if text is empty.
 
@@ -69,13 +68,7 @@ if __name__ == "__main__":
         df = pd.read_csv(f)
 
     # Save NER outputs
-    with fs.open(
-        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json',
-        'w'
-    ) as fp:
+    with fs.open("projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json", "w") as fp:
         json.dump(ner_series(df["Exchange1"].fillna("")).to_list(), fp)
-    with fs.open(
-        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json',
-        'w'
-    ) as fp:
+    with fs.open("projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json", "w") as fp:
         json.dump(ner_series(df["Exchange2"].fillna("")).to_list(), fp)

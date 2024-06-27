@@ -6,7 +6,6 @@ from pathlib import Path
 
 import mlflow
 import pandas as pd
-
 from config import COLLECTION_NAME, DB_DIR_S3, EMB_MODEL_NAME
 from db_building import build_database_from_csv
 from doc_building import compute_autokonenizer_chunk_size
@@ -24,9 +23,7 @@ if MAX_NUMBER_PAGES is not None:
 os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
 
 # Check mlflow URL is defined
-assert (
-    "MLFLOW_TRACKING_URI" in os.environ
-), "Please set the MLFLOW_TRACKING_URI environment variable."
+assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
 
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_experiment(EXPERIMENT_NAME)
@@ -44,9 +41,7 @@ with mlflow.start_run() as run:
     db.similarity_search("Quels sont les chiffres du chômages en 2023")
 
     # Create a dataset instance to record a few things in MLFlow
-    dataset = mlflow.data.from_pandas(
-        pd.read_csv("data_complete.csv").head(10), source="data_complete.csv"
-    )
+    dataset = mlflow.data.from_pandas(pd.read_csv("data_complete.csv").head(10), source="data_complete.csv")
     first_documents = pd.DataFrame(db.get()["documents"][:10], columns=["document"])
 
     mlflow.log_input(dataset, context="sample_web4g")
@@ -71,7 +66,8 @@ with mlflow.start_run() as run:
             shutil.copy(file_path, destination_path)
 
         requirements_path = f"{tmp_dir}/requirements.txt"
-        subprocess.run(["pip", "freeze"], stdout=open(requirements_path, "w"))
+        with open(requirements_path, "w") as file:
+            subprocess.run(["pip", "freeze"], stdout=file)
 
         # Log all Python files to MLflow artifact
         mlflow.log_artifacts(tmp_dir, artifact_path="environment")

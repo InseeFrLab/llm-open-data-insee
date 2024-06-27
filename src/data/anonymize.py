@@ -1,19 +1,15 @@
 """
 Script to anonymize Insee Contact data.
 """
+
 import json
 import re
-from typing import Dict, List
 
 import pandas as pd
-
 from utils import fs
 
 
-def detect_email_signature(
-    message: str,
-    message_ner: List[Dict]
-):
+def detect_email_signature(message: str, message_ner: list[dict]):
     """
     Returns first position of email signature in message.
     For now take a `message` string as input and returns
@@ -44,10 +40,7 @@ def detect_email_signature(
     return char_index
 
 
-def add_signature_key_to_ner(
-    message: str,
-    message_ner: List[Dict]
-):
+def add_signature_key_to_ner(message: str, message_ner: list[dict]):
     """
     Adds a key 'signature' to the named entities in the message
     which belong to the signature: entities after which there is no
@@ -72,9 +65,7 @@ def add_signature_key_to_ner(
     return
 
 
-def anonymize_insee_contact_message(
-    message: str, message_ner: List[Dict]
-) -> str:
+def anonymize_insee_contact_message(message: str, message_ner: list[dict]) -> str:
     """
     Anonymize a message given a NER output. `message_ner` is a
     list of dictionaries, each dictionary contains the named entities
@@ -129,23 +120,17 @@ if __name__ == "__main__":
     df = df.fillna("")
 
     # Load NER data
-    with fs.open(
-        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json',
-        'rb'
-    ) as f:
+    with fs.open("projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json", "rb") as f:
         exchange1_ner = json.load(f)
-    with fs.open(
-        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json',
-        'rb'
-    ) as f:
+    with fs.open("projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json", "rb") as f:
         exchange2_ner = json.load(f)
 
     # Anonymize exchanges
     anonymized_exchange1 = []
     anonymized_exchange2 = []
-    for message, ner in zip(df["Exchange1"], exchange1_ner):
+    for message, ner in zip(df["Exchange1"], exchange1_ner, strict=False):
         anonymized_exchange1.append(anonymize_insee_contact_message(message, ner))
-    for message, ner in zip(df["Exchange2"], exchange2_ner):
+    for message, ner in zip(df["Exchange2"], exchange2_ner, strict=False):
         anonymized_exchange2.append(anonymize_insee_contact_message(message, ner))
 
     # Export anonymized questions along with original ones for evaluation
@@ -155,10 +140,7 @@ if __name__ == "__main__":
             "anonymized": anonymized_exchange1,
         }
     )
-    with fs.open(
-        "projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange1.csv",
-        "w"
-    ) as f:
+    with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange1.csv", "w") as f:
         eval_df_exchange_1.to_csv(f, index=False)
     # Export anonymized answers along with original ones for evaluation
     eval_df_exchange_2 = pd.DataFrame(
@@ -167,8 +149,5 @@ if __name__ == "__main__":
             "anonymized": anonymized_exchange2,
         }
     )
-    with fs.open(
-        "projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange2.csv",
-        "w"
-    ) as f:
+    with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange2.csv", "w") as f:
         eval_df_exchange_2.to_csv(f, index=False)

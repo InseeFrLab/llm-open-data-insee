@@ -2,23 +2,30 @@ import os
 import sys
 
 from langchain_huggingface import HuggingFacePipeline
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          BitsAndBytesConfig, TextStreamer, pipeline)
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    TextStreamer,
+    pipeline,
+)
 
-#from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
+# from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
 
 # Add the project root directory to sys.path
-root_dir = os.path.abspath(os.path.join(os.path.dirname(""), './src'))
+root_dir = os.path.abspath(os.path.join(os.path.dirname(""), "./src"))
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
+
 def build_llm_model(
-    model_name, 
-    quantization_config: bool = False, 
+    model_name,
+    quantization_config: bool = False,
     config: bool = False,
-    token=None, 
-    streaming: bool = False
+    token=None,
+    streaming: bool = False,
 ):
     """
     Create the llm model
@@ -27,7 +34,7 @@ def build_llm_model(
         model_name,
         s3_bucket="projet-llm-insee-open-data",
         s3_cache_dir="models/hf_hub",
-        s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}'
+        s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
     )
 
     configs = {
@@ -41,17 +48,13 @@ def build_llm_model(
         if quantization_config
         else None,
         # Load LLM config
-        "config": AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token)
-        if config
-        else None,
+        "config": AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token) if config else None,
         "token": token,
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, use_fast=True, device_map="auto", token=configs["token"]
-    )
-    streamer = None 
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
+    streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)
 
@@ -70,11 +73,8 @@ def build_llm_model(
         max_new_tokens=2000,
         return_full_text=False,
         device_map="auto",
-        do_sample=True,  
+        do_sample=True,
         streamer=streamer,
-    ) 
-    llm = HuggingFacePipeline(
-        pipeline=pipeline_HF,
-        model_kwargs={"temperature": 0.2}
     )
+    llm = HuggingFacePipeline(pipeline=pipeline_HF, model_kwargs={"temperature": 0.2})
     return llm, tokenizer

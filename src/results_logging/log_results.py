@@ -2,17 +2,16 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import List
-
-from langchain.docstore.document import Document
 
 from config import EMB_MODEL_NAME, MODEL_NAME, RELATIVE_DATA_DIR
+from langchain.docstore.document import Document
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+
 def save_results_to_json(
     user_query: str = None,
-    retrieved_documents: List[Document] = None,
+    retrieved_documents: list[Document] = None,
     prompt_template: str = None,
     generated_answer: str = None,
     embedding_model_name: str = None,
@@ -42,7 +41,7 @@ def save_results_to_json(
     # Define file name
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     file_path = os.path.join(folder_path, f"conv_{timestamp}.json")
-    
+
     # Ensure the path for the log file exists
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
@@ -66,6 +65,7 @@ def save_results_to_json(
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(log_entry, file, ensure_ascii=False, indent=4)
 
+
 def log_chain_results(result, prompt, reranker):
     """
     Logs interaction details into a JSON file and returns the original result.
@@ -81,9 +81,9 @@ def log_chain_results(result, prompt, reranker):
     log_folder_path = os.path.join(RELATIVE_DATA_DIR, "logs")
 
     # Extracting necessary details from the result
-    user_query = result.get("question", None) 
-    generated_answer = result.get("answer",None) 
-    retrieved_documents = result.get("context", None) 
+    user_query = result.get("question", None)
+    generated_answer = result.get("answer", None)
+    retrieved_documents = result.get("context", None)
     prompt_template = prompt.template if prompt is not None else None
     embedding_model_name = EMB_MODEL_NAME
     LLM_name = MODEL_NAME if prompt is not None else None

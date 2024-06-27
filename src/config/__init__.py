@@ -7,13 +7,13 @@ from .prompting_config import BASIC_RAG_PROMPT_TEMPLATE, RAG_PROMPT_TEMPLATE
 from .s3_config import S3_BUCKET, S3_ENDPOINT_URL
 
 __all__ = [
-    "COLLECTION_NAME"
+    "COLLECTION_NAME",
     "DB_DIR_S3",
     "DB_DIR_LOCAL",
     "MODEL_NAME",
     "MODEL_DEVICE",
     "EMB_MODEL_NAME",
-    "RELATIVE_DATA_DIR"
+    "RELATIVE_DATA_DIR",
     "EMB_DEVICE",
     "LOG_FILE_PATH",
     "S3_ENDPOINT_URL",
@@ -22,5 +22,5 @@ __all__ = [
     "RAG_PROMPT_TEMPLATE",
     "CHUNK_SIZE",
     "CHUNK_OVERLAP",
-    "MARKDOWN_SEPARATORS"
+    "MARKDOWN_SEPARATORS",
 ]

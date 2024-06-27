@@ -6,9 +6,8 @@ import s3fs
 
 sys.path.append("./src")
 
-from utils_db import complete_url_builder
-
 from config import S3_BUCKET, S3_ENDPOINT_URL
+from utils_db import complete_url_builder
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -17,7 +16,7 @@ if __name__ == "__main__":
     fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": S3_ENDPOINT_URL})
     BUCKET = S3_BUCKET + "/data/raw_data"
 
-    #S3_BUCKET = "projet-llm-insee-open-data/data/raw_data"
+    # S3_BUCKET = "projet-llm-insee-open-data/data/raw_data"
 
     FILE_KEY_S3 = "applishare_extract.parquet"
     FILE_PATH_S3 = BUCKET + "/" + FILE_KEY_S3
