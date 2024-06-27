@@ -4,18 +4,16 @@ import os
 import s3fs
 from transformers import AutoModel
 
-
 logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)s %(message)s",
-                    datefmt="%Y-%m-%d %I:%M:%S %p",
-                    level=logging.INFO
-                    )
+logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.INFO)
 
 
-def cache_model_from_hf_hub(model_name,
-                            s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
-                            s3_bucket=os.environ["S3_BUCKET"],
-                            s3_cache_dir="models/hf_hub"):
+def cache_model_from_hf_hub(
+    model_name,
+    s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
+    s3_bucket=os.environ["S3_BUCKET"],
+    s3_cache_dir="models/hf_hub",
+):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.
 
     Args:
@@ -30,8 +28,7 @@ def cache_model_from_hf_hub(model_name,
 
     # Remote cache config
     fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": s3_endpoint})
-    available_models_s3 = [os.path.basename(path) for path
-                           in fs.ls(os.path.join(s3_bucket, s3_cache_dir))]
+    available_models_s3 = [os.path.basename(path) for path in fs.ls(os.path.join(s3_bucket, s3_cache_dir))]
     dir_model_s3 = os.path.join(s3_bucket, s3_cache_dir, model_name_hf_cache)
 
     if model_name_hf_cache not in os.listdir(LOCAL_HF_CACHE_DIR):
@@ -53,6 +50,6 @@ def cache_model_from_hf_hub(model_name,
             fs.put(dir_model_local, dir_model_s3, recursive=True)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cache_model_from_hf_hub(os.environ["EMB_MODEL_NAME"])
     cache_model_from_hf_hub(os.environ["LLM_MODEL_NAME"])

@@ -1,9 +1,8 @@
-import subprocess
 import os
+import subprocess
 
 import pandas as pd
 import s3fs
-
 from config import S3_ENDPOINT_URL
 
 
