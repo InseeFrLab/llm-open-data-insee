@@ -59,7 +59,7 @@ async def on_chat_start():
     # Define conversation ID
     session_start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     session_id = cl.user_session.get("id")
-    conv_id = f'{session_start_timestamp}_conv_{session_id}'
+    conv_id = f'{session_start_timestamp}_{session_id}'
     cl.user_session.set("conv_id", conv_id)
 
     # Logging configuration
