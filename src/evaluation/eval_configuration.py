@@ -1,8 +1,8 @@
-from dataclasses import dataclass, field
 from abc import ABC
-from typing import List
+from dataclasses import dataclass, field
 
-from config import EMB_MODEL_NAME, COLLECTION_NAME
+from config import COLLECTION_NAME, EMB_MODEL_NAME
+
 
 @dataclass
 class EvalConfiguration(ABC):
@@ -11,6 +11,7 @@ class EvalConfiguration(ABC):
     database_path: str = field(default="")
     collection: str = field(default=COLLECTION_NAME)
 
+
 @dataclass
 class RetrievalConfiguration(EvalConfiguration):
     embedding_model_name: str = field(default=EMB_MODEL_NAME)
@@ -18,5 +19,4 @@ class RetrievalConfiguration(EvalConfiguration):
     overlap_size: int = field(default=500)
     reranking_method: str = field(default="<to choose>")
     compression_method: str = field(default="<to choose>")
-    k_values: List[int] = field(default_factory=lambda: [5, 10, 15])
-
+    k_values: list[int] = field(default_factory=lambda: [5, 10, 15])
