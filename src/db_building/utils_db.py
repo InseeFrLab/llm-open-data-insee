@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np 
 
 from tqdm import tqdm 
 import re 
@@ -275,7 +274,7 @@ def theme_parsing(parsed_list):
     try:
         parsed_list = ast.literal_eval(parsed_list)
         return "/".join(parsed_list)
-    except (ValueError, SyntaxError) as e:
+    except (ValueError, SyntaxError):
         return "" 
 
 def extract_paragraphs(table : pd.DataFrame) -> pd.DataFrame:

@@ -2,7 +2,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
+from langchain_core.runnables import RunnableLambda
 
 #loading rerankers
 from langchain.retrievers import EnsembleRetriever
@@ -10,11 +10,9 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_community.retrievers import BM25Retriever
-from typing import Any, List, Optional, Sequence, Dict
-from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
+from typing import Any, Sequence, Dict
 from ragatouille import RAGPretrainedModel 
 from langchain.schema import Document
-from pydantic import BaseModel, Field
 
 from results_logging import log_chain_results
 

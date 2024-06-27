@@ -1,4 +1,3 @@
-from src.config import EMB_MODEL_NAME, MODEL_NAME
 from src.model_building import build_llm_model
 from src.chain_building.build_chain import (
     load_retriever,
@@ -18,7 +17,6 @@ from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
 from langchain.schema.runnable.config import RunnableConfig
 import chainlit as cl
-from chainlit.input_widget import Select
 
 load_dotenv(dotenv_path=".env")
 
@@ -131,7 +129,7 @@ async def on_chat_start():
         reranker = None if reranker == "Aucun" else reranker
     else:
         reranker = None
-        await cl.Message(content=f"Choix par défaut: Aucun").send()
+        await cl.Message(content="Choix par défaut: Aucun").send()
 
     #build specific chain
     if chat_profile == "RAG":
@@ -200,7 +198,6 @@ async def on_message(message: cl.Message):
 
 from config import RELATIVE_DATA_DIR
 import subprocess
-import shutil
 
 @cl.on_chat_end
 def end():

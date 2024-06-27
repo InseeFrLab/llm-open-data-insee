@@ -72,9 +72,9 @@ class RetrievalEvaluator:
                 results[df_name][config_name] = {}
                 embedding_model = build_embedding_model(configuration.embedding_model_name)
                 queries = list(df["question"])
-                logging.info(f"   Starting to embed questions")
+                logging.info("   Starting to embed questions")
                 query_embeddings = embedding_model.embed_documents(queries)
-                logging.info(f"   The questions have been embedded")
+                logging.info("   The questions have been embedded")
                 all_individual_recalls = []
                 all_individual_precisions = []
                 for i, row in tqdm(df.iterrows()):

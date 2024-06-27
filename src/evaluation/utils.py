@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 from typing import Dict
 
@@ -9,8 +8,6 @@ from sentence_transformers.evaluation import InformationRetrievalEvaluator
 from langchain.docstore.document import Document as LangchainDocument
 
 #reranking
-from rank_bm25 import BM25Okapi, BM25L, BM25Plus
-from ragatouille import RAGPretrainedModel
 
 def use_sbert_retrieval_evaluator(df: pd.DataFrame, 
                                   model: SentenceTransformer) -> Dict:
