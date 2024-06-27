@@ -23,7 +23,8 @@ def build_llm_model(
     quantization_config: bool = False, 
     config: bool = False,
     token=None, 
-    streaming: bool = False
+    streaming: bool = False, 
+    generation_args : dict = {}
 ):
     """
     Create the llm model
@@ -72,14 +73,14 @@ def build_llm_model(
         task="text-generation",  # TextGenerationPipeline HF pipeline
         model=model,
         tokenizer=tokenizer,
-        max_new_tokens=2000,
-        return_full_text=False,
+        max_new_tokens=generation_args.get("max_new_tokens", 2000),
+        return_full_text=generation_args.get("return_full_text", False),
         device_map="auto",
-        do_sample=True,  
+        do_sample=generation_args.get("do_sample", True),  
+        temperature=generation_args.get("temperature", None), 
         streamer=streamer,
     ) 
     llm = HuggingFacePipeline(
-        pipeline=pipeline_HF,
-        model_kwargs={"temperature": 0.2}
+        pipeline=pipeline_HF
     )
     return llm, tokenizer

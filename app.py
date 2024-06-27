@@ -3,14 +3,19 @@ from src.model_building import build_llm_model
 from src.chain_building.build_chain import (
     load_retriever,
     build_chain, 
-    build_chain_retriever
+    build_chain_retriever, 
     )
+from src.chain_building.build_chain_validator import build_chain_validator
 
 import os
 import sys 
 import logging
 
 sys.path.append(".")
+
+from config import RELATIVE_DATA_DIR
+import subprocess
+import shutil
 
 from dotenv import load_dotenv
 
@@ -81,35 +86,58 @@ async def on_chat_start():
         bool_log = False
         await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
 
-    if chat_profile == "RAG":
-        llm, tokenizer = build_llm_model(
+  
+    # Set Validator chain in chainlit session
+    llm, tokenizer = build_llm_model(
             model_name=os.getenv("LLM_MODEL_NAME"),
             quantization_config=True,
             config=True,
             token=HF_TOKEN,
-            streaming=False 
+            streaming=False,
+            generation_args = {
+                "max_new_tokens" : 10, 
+                "return_full_text": False,
+                "do_sample": False,
+            }
+        )
+
+    # Set Validator chain in chainlit session
+    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
+    cl.user_session.set("validator", validator)
+    logging.info("------validator loaded")
+
+    if chat_profile == "RAG":
+        llm, tokenizer = build_llm_model(
+                model_name=os.getenv("LLM_MODEL_NAME"),
+                quantization_config=True,
+                config=True,
+                token=HF_TOKEN,
+                streaming=False,
+                generation_args = {
+                    "max_new_tokens" : 2000, 
+                    "return_full_text": False,
+                    "do_sample": True,
+                    "temperature": 0.2
+                }
             )
         logging.info("------llm loaded")
-    
+
         RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, 
                                                         tokenize=False,
                                                         add_generation_prompt=True
                                                         )
-
         # load chain components
         prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
         logging.info("------prompt loaded")
         retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"), persist_directory="./data/chroma_db")
         logging.info("------retriever loaded")
     elif chat_profile == "Source_Retriever": 
-
         llm = None 
         prompt = None 
         retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"), persist_directory="./data/chroma_db")
         logging.info("------retriever loaded")
     else:
         raise "This profile does not exist"
-
 
     # Allow the user to select their preferred reranker model
     await cl.sleep(5)
@@ -166,41 +194,42 @@ async def on_message(message: cl.Message):
     """
     Handle incoming messages and process the response using the RAG chain.
     """
-    # Retrieve the chain from the user session
-    chain = cl.user_session.get("chain")
+    validator = cl.user_session.get("validator")
+    test_relevancy = await check_query_relevance(validator=validator, query=message.content)
+    if test_relevancy:
+        # Retrieve the chain from the user session
+        chain = cl.user_session.get("chain")
 
-    # Initialize variables
-    msg = cl.Message(content="")
-    sources = list()
-    titles = list()
+        # Initialize variables
+        msg = cl.Message(content="")
+        sources = list()
+        titles = list()
 
-    async for chunk in chain.astream(
-        message.content, 
-        config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]),
-        ):
+        async for chunk in chain.astream(
+            message.content, 
+            config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]),
+            ):
 
-        if 'answer' in chunk:
-            await msg.stream_token(chunk["answer"])
-        
-        if "context" in chunk:
-            docs = chunk["context"]
-            for i, doc in enumerate(docs):
-                meta = doc.metadata
-                sources.append(meta.get("source", None)) 
-                titles.append(meta.get("title", None)) 
-        
-    await msg.send()
-    await cl.sleep(1)
-    msg_sources = cl.Message(content=add_sources_to_messages(
-                            message="", 
-                            sources=sources, 
-                            titles=titles), 
-                            disable_feedback=False)
-    await msg_sources.send()
-
-from config import RELATIVE_DATA_DIR
-import subprocess
-import shutil
+            if 'answer' in chunk:
+                await msg.stream_token(chunk["answer"])
+            
+            if "context" in chunk:
+                docs = chunk["context"]
+                for i, doc in enumerate(docs):
+                    meta = doc.metadata
+                    sources.append(meta.get("source", None)) 
+                    titles.append(meta.get("title", None)) 
+            
+        await msg.send()
+        await cl.sleep(1)
+        msg_sources = cl.Message(content=add_sources_to_messages(
+                                message="", 
+                                sources=sources, 
+                                titles=titles), 
+                                disable_feedback=False)
+        await msg_sources.send()
+    else:
+        await cl.Message(content=f"Votre requête '{message.content}' ne concerne pas les domaines d'expertise de l'INSEE.").send()
 
 @cl.on_chat_end
 def end():
@@ -252,15 +281,22 @@ def remove_files_in_directory(directory_path):
         return
 
     # Iterate over all the files in the directory
-    for filename in os.listdir(directory_path):
-        file_path = os.path.join(directory_path, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-                #print(f"Removed file: {file_path}")
-            """elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-                print(f"Removed directory: {file_path}")"""
-        except Exception as e:
-            print(f"Failed to remove {file_path}. Reason: {e}")
+    list_files = os.listdir(directory_path)
+    if len(list_files) > 0: 
+        for filename in list_files:
+            file_path = os.path.join(directory_path, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+            except Exception as e:
+                print(f"Failed to remove {file_path}. Reason: {e}")
 
+async def check_query_relevance(validator, query):
+
+    result = await validator.ainvoke(query)
+    if result:
+        #print(f"'{query}' is related to INSEE expertises.")
+        return True
+    else:
+        #print(f"'{query}' is not related to INSEE expertises. ")
+        return False

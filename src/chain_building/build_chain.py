@@ -188,3 +188,4 @@ def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
         return retriever_chain | RunnableLambda(log_chain_results).bind(prompt=None, reranker=reranker)
     else:
         return retriever_chain
+
