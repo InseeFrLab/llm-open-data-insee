@@ -4,7 +4,6 @@ extend-include = ["*.ipynb"]
 extend-exclude = ["notebooks/*"]
 target-version = "py312"
 
-
 [tool.ruff.lint]
 select = [
     # pycodestyle
@@ -20,3 +19,4 @@ select = [
     # isort
     "I",
 ]
+ignore  = ["B024"]
