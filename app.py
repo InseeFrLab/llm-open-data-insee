@@ -292,11 +292,9 @@ def remove_files_in_directory(directory_path):
                 print(f"Failed to remove {file_path}. Reason: {e}")
 
 async def check_query_relevance(validator, query):
-
-    result = await validator.ainvoke(query)
+   
+    result = await validator.ainvoke(query, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler()]))
     if result:
-        #print(f"'{query}' is related to INSEE expertises.")
         return True
     else:
-        #print(f"'{query}' is not related to INSEE expertises. ")
         return False

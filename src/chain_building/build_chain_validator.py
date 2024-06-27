@@ -53,18 +53,3 @@ def build_chain_validator(evaluator_llm=None, tokenizer=None):
         | evaluator_llm 
         | RunnableLambda(func=is_query_related_to_public_statistics)
     )
-
-
-
-
-
-
-
-
-
-
-
-
-# Define a function to check if the query is related to public statistics
-def is_query_related_to_public_statistics(generation):
-    return generation.lower().find("oui") !=-1

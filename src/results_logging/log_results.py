@@ -81,11 +81,11 @@ def log_chain_results(result, prompt, reranker):
 
     # Extracting necessary details from the result
     user_query = result.get("question", None) 
-    generated_answer = result.get("answer",None) 
+    generated_answer = result.get("answer", None) 
     retrieved_documents = result.get("context", None) 
     prompt_template = prompt.template if prompt is not None else None
     embedding_model_name = EMB_MODEL_NAME
-    LLM_name = MODEL_NAME if prompt is not None else None
+    LLM_name = os.getenv("LLM_MODEL_NAME") if prompt is not None else None
 
     # Call to save the logs
     logging.info(f"saving outputs in {log_folder_path} folder")
