@@ -1,11 +1,12 @@
 import os
 import logging
 import json
-import datetime
+from datetime import datetime
 
 import s3fs
 from langchain_core.prompts import PromptTemplate
 from langchain.schema.runnable.config import RunnableConfig
+from langchain.docstore.document import Document
 import chainlit as cl
 
 from src.model_building import build_llm_model
@@ -53,11 +54,17 @@ CHATBOT_TEMPLATE = [
 
 @cl.on_chat_start
 async def on_chat_start():
+    # Define conversation ID
+    session_start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    session_id = cl.user_session.get("id")
+    conv_id = f'{session_start_timestamp}_conv_{session_id}'
+    cl.user_session.set("conv_id", conv_id)
+
     # Set up RAG chain
     await cl.Message(content="Bienvenue sur la ChatBot de l'INSEE!").send()
 
     # Logging configuration
-    BOOL_LOG = True
+    IS_LOGGING_ON = True
     ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
     if ASK_USER_BEFORE_LOGGING:
         res = await cl.AskActionMessage(
@@ -70,8 +77,9 @@ async def on_chat_start():
         if res and res.get("value") == "log":
             await cl.Message(content="Vous avez choisi de partager vos intéractions.").send()
         if res and res.get("value") == "no_log":
-            BOOL_LOG = False
+            IS_LOGGING_ON = False
             await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
+    cl.user_session.set("IS_LOGGING_ON", IS_LOGGING_ON)
 
     # Build chat model
     RETRIEVER_ONLY = str_to_bool(os.getenv("RETRIEVER_ONLY", 'false'))
@@ -107,7 +115,9 @@ async def on_chat_start():
 
     # Build chain
     RERANKING_METHOD = os.getenv("RERANKING_METHOD", None)
-    chain = build_chain(retriever, prompt, llm, bool_log=BOOL_LOG, reranker=RERANKING_METHOD)
+    chain = build_chain(retriever, prompt, llm,
+                        IS_LOGGING_ON=IS_LOGGING_ON,
+                        reranker=RERANKING_METHOD)
     logging.info("------chain built")
 
     # Set RAG chain in chainlit session
@@ -134,24 +144,67 @@ async def on_message(message: cl.Message):
 
         if 'answer' in chunk:
             await msg.stream_token(chunk["answer"])
+            generated_answer = chunk["answer"]
 
         if "context" in chunk:
             docs = chunk["context"]
             for i, doc in enumerate(docs):
-                meta = doc.metadata
-                sources.append(meta.get("source", None))
-                titles.append(meta.get("title", None))
+                sources.append(doc.metadata.get("source", None))
+                titles.append(doc.metadata.get("title", None))
 
     await msg.send()
     await cl.sleep(1)
-    msg_sources = cl.Message(content=add_sources_to_messages(message="", sources=sources, titles=titles),
+    msg_sources = cl.Message(content=add_sources_to_messages(message="",
+                                                             sources=sources,
+                                                             titles=titles
+                                                             ),
                              disable_feedback=False)
     await msg_sources.send()
 
+    # Log Q/A
+    if cl.user_session.get("IS_LOGGING_ON"):
+        prompt_template = chain.prompt.template if chain.prompt else None
+        embedding_model_name = os.getenv("EMB_MODEL_NAME")
+        LLM_name = os.getenv("LLM_MODEL_NAME") if chain.llm else None
+        reranker = os.getenv("RERANKING_METHOD", None)
 
-@cl.on_chat_end
-def end():
-    TIMESTAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
-    TARGET_PATH_S3 = os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs", f"conv_{TIMESTAMP}.json")
-    with open(TARGET_PATH_S3, "w") as file_out:
+        log_conversation_to_s3(
+            user_query=message.content,
+            retrieved_documents=docs,
+            prompt_template=prompt_template,
+            generated_answer=generated_answer,
+            embedding_model_name=embedding_model_name,
+            LLM_name=LLM_name,
+            reranker=reranker
+        )
+
+
+def log_conversation_to_s3(
+    user_query: str = None,
+    retrieved_documents: list[Document] = None,
+    prompt_template: str = None,
+    generated_answer: str = None,
+    embedding_model_name: str = None,
+    LLM_name: str = None,
+    reranker: str = None
+):
+    retrieved_documents_text = [d.page_content for d in retrieved_documents]
+    retrieved_documents_metadata = [d.metadata for d in retrieved_documents]
+
+    msg_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_entry = {
+        "user_query": user_query,
+        "retrieved_docs_text": retrieved_documents_text,
+        "prompt": prompt_template,
+        "generated_answer": generated_answer,
+        "embedding_model": embedding_model_name,
+        "llm": LLM_name,
+        "reranker": reranker,
+        "retrieved_doc_metadata": retrieved_documents_metadata
+    }
+
+    conv_id = cl.user_session.get("conv_id")
+    target_path_s3 = os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs",
+                                  conv_id, f"{msg_timestamp}.json")
+    with open(target_path_s3, "w") as file_out:
         json.dump(log_entry, file_out, indent=4)
