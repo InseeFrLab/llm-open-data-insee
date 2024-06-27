@@ -1,6 +1,9 @@
 import os
 import logging
+import json
+import datetime
 
+import s3fs
 from langchain_core.prompts import PromptTemplate
 from langchain.schema.runnable.config import RunnableConfig
 import chainlit as cl
@@ -11,13 +14,19 @@ from src.chain_building.build_chain import (
     build_chain
     )
 from src.utils.utils import str_to_bool
+from src.utils.formatting_utilities import add_sources_to_messages
 
 
+# Logging configuration
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)s %(message)s",
                     datefmt="%Y-%m-%d %I:%M:%S %p",
                     level=logging.DEBUG
                     )
+
+# S3 configuration
+S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
+fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
 
 
 CHATBOT_INSTRUCTION = """
@@ -105,27 +114,6 @@ async def on_chat_start():
     cl.user_session.set("chain", chain)
 
 
-def add_sources_to_messages(message: str, sources: list, titles: list, topk: int = 5):
-    """
-    Append a list of sources and titles to a Chainlit message.
-
-    Args:
-    - message (str): The Chainlit message content to which the sources and titles will be added.
-    - sources (list): A list of sources to append to the message.
-    - titles (list): A list of titles to append to the message.
-    - topk (int) : number of displayed sources.
-    """
-    if len(sources) == len(titles):
-        sources_titles = [f"{i+1}. {title} ({source})" for i, (source, title)
-                          in enumerate(zip(sources, titles)) if i < topk]
-        formatted_sources = f"\n\nSources (Top {topk}):\n" + "\n".join(sources_titles)
-        message += formatted_sources
-    else:
-        message += "\n\nNo Sources available"
-
-    return message
-
-
 @cl.on_message
 async def on_message(message: cl.Message):
     """
@@ -163,16 +151,7 @@ async def on_message(message: cl.Message):
 
 @cl.on_chat_end
 def end():
-    """at the end of the Chat"""
-    log_folder_path = os.path.join(RELATIVE_DATA_DIR, "logs/")
-    target_path = os.path.join("s3/" + os.getenv("S3_BUCKET"), "data", "chatbot_logs/")
-    try:
-        # Construct the command
-        command = ['mc', 'cp', '--recursive', log_folder_path, target_path]
-        # Execute the command
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
-        # Print the command's output
-        print(result.stdout)
-        print("Someone ended this chat: conversation logging file(s) have been copied successfully.")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred: {e.stderr}")
+    TIMESTAMP = datetime.now().strftime("%Y%m%d-%H%M%S")
+    TARGET_PATH_S3 = os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs", f"conv_{TIMESTAMP}.json")
+    with open(TARGET_PATH_S3, "w") as file_out:
+        json.dump(log_entry, file_out, indent=4)
