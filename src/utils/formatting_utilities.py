@@ -1,5 +1,17 @@
+
+def str_to_bool(value):
+    value = value.lower()
+    if value == 'true':
+        return True
+    elif value == 'false':
+        return False
+    else:
+        raise ValueError(f"Invalid value: {value}")
+
+
 def format_docs(docs: list):
-    return "\n\n".join([f"Doc {i}:\nTitle: {doc.metadata["title"]}\nContent:\n{doc.page_content}" for i, doc in enumerate(docs)])
+    return "\n\n".join([f"Doc {i}:\nTitle: {doc.metadata["title"]}\nContent:\n{doc.page_content}"
+                        for i, doc in enumerate(docs)])
 
 
 def add_sources_to_messages(message: str, sources: list, titles: list, topk: int = 5):

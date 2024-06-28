@@ -1,18 +1,15 @@
-import json
 import logging
 import os
 from datetime import datetime
 
 import chainlit as cl
-import s3fs
-from langchain.docstore.document import Document
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.prompts import PromptTemplate
 
 from src.chain_building.build_chain import build_chain, load_retriever
 from src.model_building import build_llm_model
-from src.utils.formatting_utilities import add_sources_to_messages
-from src.utils.utils import str_to_bool
+from src.results_logging.log_conv import log_conversation_to_s3
+from src.utils.formatting_utilities import str_to_bool, add_sources_to_messages
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -20,10 +17,6 @@ logging.basicConfig(format="%(asctime)s %(message)s",
                     datefmt="%Y-%m-%d %I:%M:%S %p",
                     level=logging.DEBUG
                     )
-
-# S3 configuration
-S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
-s3_fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
 
 
 CHATBOT_INSTRUCTION = """
@@ -163,6 +156,8 @@ async def on_message(message: cl.Message):
         reranker = os.getenv("RERANKING_METHOD", None)
 
         log_conversation_to_s3(
+            conv_id=cl.user_session.get("conv_id"),
+            dir_s3=os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs"),
             user_query=message.content,
             retrieved_documents=docs,
             generated_answer=generated_answer,
@@ -170,34 +165,3 @@ async def on_message(message: cl.Message):
             LLM_name=LLM_name,
             reranker=reranker
         )
-
-
-def log_conversation_to_s3(
-    user_query: str = None,
-    retrieved_documents: list[Document] = None,
-    prompt_template: str = None,
-    generated_answer: str = None,
-    embedding_model_name: str = None,
-    LLM_name: str = None,
-    reranker: str = None
-):
-    retrieved_documents_text = [d.page_content for d in retrieved_documents]
-    retrieved_documents_metadata = [d.metadata for d in retrieved_documents]
-
-    msg_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_entry = {
-        "user_query": user_query,
-        "retrieved_docs_text": retrieved_documents_text,
-        "prompt": prompt_template,
-        "generated_answer": generated_answer,
-        "embedding_model": embedding_model_name,
-        "llm": LLM_name,
-        "reranker": reranker,
-        "retrieved_doc_metadata": retrieved_documents_metadata
-    }
-
-    conv_id = cl.user_session.get("conv_id")
-    target_path_s3 = os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs",
-                                  conv_id, f"{msg_timestamp}.json")
-    with s3_fs.open(target_path_s3, "w") as file_out:
-        json.dump(log_entry, file_out, indent=4)
