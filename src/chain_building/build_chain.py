@@ -6,57 +6,15 @@ from langchain.retrievers import ContextualCompressionRetriever, EnsembleRetriev
 from langchain.retrievers.document_compressors import CrossEncoderReranker
 from langchain.schema import Document
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.retrievers import BM25Retriever
-from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
 
 from src.utils import format_docs
-
-
-def create_vectorstore(
-    emb_model_name: str,
-    persist_directory: str = "data/chroma_db",
-    device: str = "cuda",
-    collection_name: str = "insee_data",
-):
-    # Load Embedding model
-    embeddings = HuggingFaceEmbeddings(model_name=emb_model_name, model_kwargs={"device": device})
-    # Load vector database
-    vectorstore = Chroma(
-        collection_name=collection_name,
-        embedding_function=embeddings,
-        persist_directory=persist_directory,
-    )
-    return vectorstore
-
-
-def load_retriever(
-    emb_model_name,
-    persist_directory="data/chroma_db",
-    device="cuda",
-    collection_name: str = "insee_data",
-):
-    # Load vector database
-    vectorstore = create_vectorstore(emb_model_name=emb_model_name, persist_directory=persist_directory, device=device)
-
-    # Set up a retriever
-    retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"score_threshold": 0.5, "k": 10})
-    return retriever
-
+from src.db_loading import create_vectorstore, load_retriever
+from src.reranking import compress_documents_lambda
 
 RERANKER_CROSS_ENCODER = "dangvantuan/CrossEncoder-camembert-large"
 RERANKER_COLBERT = "antoinelouis/colbertv2-camembert-L4-mmarcoFR"
-
-
-# Define the compression function
-def compress_documents_lambda(documents: Sequence[Document], query: str, k: int = 5, **kwargs: dict[str, Any]) -> Sequence[Document]:
-    """Compress retrieved documents given the query context."""
-
-    # Initialize the retriever with the documents
-    retriever = BM25Retriever.from_documents(documents, k=k, **kwargs)
-    return retriever.get_relevant_documents(query)
 
 
 def build_chain(retriever, prompt: str, llm=None, bool_log: bool = False, reranker=None):
