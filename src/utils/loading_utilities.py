@@ -3,7 +3,8 @@ import subprocess
 
 import pandas as pd
 import s3fs
-from config import S3_ENDPOINT_URL
+
+from src.config import S3_ENDPOINT_URL
 
 
 def load_dataframe_from_parquet(path: str, engine: str = "fastparquet"):

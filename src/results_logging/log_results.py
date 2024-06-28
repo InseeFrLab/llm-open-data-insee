@@ -3,8 +3,9 @@ import logging
 import os
 from datetime import datetime
 
-from config import EMB_MODEL_NAME, MODEL_NAME, RELATIVE_DATA_DIR
 from langchain.docstore.document import Document
+
+from src.config import EMB_MODEL_NAME, MODEL_NAME, RELATIVE_DATA_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 

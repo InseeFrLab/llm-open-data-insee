@@ -1,19 +1,16 @@
 import logging
 import os
 import subprocess
-import sys
 
 import chainlit as cl
-from config import RELATIVE_DATA_DIR
 from dotenv import load_dotenv
 from langchain.schema.runnable.config import RunnableConfig
 
 # API and UX functions
 from langchain_core.prompts import PromptTemplate
 
-sys.path.append(".")
-
 from src.chain_building.build_chain import build_chain, build_chain_retriever, load_retriever
+from src.config import RELATIVE_DATA_DIR
 from src.model_building import build_llm_model
 
 load_dotenv(dotenv_path=".env")
