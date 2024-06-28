@@ -12,8 +12,9 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
 from ragatouille import RAGPretrainedModel
-from results_logging import log_chain_results
-from utils import format_docs
+
+from src.results_logging import log_chain_results
+from src.utils import format_docs
 
 
 def create_vectorstore(
