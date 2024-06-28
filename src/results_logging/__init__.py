@@ -1,3 +1,3 @@
-from .log_results import log_chain_results, save_results_to_json
+from .log_conv import log_conversation_to_s3
 
-__all__ = ["save_results_to_json", "log_chain_results"]
+__all__ = ["log_conversation_to_s3"]

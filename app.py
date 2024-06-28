@@ -1,22 +1,23 @@
 import logging
 import os
-import subprocess
+from datetime import datetime
 
 import chainlit as cl
-from dotenv import load_dotenv
 from langchain.schema.runnable.config import RunnableConfig
-
-# API and UX functions
 from langchain_core.prompts import PromptTemplate
 
-from src.chain_building.build_chain import build_chain, build_chain_retriever, load_retriever
-from src.config import RELATIVE_DATA_DIR
+from src.chain_building.build_chain import build_chain, load_retriever
 from src.model_building import build_llm_model
+from src.results_logging.log_conv import log_conversation_to_s3
+from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
-load_dotenv(dotenv_path=".env")
-
+# Logging configuration
 logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.DEBUG)
+logging.basicConfig(format="%(asctime)s %(message)s",
+                    datefmt="%Y-%m-%d %I:%M:%S %p",
+                    level=logging.DEBUG
+                    )
+
 
 CHATBOT_INSTRUCTION = """
 Utilise UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
@@ -24,6 +25,7 @@ La réponse doit être développée et citer ses sources.
 
 Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
 """
+
 USER_INSTRUCTION = """Voici le contexte sur lequel tu dois baser ta réponse :
 Contexte:
 {context}
@@ -32,132 +34,82 @@ Voici la question à laquelle tu dois répondre :
 Question: {question}"""
 
 CHATBOT_TEMPLATE = [
-    {
-        "role": "user",
-        "content": """Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
-    Réponds en FRANCAIS UNIQUEMENT.""",
-    },
+    {"role": "user", "content": """Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
+    Réponds en FRANCAIS UNIQUEMENT."""},
     {"role": "assistant", "content": CHATBOT_INSTRUCTION},
     {"role": "user", "content": USER_INSTRUCTION},
 ]
 
-# Retrieve Hugging Face token from environment variables
-HF_TOKEN = os.getenv("HF_TOKEN")
-
-if not HF_TOKEN:
-    raise ValueError("Hugging Face token not found in environment variables.")
-
 
 @cl.on_chat_start
 async def on_chat_start():
-    # Set up RAG chain
-    await cl.Message(content="Bienvenue sur la ChatBot de l'INSEE!").send()
-    await cl.sleep(1)
+    await cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!").send()
 
-    chat_profile = cl.user_session.get("chat_profile")
-    await cl.Message(content=f"Vous avez choisi d'utiliser le mode {chat_profile}").send()
+    # Define conversation ID
+    session_start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    session_id = cl.user_session.get("id")
+    conv_id = f'{session_start_timestamp}_{session_id}'
+    cl.user_session.set("conv_id", conv_id)
 
-    res = await cl.AskActionMessage(
-        content="Autorisez-vous le partage de vos intéractions avec le ChatBot!",
-        actions=[
-            cl.Action(name="log", value="log", label="✅ Accepter"),
-            cl.Action(name="no log", value="no_log", label="❌ Refuser"),
-        ],
-    ).send()
+    # Logging configuration
+    IS_LOGGING_ON = True
+    ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
+    if ASK_USER_BEFORE_LOGGING:
+        res = await cl.AskActionMessage(
+            content="Autorisez-vous le partage de vos intéractions avec le ChatBot!",
+            actions=[
+                cl.Action(name="log", value="log", label="✅ Accepter"),
+                cl.Action(name="no log", value="no_log", label="❌ Refuser"),
+            ],
+            ).send()
+        if res and res.get("value") == "log":
+            await cl.Message(content="Vous avez choisi de partager vos intéractions.").send()
+        if res and res.get("value") == "no_log":
+            IS_LOGGING_ON = False
+            await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
+    cl.user_session.set("IS_LOGGING_ON", IS_LOGGING_ON)
 
-    bool_log = False
-    if res and res.get("value") == "log":
-        await cl.Message(content="Vous avez choisi de partager vos intéractions.").send()
-        bool_log = True
-    if res and res.get("value") == "no_log":
-        bool_log = False
-        await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
+    # Build chat model
+    RETRIEVER_ONLY = str_to_bool(os.getenv("RETRIEVER_ONLY", 'false'))
+    if RETRIEVER_ONLY:
+        logging.info("------ chatbot mode : retriever only")
+        llm = None
+        prompt = None
+        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
+                                   persist_directory="./data/chroma_db")
+        logging.info("------retriever loaded")
+    else:
+        logging.info("------ chatbot mode : RAG")
 
-    if chat_profile == "RAG":
         llm, tokenizer = build_llm_model(
             model_name=os.getenv("LLM_MODEL_NAME"),
             quantization_config=True,
             config=True,
-            token=HF_TOKEN,
-            streaming=False,
-        )
+            token=os.getenv("HF_TOKEN"),
+            streaming=False
+            )
         logging.info("------llm loaded")
 
-        RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True)
-
-        # load chain components
-        prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+        RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE,
+                                                            tokenize=False,
+                                                            add_generation_prompt=True
+                                                            )
+        prompt = PromptTemplate(input_variables=["context", "question"],
+                                template=RAG_PROMPT_TEMPLATE)
         logging.info("------prompt loaded")
-        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"), persist_directory="./data/chroma_db")
+        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
+                                   persist_directory="./data/chroma_db")
         logging.info("------retriever loaded")
-    elif chat_profile == "Source_Retriever":
-        llm = None
-        prompt = None
-        retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"), persist_directory="./data/chroma_db")
-        logging.info("------retriever loaded")
-    else:
-        raise ValueError("This profile does not exist")
 
-    # Allow the user to select their preferred reranker model
-    await cl.sleep(5)
-    res = await cl.AskActionMessage(
-        content="Choisissez votre méthode de reranking en paramètresr",
-        actions=[
-            cl.Action(name="Aucun", value="Aucun", description="Pas de reranker"),
-            cl.Action(name="BM25", value="BM25", description="Choisir un reranker lexical BM25"),
-            cl.Action(
-                name="Cross-encoder",
-                value="Cross-encoder",
-                description="Choisir un reranker semantique Cross-encoder",
-            ),
-            cl.Action(
-                name="ColBERT",
-                value="ColBERT",
-                description="Choisir un reranker sémantique ColBERT",
-            ),
-            cl.Action(name="Ensemble", value="Ensemble", description="Choisir un reranker Hybride"),
-        ],
-        timeout=15,
-    ).send()
-
-    if res and res.get("value") != "Aucun":
-        reranker = res.get("value")
-        await cl.Message(content=f"Vous avez choisi : {reranker}").send()
-        reranker = None if reranker == "Aucun" else reranker
-    else:
-        reranker = None
-        await cl.Message(content="Choix par défaut: Aucun").send()
-
-    # build specific chain
-    if chat_profile == "RAG":
-        chain = build_chain(retriever, prompt, llm, bool_log=bool_log, reranker=reranker)
-    else:
-        chain = build_chain_retriever(retriever, bool_log=bool_log, reranker=reranker)
+    # Build chain
+    RERANKING_METHOD = os.getenv("RERANKING_METHOD", None)
+    chain = build_chain(retriever, prompt, llm,
+                        bool_log=IS_LOGGING_ON,
+                        reranker=RERANKING_METHOD)
     logging.info("------chain built")
 
     # Set RAG chain in chainlit session
     cl.user_session.set("chain", chain)
-
-
-def add_sources_to_messages(message: str, sources: list, titles: list, topk: int = 5):
-    """
-    Append a list of sources and titles to a Chainlit message.
-
-    Args:
-    - message (str): The Chainlit message content to which the sources and titles will be added.
-    - sources (list): A list of sources to append to the message.
-    - titles (list): A list of titles to append to the message.
-    - topk (int) : number of displayed sources.
-    """
-    if len(sources) == len(titles):
-        formatted_sources = f"\n\nSources (Top {topk}):\n" + "\n".join(
-            [f"{i+1}. {title} ({source})" for i, (source, title) in enumerate(zip(sources, titles, strict=False)) if i < topk]
-        )
-        message += formatted_sources
-    else:
-        message += "\n\nNo Sources available"
-
-    return message
 
 
 @cl.on_message
@@ -175,87 +127,41 @@ async def on_message(message: cl.Message):
 
     async for chunk in chain.astream(
         message.content,
-        config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]),
+        config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
     ):
-        if "answer" in chunk:
+
+        if 'answer' in chunk:
             await msg.stream_token(chunk["answer"])
+            generated_answer = chunk["answer"]
 
         if "context" in chunk:
             docs = chunk["context"]
             for doc in docs:
-                meta = doc.metadata
-                sources.append(meta.get("source", None))
-                titles.append(meta.get("title", None))
+                sources.append(doc.metadata.get("source", None))
+                titles.append(doc.metadata.get("title", None))
 
     await msg.send()
     await cl.sleep(1)
-    msg_sources = cl.Message(
-        content=add_sources_to_messages(message="", sources=sources, titles=titles),
-        disable_feedback=False,
-    )
+    msg_sources = cl.Message(content=add_sources_to_messages(message="",
+                                                             sources=sources,
+                                                             titles=titles
+                                                             ),
+                             disable_feedback=False)
     await msg_sources.send()
 
+    # Log Q/A
+    if cl.user_session.get("IS_LOGGING_ON"):
+        embedding_model_name = os.getenv("EMB_MODEL_NAME")
+        LLM_name = os.getenv("LLM_MODEL_NAME")
+        reranker = os.getenv("RERANKING_METHOD", None)
 
-@cl.on_chat_end
-def end():
-    """at the end of the Chat"""
-    log_folder_path = os.path.join(RELATIVE_DATA_DIR, "logs/")
-    target_path = os.path.join("s3/" + os.getenv("S3_BUCKET"), "data", "chatbot_logs/")
-    try:
-        # Construct the command
-        command = ["mc", "cp", "--recursive", log_folder_path, target_path]
-        # Execute the command
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
-        # Print the command's output
-        print(result.stdout)
-        print("Someone ended this chat: conversation logging file(s) have been copied successfully.")
-        # Remove the existing files
-        remove_files_in_directory(directory_path=log_folder_path)
-        print("The log files have been removed from the log directory.")
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred: {e.stderr}")
-
-
-@cl.set_chat_profiles
-async def chat_profile():
-    return [
-        cl.ChatProfile(
-            name="RAG",
-            markdown_description="Interroger la base documentaire de insee.fr et obtenir des réponses construites et argumentées grâce à un LLM.",
-            icon="./public/insee_logo.png",
-        ),
-        cl.ChatProfile(
-            name="Source_Retriever",
-            markdown_description="Interroger la base documentaire de insee.fr et obtenir des suggestions d'articles",
-            icon="./public/favicon.png",
-        ),
-    ]
-
-
-def remove_files_in_directory(directory_path):
-    """
-    Remove all files in the specified directory.
-
-    Args:
-    directory_path (str): The path to the directory where files should be removed.
-
-    Returns:
-    None
-    """
-    # Check if the directory exists
-    if not os.path.exists(directory_path):
-        print(f"Directory {directory_path} does not exist.")
-        return
-
-    # Iterate over all the files in the directory
-    for filename in os.listdir(directory_path):
-        file_path = os.path.join(directory_path, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-                # print(f"Removed file: {file_path}")
-            """elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-                print(f"Removed directory: {file_path}")"""
-        except Exception as e:
-            print(f"Failed to remove {file_path}. Reason: {e}")
+        log_conversation_to_s3(
+            conv_id=cl.user_session.get("conv_id"),
+            dir_s3=os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs"),
+            user_query=message.content,
+            retrieved_documents=docs,
+            generated_answer=generated_answer,
+            embedding_model_name=embedding_model_name,
+            LLM_name=LLM_name,
+            reranker=reranker
+        )

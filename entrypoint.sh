@@ -22,10 +22,10 @@ for MODEL_NAME in "${MODELS[@]}"; do
 
     if mc ls $S3_MODEL_PATH > /dev/null 2>&1; then
         if [ ! -d "$LOCAL_MODEL_PATH" ]; then
-            echo "Fetching model $MODEL_NAME_HF from S3."
+            echo "Fetching model $MODEL_NAME from S3."
             mc cp --recursive $S3_MODEL_PATH/ $LOCAL_MODEL_PATH
         else
-            echo "Model $MODEL_NAME_HF is already present locally."
+            echo "Model $MODEL_NAME is already present locally."
         fi
     fi
 done
