@@ -1,17 +1,13 @@
-from collections.abc import Sequence
-from typing import Any
 
 # loading rerankers
 from langchain.retrievers import ContextualCompressionRetriever, EnsembleRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
-from langchain.schema import Document
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
 
-from src.utils import format_docs
-from src.db_loading import create_vectorstore, load_retriever
 from src.reranking import compress_documents_lambda
+from src.utils import format_docs
 
 RERANKER_CROSS_ENCODER = "dangvantuan/CrossEncoder-camembert-large"
 RERANKER_COLBERT = "antoinelouis/colbertv2-camembert-L4-mmarcoFR"
