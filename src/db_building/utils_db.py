@@ -189,7 +189,7 @@ def url_builder(row: pd.Series):
         "Géographie": "information",
         "Séries chronologiques": "statistiques",
         "Sources": "information",
-        "Publications pour expert": "information",
+        "Publications pour expert": "statistiques",
         "Cartes interactives": "",
         "Outils interactifs": "statistiques",
     }
