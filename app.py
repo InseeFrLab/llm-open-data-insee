@@ -1,22 +1,18 @@
-import os
-import logging
 import json
+import logging
+import os
 from datetime import datetime
 
-import s3fs
-from langchain_core.prompts import PromptTemplate
-from langchain.schema.runnable.config import RunnableConfig
-from langchain.docstore.document import Document
 import chainlit as cl
+import s3fs
+from langchain.docstore.document import Document
+from langchain.schema.runnable.config import RunnableConfig
+from langchain_core.prompts import PromptTemplate
 
+from src.chain_building.build_chain import build_chain, load_retriever
 from src.model_building import build_llm_model
-from src.chain_building.build_chain import (
-    load_retriever,
-    build_chain
-    )
-from src.utils.utils import str_to_bool
 from src.utils.formatting_utilities import add_sources_to_messages
-
+from src.utils.utils import str_to_bool
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -147,7 +143,7 @@ async def on_message(message: cl.Message):
 
         if "context" in chunk:
             docs = chunk["context"]
-            for i, doc in enumerate(docs):
+            for doc in docs:
                 sources.append(doc.metadata.get("source", None))
                 titles.append(doc.metadata.get("title", None))
 

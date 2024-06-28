@@ -1,23 +1,20 @@
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.runnables import RunnablePassthrough, RunnableParallel
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
+from collections.abc import Sequence
+from typing import Any
 
 #loading rerankers
-from langchain.retrievers import EnsembleRetriever
-from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers import ContextualCompressionRetriever, EnsembleRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
-from langchain_community.retrievers import BM25Retriever
-from typing import Any, List, Optional, Sequence, Dict
-from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
 from langchain.schema import Document
-from pydantic import BaseModel, Field
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.retrievers import BM25Retriever
+from langchain_community.vectorstores import Chroma
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnablePassthrough
+from utils import format_docs
 
 from results_logging import log_chain_results
 
-from utils import format_docs
 
 def create_vectorstore(
     emb_model_name: str,
@@ -56,7 +53,7 @@ def load_retriever(
 RERANKER_CROSS_ENCODER = "dangvantuan/CrossEncoder-camembert-large"
 
 # Define the compression function
-def compress_documents_lambda(documents: Sequence[Document], query: str, k: int = 5, **kwargs: Dict[str, Any]) -> Sequence[Document]:
+def compress_documents_lambda(documents: Sequence[Document], query: str, k: int = 5, **kwargs: dict[str, Any]) -> Sequence[Document]:
     """Compress retrieved documents given the query context."""
 
     # Initialize the retriever with the documents
@@ -101,7 +98,7 @@ def build_chain(retriever, prompt: str, llm = None, bool_log: bool = False, rera
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
         retrieval_agent = EnsembleRetriever(
-            retrievers=[reranker_1, reranker_2, reranker_3], 
+            retrievers=[reranker_1, reranker_2],
             weigths=[1/2, 1/2]
         )
     else:
@@ -149,7 +146,7 @@ def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
         retrieval_agent = EnsembleRetriever(
-            retrievers=[reranker_1, reranker_2, reranker_3], 
+            retrievers=[reranker_1, reranker_2],
             weigths=[1/2, 1/2]
         )
     else:

@@ -95,7 +95,7 @@ def build_chain(retriever, prompt: str, llm=None, bool_log: bool = False, rerank
     return rag_chain_with_source
 
 
-def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
+def build_chain_retriever(retriever, reranker=None):
     """
     Build a langchain chain without generation, focusing on retrieving right ressources
     """
@@ -127,7 +127,4 @@ def build_chain_retriever(retriever, bool_log: bool = False, reranker=None):
     # build the first part of the chain
     retriever_chain = RunnableParallel({"context": retrieval_agent, "question": RunnablePassthrough()})
 
-    if bool_log:
-        return retriever_chain | RunnableLambda(log_chain_results).bind(prompt=None, reranker=reranker)
-    else:
-        return retriever_chain
+    return retriever_chain

@@ -14,7 +14,7 @@ def add_sources_to_messages(message: str, sources: list, titles: list, topk: int
     """
     if len(sources) == len(titles):
         sources_titles = [f"{i+1}. {title} ({source})" for i, (source, title)
-                          in enumerate(zip(sources, titles)) if i < topk]
+                          in enumerate(zip(sources, titles, strict=False)) if i < topk]
         formatted_sources = f"\n\nSources (Top {topk}):\n" + "\n".join(sources_titles)
         message += formatted_sources
     else:
