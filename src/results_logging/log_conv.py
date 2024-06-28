@@ -1,10 +1,9 @@
+import json
 import os
 from datetime import datetime
-import json
 
 import s3fs
 from langchain_core.documents.base import Document
-
 
 # S3 configuration
 S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
