@@ -3,6 +3,7 @@ Create an evaluation dataset from Label Studio annotations stored
 on S3. An observation of this data set consists in a question/answer
 pair, along with a (potentially empty) list of URLs.
 """
+
 from pathlib import Path
 import json
 import pandas as pd
@@ -15,7 +16,7 @@ def create_insee_contact_eval_dataset():
     answers = []
     urls = []
     for path in fs.listdir(LS_ANNOTATIONS_PATH):
-        with fs.open(path["Key"], 'rb') as f:
+        with fs.open(path["Key"], "rb") as f:
             if Path(path["Key"]).stem == ".keep":
                 continue
             annotation_data = json.load(f)
@@ -39,14 +40,11 @@ def create_insee_contact_eval_dataset():
                 urls.append("|".join(entry_urls))
 
     with fs.open(
-        "projet-llm-insee-open-data/data/eval_data/eval_dataset_insee_contact.csv",
-        "w"
+        "projet-llm-insee-open-data/data/eval_data/eval_dataset_insee_contact.csv", "w"
     ) as f:
-        pd.DataFrame({
-            "questions": questions,
-            "answers": answers,
-            "urls": urls
-        }).to_csv(f, index=False)
+        pd.DataFrame({"questions": questions, "answers": answers, "urls": urls}).to_csv(
+            f, index=False
+        )
 
 
 if __name__ == "__main__":

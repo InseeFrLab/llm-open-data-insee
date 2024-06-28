@@ -16,7 +16,9 @@ def compute_autokonenizer_chunk_size(embedding_model: str = EMB_MODEL_NAME):
     return autokenizer, chunk_size, chunk_overlap
 
 
-def build_documents_from_dataframe(df: pd.DataFrame) -> List[Document]:
+def build_documents_from_dataframe(
+    df: pd.DataFrame, embedding_model_name=EMB_MODEL_NAME
+) -> List[Document]:
     """
     df : DataFrame containing page content
     but also additional information which are documents metadata
@@ -32,7 +34,9 @@ def build_documents_from_dataframe(df: pd.DataFrame) -> List[Document]:
     HF_TOKENIZER = True
 
     if HF_TOKENIZER:
-        autokenizer, chunk_size, chunk_overlap = compute_autokonenizer_chunk_size(EMB_MODEL_NAME)
+        autokenizer, chunk_size, chunk_overlap = compute_autokonenizer_chunk_size(
+            embedding_model_name
+        )
 
         logging.info("chunk size : ", chunk_size)
         logging.info("chunk overlap size : ", chunk_overlap)
@@ -48,7 +52,9 @@ def build_documents_from_dataframe(df: pd.DataFrame) -> List[Document]:
         logging.info("chunk size : ", CHUNK_SIZE)
         logging.info("chunk overlap size : ", CHUNK_OVERLAP)
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=MARKDOWN_SEPARATORS
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            separators=MARKDOWN_SEPARATORS,
         )
 
     docs_processed = text_splitter.split_documents(document_list)
@@ -61,5 +67,7 @@ def build_documents_from_dataframe(df: pd.DataFrame) -> List[Document]:
             unique_texts[doc.page_content] = True
             docs_processed_unique.append(doc)
 
-    logging.info(f"Number of created chuncks : {len(docs_processed_unique)} in the Vector Database")
+    logging.info(
+        f"Number of created chuncks : {len(docs_processed_unique)} in the Vector Database"
+    )
     return docs_processed_unique

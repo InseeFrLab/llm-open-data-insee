@@ -1,6 +1,7 @@
 """
 Process raw Insee contact data.
 """
+
 import s3fs
 import os
 import pandas as pd

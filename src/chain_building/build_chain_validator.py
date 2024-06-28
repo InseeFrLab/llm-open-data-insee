@@ -1,7 +1,7 @@
 from langchain.agents import Agent, AgentExecutor, Tool
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableLambda 
+from langchain_core.runnables import RunnableLambda
 
 # Prompt Template with In-Context Learning and Justification
 EVAL_INSTRUCTION = """
@@ -31,25 +31,30 @@ Cette question est-elle pertinente par rapport aux domaines d'expertise de l'INS
 
 
 EVAL_TEMPLATE = [
-    {"role": "user", "content": """Tu es un assistant spécialisé dans la statistique publique qui filtre des requêtes entrantes."""},
+    {
+        "role": "user",
+        "content": """Tu es un assistant spécialisé dans la statistique publique qui filtre des requêtes entrantes.""",
+    },
     {"role": "assistant", "content": EVAL_INSTRUCTION},
     {"role": "user", "content": USER_INSTRUCTION},
 ]
 
+
 def build_chain_validator(evaluator_llm=None, tokenizer=None):
     """
-    defining a chain to check if a given query is related to INSEE expertise.  
+    defining a chain to check if a given query is related to INSEE expertise.
     """
-    is_query_related_to_public_statistics = lambda generation : generation.lower().find("oui") != -1
+    is_query_related_to_public_statistics = (
+        lambda generation: generation.lower().find("oui") != -1
+    )
 
-    prompt_template = tokenizer.apply_chat_template(EVAL_TEMPLATE, 
-                                    tokenize=False,
-                                    add_generation_prompt=True
-                                    )
+    prompt_template = tokenizer.apply_chat_template(
+        EVAL_TEMPLATE, tokenize=False, add_generation_prompt=True
+    )
     prompt = PromptTemplate(template=prompt_template, input_variables=["query"])
 
     return (
-        prompt 
-        | evaluator_llm 
+        prompt
+        | evaluator_llm
         | RunnableLambda(func=is_query_related_to_public_statistics)
     )

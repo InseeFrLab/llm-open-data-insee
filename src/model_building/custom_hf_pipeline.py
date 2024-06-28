@@ -22,6 +22,7 @@ DEFAULT_BATCH_SIZE = 4
 
 logger = logging.getLogger(__name__)
 
+
 class CustomHuggingFacePipeline(BaseLLM):
     """HuggingFace Pipeline API.
 
@@ -30,6 +31,7 @@ class CustomHuggingFacePipeline(BaseLLM):
     Only supports `text-generation`, `text2text-generation` and `summarization` for now.
 
     """
+
     pipeline: Any  #: :meta private:
     model_id: str = DEFAULT_MODEL_ID
     """Model name to use."""
@@ -265,13 +267,10 @@ class CustomHuggingFacePipeline(BaseLLM):
         # Prepare the inputs for the model
         tok = self.pipeline.tokenizer
         inputs = tok.encode([prompt], return_tensors="pt")
-        #inputs = inputs.to('cuda')
-        
-        generation_kwargs = dict(
-            inputs, 
-            **self.pipeline._forward_params
-        )
-        #self.pipeline.model.to('cuda')
+        # inputs = inputs.to('cuda')
+
+        generation_kwargs = dict(inputs, **self.pipeline._forward_params)
+        # self.pipeline.model.to('cuda')
 
         # Start the generation in a separate thread
         thread = Thread(target=self.pipeline.model.generate, kwargs=generation_kwargs)

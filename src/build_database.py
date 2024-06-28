@@ -20,7 +20,9 @@ if MAX_NUMBER_PAGES is not None:
     path_s3 = path_s3.replace("chroma_database", "test_chroma")
 
 # Rustine temporaire
-os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
+os.environ["MLFLOW_TRACKING_URI"] = (
+    "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
+)
 
 # Check mlflow URL is defined
 assert (

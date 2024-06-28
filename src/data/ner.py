@@ -4,6 +4,7 @@ Apply named entity recognition to data in order to identify:
     - addresses;
     - email addresses;
 """
+
 from typing import Dict, List
 import json
 from utils import fs
@@ -13,10 +14,10 @@ from transformers import pipeline, TokenClassificationPipeline
 
 
 ner = pipeline(
-    task='ner',
+    task="ner",
     model="cmarkea/distilcamembert-base-ner",
     tokenizer="cmarkea/distilcamembert-base-ner",
-    aggregation_strategy="simple"
+    aggregation_strategy="simple",
 )
 
 
@@ -69,12 +70,12 @@ if __name__ == "__main__":
 
     # Save NER outputs
     with fs.open(
-        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json',
-        'w'
+        "projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json",
+        "w",
     ) as fp:
         json.dump(ner_series(df["Exchange1"].fillna("")).to_list(), fp)
     with fs.open(
-        'projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json',
-        'w'
+        "projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json",
+        "w",
     ) as fp:
         json.dump(ner_series(df["Exchange2"].fillna("")).to_list(), fp)

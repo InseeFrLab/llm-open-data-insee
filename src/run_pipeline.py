@@ -5,7 +5,13 @@ from chain_building import load_retriever, build_chain
 from utils import loading_utilities
 from langchain_core.prompts import PromptTemplate
 
-from config import DB_DIR_S3, DB_DIR_LOCAL, MODEL_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE
+from config import (
+    DB_DIR_S3,
+    DB_DIR_LOCAL,
+    MODEL_NAME,
+    EMB_MODEL_NAME,
+    RAG_PROMPT_TEMPLATE,
+)
 
 
 EXPERIMENT_NAME = "CHAIN"
@@ -27,10 +33,14 @@ with mlflow.start_run() as run:
     loading_utilities.load_chroma_db(s3_path=DB_DIR_S3, persist_directory=DB_DIR_LOCAL)
 
     # Generate prompt template
-    prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+    prompt = PromptTemplate(
+        input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE
+    )
 
     # Create a pipeline with tokenizer and LLM
-    llm = build_llm_model(quantization_config=True, config=True, token=os.environ["HF_TOKEN"])
+    llm = build_llm_model(
+        quantization_config=True, config=True, token=os.environ["HF_TOKEN"]
+    )
 
     retriever = load_retriever(DB_DIR_LOCAL)
 

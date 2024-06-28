@@ -8,18 +8,24 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import EMB_MODEL_NAME, EMB_DEVICE, COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
 
-from doc_building import build_documents_from_dataframe, compute_autokonenizer_chunk_size
+from doc_building import (
+    build_documents_from_dataframe,
+    compute_autokonenizer_chunk_size,
+)
 from .utils_db import extract_paragraphs
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 alias_chunk_size = compute_autokonenizer_chunk_size
-
 
 def build_database_from_dataframe(
     df: pd.DataFrame,
     persist_directory: str = str(DB_DIR_S3),
+    embedding_model: str = str(EMB_MODEL_NAME),
+    collection_name: str = COLLECTION_NAME,
+    max_pages: str = None,
 ) -> Chroma:
     """
     Args:
@@ -43,7 +49,9 @@ def build_database_from_dataframe(
     )
 
     # chucking of documents
-    all_splits = build_documents_from_dataframe(not_null_filtered_df)
+    all_splits = build_documents_from_dataframe(
+        not_null_filtered_df, embedding_model_name=embedding_model
+    )
     logging.info("Storing the Document objects")
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
@@ -102,13 +110,18 @@ def build_database_from_csv(
         df.fillna(value="", inplace=True)
 
         # chucking of documents
-        all_splits = build_documents_from_dataframe(df)
+        all_splits = build_documents_from_dataframe(
+            df, embedding_model_name=embedding_model
+        )
         logging.info("Storing the Document objects")
 
         embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
             model_name=embedding_model,
+            multi_process=True,
             model_kwargs={"device": EMB_DEVICE},
-            encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
+            encode_kwargs={
+                "normalize_embeddings": True
+            },  # set True for cosine similarity
             show_progress=False,
         )
 

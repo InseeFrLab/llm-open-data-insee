@@ -1,6 +1,7 @@
 """
 Utilitary functions.
 """
+
 from typing import Dict
 import s3fs
 import os
