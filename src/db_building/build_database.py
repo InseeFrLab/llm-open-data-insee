@@ -2,9 +2,10 @@ import logging
 import os
 
 import pandas as pd
+import s3fs
 from chromadb.config import Settings
-from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME
-from doc_building import build_documents_from_dataframe, compute_autokonenizer_chunk_size
+from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME, S3_BUCKET
+from doc_building import build_documents_from_dataframe
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
@@ -12,8 +13,7 @@ from .utils_db import extract_paragraphs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
-alias_chunk_size = compute_autokonenizer_chunk_size
+# TODO : pourquoi on a les config dans ce fichier ?
 
 
 def build_database_from_dataframe(
@@ -65,25 +65,26 @@ def build_database_from_dataframe(
     return db
 
 
-def build_database_from_csv(
-    path: str,
-    persist_directory: str = str(DB_DIR_S3),
-    embedding_model: str = str(EMB_MODEL_NAME),
-    collection_name: str = COLLECTION_NAME,
+def build_vector_database(
+    data_path: str,
+    persist_directory: str,
+    embedding_model: str,
+    collection_name: str,
+    filesystem: s3fs.S3FileSystem,
     max_pages: str = None,
 ) -> Chroma:
-    logging.info(f"The database will be stored in {persist_directory}")
+    logging.info(f"The database will temporarily be stored in {persist_directory}")
 
-    if os.path.exists(path):
-        logging.info(f"The path '{path}' exists.")
+    if os.path.exists(data_path):
         logging.info("Start building the database")
 
-        data = pd.read_csv(path, low_memory=False)
+        data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
+
         if max_pages is not None:
             data = data.head(max_pages)
 
         logging.info("Extracting paragraphs and metadata")
-        df = extract_paragraphs(data)  # dataframe
+        df = extract_paragraphs(data)
 
         # rename the column names:
         df.rename(
@@ -123,7 +124,7 @@ def build_database_from_csv(
         return db
     else:
         logging.info("Error Database : database File not found")
-        logging.info(f"The path '{path}' does not exist.")
+        logging.info(f"The path '{data_path}' does not exist.")
         return None
 
 
