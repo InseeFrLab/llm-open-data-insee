@@ -1,3 +1,9 @@
 from .eval_configuration import RetrievalConfiguration
 from .retrieval_evaluator import RetrievalEvaluator
 from .utils import use_sbert_retrieval_evaluator, build_chain_retriever_test
+
+
+__all__ = [
+    "RetrievalConfiguration",
+    "RetrievalEvaluator",
+]

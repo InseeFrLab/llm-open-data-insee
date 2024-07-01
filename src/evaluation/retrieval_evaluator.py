@@ -19,8 +19,7 @@ logging.basicConfig(
 
 from evaluation.utils import build_chain_retriever_test
 from config import EMB_MODEL_NAME, MODEL_NAME
-from build_database import build_database_from_dataframe
-
+from db_building import build_database_from_dataframe
 
 ## Utility function ######
 
@@ -65,50 +64,38 @@ def mmr(retrieved, relevant):
         mrr_score = 1 / (rank_q + 1)
     return mrr_score
 
-def load_sample_data(path_data, content_column="content"):
-    try:
-        df = pd.read_csv(path_data)
-        loader = DataFrameLoader(df, page_content_column=content_column)
-        return loader.load()
-    except e:
-        print("Error while loading the test dataset")
-
-
 def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chroma:
     """
     Building vector database based on a given embedding model
     """
     embedding_model_name = config.get("embedding_model_name", EMB_MODEL_NAME)
 
-    raw_ref_database = load_sample_data(path_data)
+    raw_ref_database = pd.read_csv(path_data)
 
     vector_db = build_database_from_dataframe(
         df=raw_ref_database,
         persist_directory="./data/chroma_db",
-        embedding_model=embedding_model_name,
+        embedding_model_name=embedding_model_name,
         collection_name="insee_data_" + str(embedding_model_name.split("/")[-1]),
     )
     return vector_db
 
-
 ## Main class ###########
-
 
 class RetrievalEvaluator:
 
     @staticmethod
     def run(
         eval_configurations: list[RetrievalConfiguration],
-        eval_data: pd.DataFrame,
         eval_dict: Dict[str, pd.DataFrame],
     ) -> Dict[str, Tuple[csr_matrix, Dict, Dict, Dict]]:
         """
         Goal : Evaluate the retrieval performance of a series of configurations.
-        eval_data : pandas dataframe containing a subset of insee data
         eval_dict : dictionary containing a DataFrame with at least a question and source columns.
         """
         results = {}
         for df_name, df in eval_dict.items():
+            print(df_name)
             results[df_name] = {}
             for configuration in eval_configurations:
                 config_name = configuration.name
@@ -118,9 +105,8 @@ class RetrievalEvaluator:
                 results[df_name][config_name] = {}
 
                 # Load ref Corpus
-                path_data = "./data/insee_documents_sample_ref_retrieval_evaluation.csv"
                 vector_db = build_vector_database(
-                    path_data=path_data, config=configuration
+                    path_data=configuration.database_path, config=configuration
                 )
 
                 # create a retriever
@@ -139,7 +125,7 @@ class RetrievalEvaluator:
 
                 # load retriever
                 retriever = build_chain_retriever_test(
-                    base_retriever=base_retriever, config=eval_configurations
+                    base_retriever=base_retriever, config=configuration
                 )
 
                 # run retrieval phases

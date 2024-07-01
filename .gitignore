@@ -165,7 +165,7 @@ cython_debug/
 **/data_complete.csv
 **/chroma_db
 **/logs/
-
+*.csv
 # Ignore notebooks not in the notebooks folder
 *.ipynb
 !notebooks/*.ipynb

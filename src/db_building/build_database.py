@@ -23,7 +23,7 @@ alias_chunk_size = compute_autokonenizer_chunk_size
 def build_database_from_dataframe(
     df: pd.DataFrame,
     persist_directory: str = str(DB_DIR_S3),
-    embedding_model: str = str(EMB_MODEL_NAME),
+    embedding_model_name: str = str(EMB_MODEL_NAME),
     collection_name: str = COLLECTION_NAME,
     max_pages: str = None,
 ) -> Chroma:
@@ -44,25 +44,24 @@ def build_database_from_dataframe(
             "dateDiffusion": "date_diffusion",
             "id_origin": "insee_id",
         },
-        errors="raise",
+        errors="ignore",
         inplace=False,
     )
 
     # chucking of documents
     all_splits = build_documents_from_dataframe(
-        not_null_filtered_df, embedding_model_name=embedding_model
+        not_null_filtered_df, embedding_model_name=embedding_model_name
     )
     logging.info("Storing the Document objects")
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=EMB_MODEL_NAME,
+        model_name=embedding_model_name,
         model_kwargs={"device": EMB_DEVICE},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )
 
     # collection_name = "insee_data_" + str(EMB_MODEL_NAME.split("/")[-1])
-    collection_name = COLLECTION_NAME
     db = Chroma.from_documents(
         collection_name=collection_name,
         documents=all_splits,
@@ -103,6 +102,7 @@ def build_database_from_csv(
                 "id_origin": "insee_id",
             },
             inplace=True,
+            errors="ignore",
         )
 
         # remove NaN value to empty strings

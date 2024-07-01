@@ -203,7 +203,7 @@ def build_chain_retriever_test(base_retriever, config=Dict):
 
         weights = (
             [1 / len(weights) for _ in weights] if np.sum(weights) != 1 else weights
-        )
+        ) # uniform weigth.  
 
         retrieval_agent = EnsembleRetriever(
             base_retrievers=base_retrievers, weigths=weights
