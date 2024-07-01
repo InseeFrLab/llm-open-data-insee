@@ -128,9 +128,9 @@ def choosing_reranker(base_retriever, config):
     Return a langchain compatible augmented retriever.
     """
     reranker_type, reranker_name, rerank_k = (
-        config.get("reranker_type"),
-        config.get("reranker_name"),
-        config.get("rerank_k"),
+        config.get("reranker_type", None),
+        config.get("reranker_name", None),
+        config.get("rerank_k",  max(config.k_values)),
     )
 
     if reranker_type is None:
@@ -186,9 +186,9 @@ def build_chain_retriever_test(base_retriever, config=Dict):
 
     reranker_type = config.get("reranker_type", None)
     reranker_name = config.get("reranker_name", None)
-    rerank_k = config.get("rerank_k", 5)
+    rerank_k = config.get("rerank_k", max(config.k_values))
 
-    if reranker_type in ["BM25", "Cross-encoder", "ColBERT", "Metadata"]:
+    if reranker_type in [None, "BM25", "Cross-encoder", "ColBERT", "Metadata"]:
         retrieval_agent = choosing_reranker(base_retriever, config=config)
     elif reranker_type == "Ensemble":
         weigths = []
@@ -208,5 +208,4 @@ def build_chain_retriever_test(base_retriever, config=Dict):
         retrieval_agent = EnsembleRetriever(
             base_retrievers=base_retrievers, weigths=weights
         )
-
     return retrieval_agent

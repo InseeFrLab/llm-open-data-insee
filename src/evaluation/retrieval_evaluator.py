@@ -87,7 +87,7 @@ class RetrievalEvaluator:
     @staticmethod
     def run(
         eval_configurations: list[RetrievalConfiguration],
-        eval_dict: Dict[str, pd.DataFrame],
+        eval_dict: Dict[str, pd.DataFrame]
     ) -> Dict[str, Tuple[csr_matrix, Dict, Dict, Dict]]:
         """
         Goal : Evaluate the retrieval performance of a series of configurations.
@@ -95,7 +95,6 @@ class RetrievalEvaluator:
         """
         results = {}
         for df_name, df in eval_dict.items():
-            print(df_name)
             results[df_name] = {}
             for configuration in eval_configurations:
                 config_name = configuration.name
@@ -118,11 +117,8 @@ class RetrievalEvaluator:
                     search_kwargs={"k": max(configuration.k_values)},
                 )
 
-                queries = [{"query": q} for q in list(df["question"])]
-                """logging.info(f"   Starting to embed questions")
-                query_embeddings = embedding_model.embed_documents(queries)
-                logging.info(f"   The questions have been embedded")"""
-
+                queries = [q for q in list(df["question"])]
+              
                 # load retriever
                 retriever = build_chain_retriever_test(
                     base_retriever=base_retriever, config=configuration
@@ -130,9 +126,9 @@ class RetrievalEvaluator:
 
                 # run retrieval phases
                 complete_retrieved_documents = retriever.batch(
-                    inputs=queries, config={"max_concurrency": 10}
+                    inputs=queries,
                 )
-
+           
                 all_individual_recalls = []
                 all_individual_precisions = []
                 for i, row in tqdm(df.iterrows()):
@@ -140,13 +136,10 @@ class RetrievalEvaluator:
                     individual_precisions = []
                     # q = row["question"]
                     golden_source = row.get("source_doc")
-                    """
-                    query_embedding = query_embeddings[i]
-                    nb_retrieved = max(configuration.k_values)
-                    retrieved_docs = vector_db.similarity_search_by_vector(embedding=query_embedding, 
-                                                                           k=nb_retrieved)
-                    """
+
+                    #query = queries[i]
                     retrieved_docs = complete_retrieved_documents[i]
+
                     retrieved_sources = [
                         doc.metadata["source"] for doc in retrieved_docs
                     ]
