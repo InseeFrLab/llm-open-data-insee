@@ -9,7 +9,6 @@ class EvalConfiguration(ABC):
     name: str = field(default="default_name")
     database: str = field(default="chromadb")
     database_path: str = field(default="")
-    collection: str = field(default=COLLECTION_NAME)
 
     def get(self, attribute_name: str, default_value=None) -> Any:
         """
@@ -24,6 +23,7 @@ class RetrievalConfiguration(EvalConfiguration):
     embedding_model_name: str = field(
         default=EMB_MODEL_NAME, metadata={"description": "embedding model"}
     )
+    collection: str = field(default=COLLECTION_NAME)
     chunk_size: int = field(default=2000, metadata={"description": "chunk size"})
     overlap_size: int = field(default=500, metadata={"description": "overlap size"})
 

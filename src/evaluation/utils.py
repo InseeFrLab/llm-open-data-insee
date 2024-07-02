@@ -209,3 +209,55 @@ def build_chain_retriever_test(base_retriever, config=Dict):
             base_retrievers=base_retrievers, weigths=weights
         )
     return retrieval_agent
+
+
+def choosing_reranker_test(config):
+    """
+    TEST !!!! Return a langchain compatible augmented retriever.
+    Should take as input List[Document]
+    """
+    reranker_type, reranker_name, rerank_k = (
+        config.get("reranker_type", None),
+        config.get("reranker_name", None),
+        config.get("rerank_k",  max(config.k_values)),
+    )
+
+    if reranker_type is None:
+        retrieval_agent = RunnableLambda(
+            lambda r: r["documents"]
+        )
+    elif reranker_type == "BM25":
+        #need to format {"documents" : ..., "query" : ...}
+        retrieval_agent = RunnableLambda(
+            lambda r: compress_BM25_lambda(
+                documents=r["documents"], query=r["query"], k=rerank_k
+            )
+        )
+    elif reranker_type == "Cross-encoder":
+        #need to format {"documents" : ..., "query" : ...}
+        model = HuggingFaceCrossEncoder(model_name=reranker_name)
+        compressor = CrossEncoderReranker(model=model, top_n=rerank_k)
+        retrieval_agent = RunnableLambda(func=lambda inputs: compressor.compress_documents(
+                documents=inputs["documents"], query=inputs["query"]
+                )
+            ) 
+
+    elif reranker_type == "ColBERT":
+        #need to format {"documents" : ..., "query" : ...}
+        colBERT = RAGPretrainedModel.from_pretrained(reranker_name)
+        compressor = colBERT.as_langchain_document_compressor(k=rerank_k)
+
+        retrieval_agent = RunnableLambda(func=lambda r: compressor.compress_documents(
+                documents=r["documents"], query=r["query"], top_n=rerank_k
+            )
+        ) 
+        
+    elif reranker_type == "Metadata":
+        #need to format {"documents" : ..., "query" : ...}
+        retrieval_agent = RunnableLambda(func=lambda r: compress_metadata_lambda(
+                documents=r["documents"], query=r["query"], 
+                config=config
+            )
+        )
+
+    return retrieval_agent
