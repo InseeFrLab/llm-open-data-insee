@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import datetime
 
 import chainlit as cl
 import chainlit.data as cl_data
@@ -10,7 +9,7 @@ from langchain_core.prompts import PromptTemplate
 from src.chain_building.build_chain import build_chain
 from src.db_loading import load_retriever
 from src.model_building import build_llm_model
-from src.results_logging.log_conv import log_conversation_to_s3
+from src.results_logging.log_conv import log_qa_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
 # Logging configuration
@@ -159,7 +158,7 @@ async def on_message(message: cl.Message):
         LLM_name = os.getenv("LLM_MODEL_NAME")
         reranker = os.getenv("RERANKING_METHOD", None)
 
-        log_conversation_to_s3(
+        log_qa_to_s3(
             dir_s3=os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs"),
             conversation_id=cl.user_session.get("id"),
             message_id=message.id,
