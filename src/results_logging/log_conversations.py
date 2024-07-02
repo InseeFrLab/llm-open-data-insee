@@ -8,11 +8,11 @@ from langchain_core.documents.base import Document
 # S3 configuration
 S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
 s3_fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
+DIR_LOGS_S3 = os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs")
 
 
 def log_qa_to_s3(
-    dir_s3: str,
-    conversation_id: str,
+    thread_id: str,
     message_id: str,
     user_query: str = None,
     generated_answer: str = None,
@@ -40,7 +40,7 @@ def log_qa_to_s3(
     }
 
     today_date = datetime.now().strftime("%Y-%m-%d")
-    target_path_s3 = os.path.join(dir_s3, today_date, f"{conversation_id}.json")
+    target_path_s3 = os.path.join(DIR_LOGS_S3, today_date, f"{thread_id}.json")
 
     # Log to S3
     if s3_fs.exists(target_path_s3):
@@ -54,3 +54,23 @@ def log_qa_to_s3(
         # Else, create it
         with s3_fs.open(target_path_s3, "w") as file_out:
             json.dump(log_entry, file_out, indent=4)
+
+
+def log_feedback_to_s3(
+    thread_id: str,
+    message_id: str,
+    feedback_value: int,
+    feedback_comment: str
+):
+    today_date = datetime.now().strftime("%Y-%m-%d")
+    target_path_s3 = os.path.join(DIR_LOGS_S3, today_date, f"{thread_id}.json")
+
+    # Add feedback to existing log
+    with s3_fs.open(target_path_s3, "r") as file_in:
+        existing_log = json.load(file_in)
+    existing_log[message_id]['feedback_value'] = feedback_value
+    existing_log[message_id]['feedback_comment'] = feedback_comment
+
+    # Push to S3
+    with s3_fs.open(target_path_s3, "w") as file_out:
+        json.dump(existing_log, file_out, indent=4)

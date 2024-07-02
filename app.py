@@ -9,7 +9,7 @@ from langchain_core.prompts import PromptTemplate
 from src.chain_building.build_chain import build_chain
 from src.db_loading import load_retriever
 from src.model_building import build_llm_model
-from src.results_logging.log_conv import log_qa_to_s3
+from src.results_logging.log_conversations import log_qa_to_s3, log_feedback_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
 # Logging configuration
@@ -19,12 +19,6 @@ logging.basicConfig(format="%(asctime)s %(message)s",
                     level=logging.DEBUG
                     )
 
-
-# Data persistence configuration
-class CustomDataLayer(cl_data.BaseDataLayer):
-    pass
-
-cl_data._data_layer = CustomDataLayer()
 
 # Chatbot configuration
 CHATBOT_INSTRUCTION = """
@@ -159,8 +153,7 @@ async def on_message(message: cl.Message):
         reranker = os.getenv("RERANKING_METHOD", None)
 
         log_qa_to_s3(
-            dir_s3=os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs"),
-            conversation_id=cl.user_session.get("id"),
+            thread_id=cl.user_session.get("id"),
             message_id=message.id,
             user_query=message.content,
             generated_answer=generated_answer,
@@ -169,3 +162,17 @@ async def on_message(message: cl.Message):
             LLM_name=LLM_name,
             reranker=reranker
         )
+
+
+class CustomDataLayer(cl_data.BaseDataLayer):
+    async def upsert_feedback(self, feedback: cl_data.Feedback) -> str:
+        log_feedback_to_s3(
+            thread_id=feedback.threadId,
+            message_id=feedback.forId,
+            feedback_value=feedback.value,
+            feedback_comment=feedback.comment
+            )
+
+
+# Enable data persistence for human feedbacks
+cl_data._data_layer = CustomDataLayer()
