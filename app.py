@@ -6,7 +6,8 @@ import chainlit as cl
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.prompts import PromptTemplate
 
-from src.chain_building.build_chain import build_chain, load_retriever
+from src.chain_building.build_chain import build_chain
+from src.db_loading import load_retriever
 from src.model_building import build_llm_model
 from src.results_logging.log_conv import log_conversation_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
@@ -56,17 +57,17 @@ async def on_chat_start():
     ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
     if ASK_USER_BEFORE_LOGGING:
         res = await cl.AskActionMessage(
-            content="Autorisez-vous le partage de vos intéractions avec le ChatBot!",
+            content="Autorisez-vous le partage de vos interactions avec le ChatBot!",
             actions=[
                 cl.Action(name="log", value="log", label="✅ Accepter"),
                 cl.Action(name="no log", value="no_log", label="❌ Refuser"),
             ],
             ).send()
         if res and res.get("value") == "log":
-            await cl.Message(content="Vous avez choisi de partager vos intéractions.").send()
+            await cl.Message(content="Vous avez choisi de partager vos interactions.").send()
         if res and res.get("value") == "no_log":
             IS_LOGGING_ON = False
-            await cl.Message(content="Vous avez choisi de garder vos intéractions avec le ChatBot privées.").send()
+            await cl.Message(content="Vous avez choisi de garder vos interactions avec le ChatBot privées.").send()
     cl.user_session.set("IS_LOGGING_ON", IS_LOGGING_ON)
 
     # Build chat model
