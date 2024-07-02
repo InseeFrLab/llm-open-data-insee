@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 
 import chainlit as cl
+import chainlit.data as cl_data
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.prompts import PromptTemplate
 
@@ -20,6 +21,13 @@ logging.basicConfig(format="%(asctime)s %(message)s",
                     )
 
 
+# Data persistence configuration
+class CustomDataLayer(cl_data.BaseDataLayer):
+    pass
+
+cl_data._data_layer = CustomDataLayer()
+
+# Chatbot configuration
 CHATBOT_INSTRUCTION = """
 Utilise UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
 La réponse doit être développée et citer ses sources.
@@ -44,13 +52,8 @@ CHATBOT_TEMPLATE = [
 
 @cl.on_chat_start
 async def on_chat_start():
-    await cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!").send()
-
-    # Define conversation ID
-    session_start_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    session_id = cl.user_session.get("id")
-    conv_id = f'{session_start_timestamp}_{session_id}'
-    cl.user_session.set("conv_id", conv_id)
+    await cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!",
+                     disable_feedback=True).send()
 
     # Logging configuration
     IS_LOGGING_ON = True
@@ -147,7 +150,7 @@ async def on_message(message: cl.Message):
                                                              sources=sources,
                                                              titles=titles
                                                              ),
-                             disable_feedback=False)
+                             disable_feedback=True)
     await msg_sources.send()
 
     # Log Q/A
@@ -157,11 +160,12 @@ async def on_message(message: cl.Message):
         reranker = os.getenv("RERANKING_METHOD", None)
 
         log_conversation_to_s3(
-            conv_id=cl.user_session.get("conv_id"),
             dir_s3=os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs"),
+            conversation_id=cl.user_session.get("id"),
+            message_id=message.id,
             user_query=message.content,
-            retrieved_documents=docs,
             generated_answer=generated_answer,
+            retrieved_documents=docs,
             embedding_model_name=embedding_model_name,
             LLM_name=LLM_name,
             reranker=reranker
