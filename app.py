@@ -22,7 +22,7 @@ logging.basicConfig(format="%(asctime)s %(message)s",
 
 # Chatbot configuration
 CHATBOT_INSTRUCTION = """
-Utilise UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
+En utilisant UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
 La réponse doit être développée et citer ses sources.
 
 Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
@@ -36,7 +36,8 @@ Voici la question à laquelle tu dois répondre :
 Question: {question}"""
 
 CHATBOT_TEMPLATE = [
-    {"role": "user", "content": """Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
+    {"role": "user", "content": """Tu es un assistant spécialisé dans la statistique publique.
+    Tu réponds à des questions concernant les données de l'Insee, l'institut national statistique Français.
     Réponds en FRANCAIS UNIQUEMENT."""},
     {"role": "assistant", "content": CHATBOT_INSTRUCTION},
     {"role": "user", "content": USER_INSTRUCTION},
