@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 import s3fs
 from config import S3_BUCKET, S3_ENDPOINT_URL
-from utils_db import complete_url_builder
+from db_building.utils_db import complete_url_builder
 
 FILES = [
     "applishare_extract",
@@ -25,7 +25,22 @@ def main():
 
     joined_table = tables["applishare_extract"].merge(tables["solr_extract"], how="inner", on="id")
     joined_table["url"] = complete_url_builder(joined_table)
-    subset_table = joined_table.reset_index(drop=True)[["id", "titre", "categorie", "url", "dateDiffusion", "xml_content"]]
+    subset_table = joined_table.reset_index(drop=True)[
+        [
+            "id",
+            "titre",
+            "categorie",
+            "url",
+            "dateDiffusion",
+            "theme",
+            "collection",
+            "libelleAffichageGeo",
+            "xml_intertitre",
+            "xml_auteurs",
+            "sousTitre",
+            "xml_content",
+        ]
+    ]
     subset_table["dateDiffusion"] = pd.to_datetime(subset_table["dateDiffusion"], format="mixed")
     subset_table.to_parquet(f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs)
 
