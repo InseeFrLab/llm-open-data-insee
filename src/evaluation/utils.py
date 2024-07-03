@@ -229,14 +229,14 @@ def choosing_reranker_test(config: Dict):
         )
     elif reranker_type == "Cross-encoder":
         # need to format {"documents" : ..., "query" : ...}
-        model = HuggingFaceCrossEncoder(model_name=reranker_name)
+        model = HuggingFaceCrossEncoder(model_name=reranker_name, model_kwargs={"device" : "cuda"})
         compressor = CrossEncoderReranker(model=model, top_n=rerank_k)
         retrieval_agent = RunnableLambda(func=lambda inputs: compressor.compress_documents(
                 documents=inputs["documents"], query=inputs["query"]
                 )
             ) 
     elif reranker_type == "ColBERT":
-        #need to format {"documents" : ..., "query" : ...}
+        # need to format {"documents" : ..., "query" : ...}
         colBERT = RAGPretrainedModel.from_pretrained(reranker_name)
         compressor = colBERT.as_langchain_document_compressor(k=rerank_k)
 
@@ -245,7 +245,7 @@ def choosing_reranker_test(config: Dict):
             )
         ) 
     elif reranker_type == "Metadata":
-        #need to format {"documents" : ..., "query" : ...}
+        # need to format {"documents" : ..., "query" : ...}
         retrieval_agent = RunnableLambda(func=lambda r: compress_metadata_lambda(
                 documents=r["documents"], query=r["query"], 
                 config=config

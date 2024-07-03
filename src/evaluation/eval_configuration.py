@@ -30,8 +30,8 @@ class RetrievalConfiguration(EvalConfiguration):
         default=EMB_MODEL_NAME, metadata={"description": "embedding model"}
     )
     collection: str = field(default=None)
-    chunk_size: int = field(default=2000, metadata={"description": "chunk size"})
-    overlap_size: int = field(default=500, metadata={"description": "overlap size"})
+    chunk_size: int = field(default=None, metadata={"description": "chunk size"})
+    overlap_size: int = field(default=None, metadata={"description": "overlap size"})
 
     # Reranker model
     reranker_type: str = field(
@@ -50,7 +50,7 @@ class RetrievalConfiguration(EvalConfiguration):
     use_metadata: Optional[str] = field(
         default=None, metadata={"description": "field metadata"}
     )
-    rerank_k: int = field(default=5, metadata={"description": "field metadata"})
+    rerank_k: int = field(default=None, metadata={"description": "field metadata"})
 
     # Retrieval parameters
     k_values: List[int] = field(default_factory=lambda: [5, 10, 15, 20, 25, 30, 40, 50])

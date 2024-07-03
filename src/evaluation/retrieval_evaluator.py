@@ -43,9 +43,13 @@ def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chr
 
     client = chromadb.PersistentClient(path=persist_directory)
 
-    collection_name = config.get("collection")
+    collection_name = config.collection
+    list_collections = [c.name for c in client.list_collections()]
 
-    if collection_name in [c.name for c in client.list_collections()]:
+    logging.info(f"collection name : {collection_name}")
+    logging.info(f"The available collections : {list_collections}")
+
+    if collection_name in list_collections:
         vector_db = reload_database_from_local_dir(
             embed_model_name=embedding_model_name,
             collection_name=collection_name,
