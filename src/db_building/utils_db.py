@@ -339,3 +339,5 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
                 print("issue at this row : ", row)
                 print(f"Error : {e}")
         return pd.DataFrame.from_dict(results)
+
+

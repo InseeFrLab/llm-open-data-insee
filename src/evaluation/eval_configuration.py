@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from abc import ABC
 from typing import List, Dict, Optional, Any
-
+import copy
 from config import EMB_MODEL_NAME, COLLECTION_NAME
 
 @dataclass
@@ -15,6 +15,12 @@ class EvalConfiguration(ABC):
         Get the value of an attribute by its name.
         """
         return getattr(self, attribute_name, default_value)
+   
+    def copy(self):
+        """
+        Create a copy of this configuration.
+        """
+        return copy.deepcopy(self)
 
 
 @dataclass
@@ -23,7 +29,7 @@ class RetrievalConfiguration(EvalConfiguration):
     embedding_model_name: str = field(
         default=EMB_MODEL_NAME, metadata={"description": "embedding model"}
     )
-    collection: str = field(default=COLLECTION_NAME)
+    collection: str = field(default=None)
     chunk_size: int = field(default=2000, metadata={"description": "chunk size"})
     overlap_size: int = field(default=500, metadata={"description": "overlap size"})
 
@@ -51,3 +57,4 @@ class RetrievalConfiguration(EvalConfiguration):
 
     # Parsing metadata
     markdown_separator: List[str] = field(default_factory=lambda: ["\n\n", "\n", ".", " ", ""])
+

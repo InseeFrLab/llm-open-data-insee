@@ -8,6 +8,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from config import EMB_MODEL_NAME, EMB_DEVICE, COLLECTION_NAME, DB_DIR_S3, DB_DIR_LOCAL
 
+from evaluation import RetrievalConfiguration
+
 from doc_building import (
     build_documents_from_dataframe,
     compute_autokonenizer_chunk_size,
@@ -26,6 +28,7 @@ def build_database_from_dataframe(
     embedding_model_name: str = str(EMB_MODEL_NAME),
     collection_name: str = COLLECTION_NAME,
     max_pages: str = None,
+    config: RetrievalConfiguration = None
 ) -> Chroma:
     """
     Args:
@@ -50,7 +53,7 @@ def build_database_from_dataframe(
 
     # chucking of documents
     all_splits = build_documents_from_dataframe(
-        not_null_filtered_df, embedding_model_name=embedding_model_name
+        not_null_filtered_df, embedding_model_name=embedding_model_name, config=config
     )
     logging.info("Storing the Document objects")
 
@@ -61,7 +64,6 @@ def build_database_from_dataframe(
         show_progress=False,
     )
 
-    # collection_name = "insee_data_" + str(EMB_MODEL_NAME.split("/")[-1])
     db = Chroma.from_documents(
         collection_name=collection_name,
         documents=all_splits,
@@ -78,6 +80,8 @@ def build_database_from_csv(
     embedding_model: str = str(EMB_MODEL_NAME),
     collection_name: str = COLLECTION_NAME,
     max_pages: str = None,
+    config: RetrievalConfiguration = None
+
 ) -> Chroma:
     logging.info(f"The database will be stored in {persist_directory}")
 
@@ -110,7 +114,7 @@ def build_database_from_csv(
 
         # chucking of documents
         all_splits = build_documents_from_dataframe(
-            df, embedding_model_name=embedding_model
+            df, embedding_model_name=embedding_model, config=config
         )
         logging.info("Storing the Document objects")
 
@@ -144,7 +148,14 @@ def reload_database_from_local_dir(
     collection_name: str = COLLECTION_NAME,
     persist_directory: str = DB_DIR_LOCAL,
     embed_device: str = EMB_DEVICE,
+    config: RetrievalConfiguration = None
 ) -> Chroma:
+
+    if config is not None:
+        info = parse_collection_name(collection_name)
+        if info is not None:
+            config.chunk_size = info.get("chunk_size")
+            config.overlap_size = info.get("overlap_size")
 
     embedding_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
@@ -164,3 +175,33 @@ def reload_database_from_local_dir(
         f"has been reloaded from directory {persist_directory}"
     )
     return db
+
+def parse_collection_name(collection_name: str):
+    """
+    Parse a concatenated string to extract the embedding model name, chunk size, and overlap size.
+
+    :param concatenated_string: A string in the format 'embeddingmodelname_chunkSize_overlapSize'
+    :return: A dictionary with the parsed values
+    """
+    try:
+        # Split the string by the underscore delimiter
+        parts = collection_name.split('_')
+        
+        # Ensure there are exactly three parts
+        if len(parts) != 3:
+            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
+        
+        # Extract and assign the parts
+        model_name = parts[0]
+        chunk_size = int(parts[1])
+        overlap_size = int(parts[2])
+        
+        # Return the parsed values in a dictionary
+        return {
+            "model_name": model_name,
+            "chunk_size": chunk_size,
+            "overlap_size": overlap_size
+        }
+    except Exception as e:
+        print(f"Error parsing string: {e}")
+        return None

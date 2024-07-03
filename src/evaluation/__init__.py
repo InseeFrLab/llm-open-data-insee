@@ -1,4 +1,4 @@
 from .eval_configuration import RetrievalConfiguration
 from .retrieval_evaluator import RetrievalEvaluator
 from .retrieval_evaluation_measures import RetrievalEvaluationMeasure
-from .utils import use_sbert_retrieval_evaluator, build_chain_retriever_test, choosing_reranker_test
+from .utils import use_sbert_retrieval_evaluator, build_chain_reranker_test, choosing_reranker_test
