@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: inseefrlab/llm-open-data-insee:optimize-deployment
+          image: inseefrlab/llm-open-data-insee:latest
           imagePullPolicy: Always
           env:
             - name: AWS_S3_ENDPOINT

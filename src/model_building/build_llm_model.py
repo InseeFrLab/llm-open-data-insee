@@ -1,31 +1,14 @@
 import os
-import sys
 
-from langchain_huggingface import HuggingFacePipeline
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    BitsAndBytesConfig,
-    TextStreamer,
-    pipeline,
-)
+from langchain_community.llms import VLLM
+from transformers import AutoTokenizer
 
-# from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
-
-# Add the project root directory to sys.path
-root_dir = os.path.abspath(os.path.join(os.path.dirname(""), "./src"))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
 
 
 def build_llm_model(
     model_name,
-    quantization_config: bool = False,
-    config: bool = False,
-    token=None,
-    streaming: bool = False,
+    token: str = None
 ):
     """
     Create the llm model
@@ -37,44 +20,24 @@ def build_llm_model(
         s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
     )
 
-    configs = {
-        # Load quantization config
-        "quantization_config": BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype="float16",
-            bnb_4bit_use_double_quant=False,
-        )
-        if quantization_config
-        else None,
-        # Load LLM config
-        "config": AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token) if config else None,
-        "token": token,
-    }
-
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
-    streamer = None
-    if streaming:
-        streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name,
+                                              use_fast=True,
+                                              device_map="auto",
+                                              token=token
+                                              )
 
     # Check if tokenizer has a pad_token; if not, set it to eos_token
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # Load LLM
-    model = AutoModelForCausalLM.from_pretrained(model_name, **configs)
-
-    # Create a pipeline with  tokenizer and model
-    pipeline_HF = pipeline(
-        task="text-generation",  # TextGenerationPipeline HF pipeline
-        model=model,
-        tokenizer=tokenizer,
+    llm = VLLM(
+        model=model_name,
+        trust_remote_code=True,  # mandatory for hf models
         max_new_tokens=2000,
-        return_full_text=False,
-        device_map="auto",
-        do_sample=True,
-        streamer=streamer,
+        top_k=10,
+        top_p=0.95,
+        temperature=0.2,
     )
-    llm = HuggingFacePipeline(pipeline=pipeline_HF, model_kwargs={"temperature": 0.2})
-    return llm, tokenizer
+
+    return llm
