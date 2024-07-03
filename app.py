@@ -46,8 +46,10 @@ CHATBOT_TEMPLATE = [
 
 @cl.on_chat_start
 async def on_chat_start():
-    await cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!",
-                     disable_feedback=True).send()
+    # Initial message
+    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!", disable_feedback=True)
+    logging.info(f"Thread ID : {init_msg.thread_id}")
+    await init_msg.send()
 
     # Logging configuration
     IS_LOGGING_ON = True
@@ -106,10 +108,9 @@ async def on_chat_start():
     chain = build_chain(retriever, prompt, llm,
                         bool_log=IS_LOGGING_ON,
                         reranker=RERANKING_METHOD)
+    cl.user_session.set("chain", chain)
     logging.info("------chain built")
 
-    # Set RAG chain in chainlit session
-    cl.user_session.set("chain", chain)
 
 
 @cl.on_message
@@ -120,18 +121,19 @@ async def on_message(message: cl.Message):
     # Retrieve the chain from the user session
     chain = cl.user_session.get("chain")
 
-    # Initialize variables
-    msg = cl.Message(content="", disable_feedback=True)
+    # Initialize ChatBot's answer
+    answer_msg = cl.Message(content="", disable_feedback=True)
     sources = list()
     titles = list()
 
+    # Generate ChatBot's answer
     async for chunk in chain.astream(
         message.content,
         config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
     ):
 
         if 'answer' in chunk:
-            await msg.stream_token(chunk["answer"])
+            await answer_msg.stream_token(chunk["answer"])
             generated_answer = chunk["answer"]
 
         if "context" in chunk:
@@ -140,14 +142,16 @@ async def on_message(message: cl.Message):
                 sources.append(doc.metadata.get("source", None))
                 titles.append(doc.metadata.get("title", None))
 
-    await msg.send()
+    await answer_msg.send()
     await cl.sleep(1)
-    msg_sources = cl.Message(content=add_sources_to_messages(message="",
+
+    # Add sources to answer
+    sources_msg = cl.Message(content=add_sources_to_messages(message="",
                                                              sources=sources,
                                                              titles=titles
                                                              ),
                              disable_feedback=False)
-    await msg_sources.send()
+    await sources_msg.send()
 
     # Log Q/A
     if cl.user_session.get("IS_LOGGING_ON"):
@@ -157,7 +161,7 @@ async def on_message(message: cl.Message):
 
         log_qa_to_s3(
             thread_id=message.thread_id,
-            message_id=msg_sources.id,
+            message_id=sources_msg.id,
             user_query=message.content,
             generated_answer=generated_answer,
             retrieved_documents=docs,
