@@ -9,7 +9,7 @@ from langchain_core.prompts import PromptTemplate
 from src.chain_building.build_chain import build_chain
 from src.db_loading import load_retriever
 from src.model_building import build_llm_model
-from src.results_logging.log_conversations import log_qa_to_s3
+from src.results_logging.log_conversations import log_qa_to_s3, log_feedback_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
 # Logging configuration
@@ -176,35 +176,3 @@ class CustomDataLayer(cl_data.BaseDataLayer):
 
 # Enable data persistence for human feedbacks
 cl_data._data_layer = CustomDataLayer()
-
-
-import json
-from datetime import datetime
-
-import s3fs
-
-# S3 configuration
-S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
-s3_fs = s3fs.S3FileSystem(client_kwargs={'endpoint_url': S3_ENDPOINT_URL})
-DIR_LOGS_S3 = os.path.join(os.getenv("S3_BUCKET"), "data", "chatbot_logs")
-
-def log_feedback_to_s3(
-    thread_id: str,
-    message_id: str,
-    feedback_value: int,
-    feedback_comment: str
-):
-    today_date = datetime.now().strftime("%Y-%m-%d")
-    target_path_s3 = os.path.join(DIR_LOGS_S3, today_date, f"{thread_id}.json")
-
-    # Add feedback to existing log
-    with s3_fs.open(target_path_s3, "r") as file_in:
-        existing_log = json.load(file_in)
-    logging.info(f'Thread id : {thread_id}')
-    logging.info(f'Message id : {message_id}')
-    existing_log[message_id]['feedback_value'] = feedback_value
-    existing_log[message_id]['feedback_comment'] = feedback_comment
-
-    # Push to S3
-    with s3_fs.open(target_path_s3, "w") as file_out:
-        json.dump(existing_log, file_out, indent=4)
