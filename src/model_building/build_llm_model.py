@@ -38,6 +38,7 @@ def build_llm_model(
         top_k=10,
         top_p=0.95,
         temperature=0.2,
+        gpu_memory_utilization=0.8
     )
 
     return llm
