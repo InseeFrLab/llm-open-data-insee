@@ -48,7 +48,6 @@ CHATBOT_TEMPLATE = [
 async def on_chat_start():
     # Initial message
     init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!", disable_feedback=True)
-    logging.info(f"Thread ID : {init_msg.thread_id}")
     await init_msg.send()
 
     # Logging configuration
@@ -111,6 +110,7 @@ async def on_chat_start():
     cl.user_session.set("chain", chain)
     logging.info("------chain built")
 
+    logging.info(f"Thread ID : {init_msg.thread_id}")
 
 
 @cl.on_message
