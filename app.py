@@ -9,7 +9,7 @@ from langchain_core.prompts import PromptTemplate
 from src.chain_building.build_chain import build_chain
 from src.db_loading import load_retriever
 from src.model_building import build_llm_model
-from src.results_logging.log_conversations import log_qa_to_s3, log_feedback_to_s3
+from src.results_logging.log_conversations import log_feedback_to_s3, log_qa_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
 # Logging configuration
