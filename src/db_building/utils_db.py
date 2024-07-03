@@ -1,7 +1,7 @@
-import ast
 import re
 from collections import Counter
 
+import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 from tqdm import tqdm
@@ -254,10 +254,9 @@ def paragraph_cleaning(paras, mode=""):
     return " ".join(paras)
 
 
-def theme_parsing(parsed_list):
+def theme_parsing(parsed_list: np.array):
     try:
-        parsed_list = ast.literal_eval(parsed_list)
-        return "/".join(parsed_list)
+        return " / ".join(list(parsed_list))
     except (ValueError, SyntaxError):
         return ""
 
@@ -288,17 +287,12 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
         for _, row in tqdm(table.iterrows()):
             try:
                 xmlstring = str(row["xml_content"])
+                tag = "paragraphe"
 
                 title = str(row["titre"]).replace("\xa0", "")
-                paras = extract_text_tag(xmlstring, tag="paragraphe")
-
-                if len(paras) == 0:  # handle badly indented documents by using an xml parser
-                    tag = "paragraphe"
-                    soup = BeautifulSoup(xmlstring, "xml")
-                    paras = soup.find_all(tag)
-                    para = paragraph_cleaning(paras, mode="bs")
-                else:
-                    para = paragraph_cleaning(paras)
+                soup = BeautifulSoup(xmlstring, "xml")
+                paras = soup.find_all(tag)
+                para = paragraph_cleaning(paras, mode="bs")
 
                 if len(para) > 0:  # filtering to only keep documents with textual informations.
                     results["paragraphs"].append(para)
@@ -310,7 +304,7 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
                     results["collections"].append(row.collection)
                     results["libelleAffichageGeo"].append(row.libelleAffichageGeo)
                     results["intertitres"].append(row.xml_intertitre)
-                    results["authors"].append(theme_parsing(row.xml_auteurs))
+                    results["authors"].append(row.xml_auteurs)
                     results["subtitle"].append(row.sousTitre)
 
                     if url_bool:
