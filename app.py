@@ -101,6 +101,8 @@ async def on_chat_start():
 
     # Build chain
     RERANKING_METHOD = os.getenv("RERANKING_METHOD", None)
+    if RERANKING_METHOD == "":
+        RERANKING_METHOD = None
     chain = build_chain(retriever, prompt, llm,
                         bool_log=IS_LOGGING_ON,
                         reranker=RERANKING_METHOD)

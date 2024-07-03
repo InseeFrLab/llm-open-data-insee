@@ -45,6 +45,8 @@ spec:
             - name: RETRIEVER_ONLY
               value: 'false'
             - name: RERANKING_METHOD
+              # Possibles values : ['BM25', 'Cross-encoder', 'Ensemble']
+              # If left empty, defauts to None
               value: ''
           resources:
             requests:

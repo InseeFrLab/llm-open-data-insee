@@ -41,7 +41,7 @@ def build_chain(retriever, prompt: str, llm=None, bool_log: bool = False, rerank
 
         retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2], weigths=[1 / 2, 1 / 2])
     else:
-        raise ValueError("This reranking method is not handled by the ChatBot or does not exist")
+        raise ValueError(f"Reranking method {reranker} is not implemented.")
 
     # build the first part of the chain
     rag_chain_with_source = RunnableParallel({"context": retrieval_agent, "question": RunnablePassthrough()}).assign(answer=chain)
