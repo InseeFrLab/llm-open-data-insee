@@ -59,9 +59,9 @@ def build_database_from_dataframe(
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=embedding_model_name,
-        model_kwargs={"device": EMB_DEVICE},
+        model_kwargs={"device": EMB_DEVICE, "trust_remote_code" : True},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
-        show_progress=False,
+        show_progress=False
     )
 
     db = Chroma.from_documents(
@@ -120,8 +120,8 @@ def build_database_from_csv(
 
         embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
             model_name=embedding_model,
-            multi_process=True,
-            model_kwargs={"device": EMB_DEVICE},
+            multi_process=False,
+            model_kwargs={"device": EMB_DEVICE, "trust_remote_code": True},
             encode_kwargs={
                 "normalize_embeddings": True
             },  # set True for cosine similarity
@@ -159,8 +159,8 @@ def reload_database_from_local_dir(
 
     embedding_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
-        multi_process=True,
-        model_kwargs={"device": embed_device},
+        multi_process=False,
+        model_kwargs={"device": embed_device, "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},
         show_progress=True,
     )
