@@ -289,23 +289,29 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
                 xmlstring = str(row["xml_content"])
                 tag = "paragraphe"
 
-                title = str(row["titre"]).replace("\xa0", "")
+                # TODO : Essaier de gérer l'encodage de manière plus fluide + Gérer l'encodage aussi pour intertitre,
+                # autheur et sous titre. Idem pour apostrophe
+                # title = str(row.titre).replace("\xa0", "")
                 soup = BeautifulSoup(xmlstring, "xml")
                 paras = soup.find_all(tag)
+
+                # TODO : Faire quelques chose pour rajouter la biblio/citations dans les metadata
                 para = paragraph_cleaning(paras, mode="bs")
 
                 if len(para) > 0:  # filtering to only keep documents with textual informations.
-                    results["paragraphs"].append(para)
+                    results["paragraphs"].append(para.replace("'", "’"))
                     results["id_origin"].append(row.id)
-                    results["title"].append(title)
+                    results["title"].append(str(row.titre).replace("\xa0", ""))
                     results["categories"].append(row.categorie)
                     results["dateDiffusion"].append(row.dateDiffusion)
                     results["themes"].append(theme_parsing(row.theme))
                     results["collections"].append(row.collection)
                     results["libelleAffichageGeo"].append(row.libelleAffichageGeo)
-                    results["intertitres"].append(row.xml_intertitre)
-                    results["authors"].append(row.xml_auteurs)
-                    results["subtitle"].append(row.sousTitre)
+                    results["intertitres"].append(str(row.xml_intertitre).replace("\xa0", ""))
+                    results["authors"].append(str(row.xml_auteurs).replace("\xa0", ""))
+                    results["subtitle"].append(str(row.sousTitre).replace("\xa0", "")) if row.sousTitre is not None else results["subtitle"].append(
+                        row.sousTitre
+                    )
 
                     if url_bool:
                         results["url_source"].append(row["url"])
