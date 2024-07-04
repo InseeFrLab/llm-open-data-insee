@@ -1,5 +1,4 @@
 import logging
-import os
 
 import pandas as pd
 import s3fs
@@ -53,6 +52,7 @@ def build_database_from_dataframe(
     )
 
     # collection_name = "insee_data_" + str(EMB_MODEL_NAME.split("/")[-1])
+    logging.info("Building the vector database from the documents")
     collection_name = COLLECTION_NAME
     db = Chroma.from_documents(
         collection_name=collection_name,
@@ -74,58 +74,52 @@ def build_vector_database(
     max_pages: str = None,
 ) -> Chroma:
     logging.info(f"The database will temporarily be stored in {persist_directory}")
+    logging.info("Start building the database")
 
-    if os.path.exists(data_path):
-        logging.info("Start building the database")
+    data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
 
-        data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
+    if max_pages is not None:
+        data = data.head(max_pages)
 
-        if max_pages is not None:
-            data = data.head(max_pages)
+    logging.info("Extracting paragraphs and metadata")
+    df = extract_paragraphs(data)
 
-        logging.info("Extracting paragraphs and metadata")
-        df = extract_paragraphs(data)
+    # rename the column names:
+    df.rename(
+        columns={
+            "paragraphs": "content",
+            "url_source": "source",
+            "dateDiffusion": "date_diffusion",
+            "id_origin": "insee_id",
+        },
+        inplace=True,
+    )
 
-        # rename the column names:
-        df.rename(
-            columns={
-                "paragraphs": "content",
-                "url_source": "source",
-                "dateDiffusion": "date_diffusion",
-                "id_origin": "insee_id",
-            },
-            inplace=True,
-        )
+    # remove NaN value to empty strings
+    logging.info("Remove NaN values by empty strings")
+    df.fillna(value="", inplace=True)
 
-        # remove NaN value to empty strings
-        logging.info("Remove NaN values by empty strings")
-        df.fillna(value="", inplace=True)
+    # chucking of documents
+    all_splits = build_documents_from_dataframe(df)
+    logging.info("Storing the Document objects")
 
-        # chucking of documents
-        all_splits = build_documents_from_dataframe(df)
-        logging.info("Storing the Document objects")
+    embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
+        model_name=embedding_model,
+        model_kwargs={"device": EMB_DEVICE},
+        encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
+        show_progress=False,
+    )
 
-        embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
-            model_name=embedding_model,
-            model_kwargs={"device": EMB_DEVICE},
-            encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
-            show_progress=False,
-        )
-
-        db = Chroma.from_documents(
-            collection_name=collection_name,
-            documents=all_splits,
-            persist_directory=persist_directory,
-            embedding=embedding_model,
-            client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
-        )
-        logging.info("The database has been built")
-        db.persist()
-        return db
-    else:
-        logging.info("Error Database : database File not found")
-        logging.info(f"The path '{data_path}' does not exist.")
-        return None
+    db = Chroma.from_documents(
+        collection_name=collection_name,
+        documents=all_splits,
+        persist_directory=persist_directory,
+        embedding=embedding_model,
+        client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
+    )
+    logging.info("The database has been built")
+    db.persist()
+    return db
 
 
 def reload_database_from_local_dir(
