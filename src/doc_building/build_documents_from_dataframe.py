@@ -30,12 +30,12 @@ def build_documents_from_dataframe(df: pd.DataFrame) -> list[Document]:
     document_list = loader.load()
 
     HF_TOKENIZER = True
-
+    # TODO : corriger le chunking pour que les chunks soient cohérents
     if HF_TOKENIZER:
         autokenizer, chunk_size, chunk_overlap = compute_autokonenizer_chunk_size(EMB_MODEL_NAME)
 
-        logging.info("chunk size : ", chunk_size)
-        logging.info("chunk overlap size : ", chunk_overlap)
+        logging.info(f"chunk size : {chunk_size}")
+        logging.info(f"chunk overlap size : {chunk_overlap}")
 
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
@@ -45,8 +45,8 @@ def build_documents_from_dataframe(df: pd.DataFrame) -> list[Document]:
         )
     else:
         # do not take into account the  Tokenizer's specs from embeddnig model
-        logging.info("chunk size : ", CHUNK_SIZE)
-        logging.info("chunk overlap size : ", CHUNK_OVERLAP)
+        logging.info(f"chunk size : {CHUNK_SIZE}")
+        logging.info(f"chunk overlap size : {CHUNK_OVERLAP}")
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=MARKDOWN_SEPARATORS)
 
     docs_processed = text_splitter.split_documents(document_list)
