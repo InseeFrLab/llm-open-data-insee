@@ -61,7 +61,6 @@ def build_database_from_dataframe(
         embedding=embedding_model,
     )
     logging.info("The database has been built")
-    db.persist()
     return db
 
 
@@ -118,7 +117,6 @@ def build_vector_database(
         client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
     )
     logging.info("The database has been built")
-    db.persist()
     return db
 
 
