@@ -41,7 +41,7 @@ def main():
             "xml_content",
         ]
     ]
-    subset_table["dateDiffusion"] = pd.to_datetime(subset_table["dateDiffusion"], format="mixed")
+    subset_table["dateDiffusion"] = pd.to_datetime(subset_table["dateDiffusion"], format="mixed").dt.strftime("%Y-%m-%d %H:%M")
     subset_table.to_parquet(f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs)
 
 
