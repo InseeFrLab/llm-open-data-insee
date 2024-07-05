@@ -1,4 +1,3 @@
-import logging
 import os
 import shutil
 import subprocess
@@ -13,13 +12,12 @@ from db_building import build_vector_database
 
 # Global parameters
 EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
-MAX_NUMBER_PAGES = 20
+MAX_NUMBER_PAGES = None
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 
 # Check mlflow URL is defined
 assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
 
-# TODO: Cleaner le code
 # TODO: Bien gérer le log des artifacts et tout ce qu'on veut dans MLflow
 # TODO: Bien faire un script qui s'execute selon divers params
 # TODO: Charger la db sur s3 (avec un paramètre ?)
@@ -51,11 +49,23 @@ with mlflow.start_run() as run:
     mlflow.log_artifacts(Path(CHROMA_DB_LOCAL_DIRECTORY), artifact_path="chroma")
 
     # Log the first chunks of the vector database
-    example_documents = pd.DataFrame(db.get()["documents"][:10], columns=["document"])
+    db_docs = db.get()["documents"]
+    example_documents = pd.DataFrame(db_docs[:10], columns=["document"])
     mlflow.log_table(data=example_documents, artifact_file="example_documents.json")
 
     # Log a result of a similarity search
-    logging.info(f"Test : {db.similarity_search("Quels sont les chiffres du chômages en 2023")}")
+    query = "Quels sont les chiffres du chômages en 2023 ?"
+    retrieved_docs = db.similarity_search(query, k=5)
+    # TODO: What about the duplicates ?
+
+    result_list = []
+    for doc in retrieved_docs:
+        row = {"page_content": doc.page_content}
+        row.update(doc.metadata)
+        result_list.append(row)
+    result = pd.DataFrame(result_list)
+    mlflow.log_table(data=result, artifact_file="retrieved_documents.json")
+    mlflow.log_param("question_asked", query)
 
     # Log parameters and metrics
     mlflow.log_param("collection_name", COLLECTION_NAME)
@@ -63,16 +73,15 @@ with mlflow.start_run() as run:
     mlflow.log_param("model_name", EMB_MODEL_NAME)
     mlflow.log_param("chunk_size", chunk_infos["chunk_size"])
     mlflow.log_param("chunk_overlap", chunk_infos["chunk_overlap"])
-    mlflow.log_metric("number_documents", len(db.get()["documents"]))
+    mlflow.log_metric("number_documents", len(db_docs))
 
-    # Log all Python files in the current directory and its subdirectories
+    # Log environment necessary to reproduce the experiment
     current_dir = Path(".")
     FILES_TO_LOG = [PosixPath("src/build_database.py")] + list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir_path = Path(tmp_dir)
 
-        # Copy Python files to the temporary directory, maintaining internal structure
         for file_path in FILES_TO_LOG:
             relative_path = file_path.relative_to(current_dir)
             destination_path = tmp_dir_path / relative_path.parent
