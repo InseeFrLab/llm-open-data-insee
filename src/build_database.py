@@ -3,24 +3,24 @@ from pathlib import Path
 
 import mlflow
 import s3fs
-from config import COLLECTION_NAME, DB_DIR_S3, EMB_MODEL_NAME
+from config import COLLECTION_NAME, EMB_MODEL_NAME
 from db_building import build_vector_database
-from doc_building import compute_autokonenizer_chunk_size
+import logging
 
 # Global parameters
 EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
 MAX_NUMBER_PAGES = 20
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
-path_s3 = f"s3/projet-llm-insee-open-data/{DB_DIR_S3}"
-
-# if MAX_NUMBER_PAGES is not None:
-#     path_s3 = path_s3.replace("chroma_database", "test_chroma")
-
-# Rustine temporaire
-os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
 
 # Check mlflow URL is defined
 assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
+
+
+# TODO: Cleaner le code
+# TODO: Bien gérer le log des artifacts et tout ce qu'on veut dans MLflow
+# TODO: Bien faire un script qui s'execute selon divers params
+# TODO: Charger la db sur s3 (avec un paramètre ?)
+# TODO: Revoir le chunking
 
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_experiment(EXPERIMENT_NAME)
@@ -29,9 +29,8 @@ mlflow.set_experiment(EXPERIMENT_NAME)
 with mlflow.start_run() as run:
     fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
     # extract chunk size and overlap
-    _, chunk_size, chunk_overlap = compute_autokonenizer_chunk_size(EMB_MODEL_NAME)
 
-    db = build_vector_database(
+    db, chunk_infos = build_vector_database(
         data_path="data/raw_data/applishare_solr_joined.parquet",
         persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
         embedding_model=EMB_MODEL_NAME,
@@ -39,7 +38,8 @@ with mlflow.start_run() as run:
         filesystem=fs,
         max_pages=MAX_NUMBER_PAGES,
     )
-    db.similarity_search("Quels sont les chiffres du chômages en 2023")
+
+    logging.info(f"Test : {db.similarity_search("Quels sont les chiffres du chômages en 2023")}")
 
     # Create a dataset instance to record a few things in MLFlow
     # dataset = mlflow.data.from_pandas(pd.read_csv("data_complete.csv").head(10), source="data_complete.csv")
@@ -49,9 +49,10 @@ with mlflow.start_run() as run:
     mlflow.log_param("collection_name", COLLECTION_NAME)
     mlflow.log_param("number_pages", MAX_NUMBER_PAGES)
     mlflow.log_param("model_name", EMB_MODEL_NAME)
-    mlflow.log_param("chunk_size", chunk_size)
-    mlflow.log_param("chunk_overlap", chunk_overlap)
+    mlflow.log_param("chunk_size", chunk_infos["chunk_size"])
+    mlflow.log_param("chunk_overlap", chunk_infos["chunk_overlap"])
     mlflow.log_metric("number_documents", len(db.get()["documents"]))
+
     # mlflow.log_table(data=first_documents, artifact_file="example_documents.json")
 
     # Log all Python files in the current directory and its subdirectories
@@ -75,5 +76,3 @@ with mlflow.start_run() as run:
 
     chroma_dir = Path(CHROMA_DB_LOCAL_DIRECTORY)
     mlflow.log_artifacts(chroma_dir, artifact_path="chroma")
-
-    mlflow.log_param("path_saving_s3", path_s3)

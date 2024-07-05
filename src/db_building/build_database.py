@@ -4,11 +4,13 @@ import pandas as pd
 import s3fs
 from chromadb.config import Settings
 from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME, S3_BUCKET
+from config import MARKDOWN_SEPARATORS
 from doc_building import build_documents_from_dataframe
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 from .utils_db import extract_paragraphs
+from .document_chunker import chunk_documents
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -72,6 +74,7 @@ def build_vector_database(
     filesystem: s3fs.S3FileSystem,
     max_pages: str = None,
 ) -> Chroma:
+
     logging.info(f"The database will temporarily be stored in {persist_directory}")
     logging.info("Start building the database")
 
@@ -99,7 +102,8 @@ def build_vector_database(
     df.fillna(value="", inplace=True)
 
     # chucking of documents
-    all_splits = build_documents_from_dataframe(df)
+    all_splits, chunk_infos = chunk_documents(data=df, hf_tokenizer_name=EMB_MODEL_NAME, separators=MARKDOWN_SEPARATORS)
+
     logging.info("Storing the Document objects")
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
@@ -117,7 +121,7 @@ def build_vector_database(
         client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
     )
     logging.info("The database has been built")
-    return db
+    return db, chunk_infos
 
 
 def reload_database_from_local_dir(
