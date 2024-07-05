@@ -6,7 +6,9 @@ import pandas as pd
 import logging
 
 
-def chunk_documents(data: pd.DataFrame, hf_tokenizer_name: str = None, chunk_size: int = None, chunk_overlap: int = None, separators: list = None) -> tuple[list[Document], dict]:
+def chunk_documents(
+    data: pd.DataFrame, hf_tokenizer_name: str = None, chunk_size: int = None, chunk_overlap: int = None, separators: list = None
+) -> tuple[list[Document], dict]:
     """
     Chunks documents from a dataframe into smaller pieces using specified tokenizer settings or custom settings.
 
@@ -49,7 +51,7 @@ def chunk_documents(data: pd.DataFrame, hf_tokenizer_name: str = None, chunk_siz
 
 def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
     """
-    Computes the chunk size and chunk overlap for text processing based on the 
+    Computes the chunk size and chunk overlap for text processing based on the
     capabilities of a Hugging Face tokenizer.
 
     Parameters:
@@ -96,12 +98,7 @@ def get_text_splitter(hf_tokenizer_name: str, chunk_size: int, chunk_overlap: in
     else:
         if chunk_size is None or chunk_overlap is None:
             raise ValueError("chunk_size and chunk_overlap must be specified if hf_tokenizer is not provided")
-    
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            separators=separators
-        )
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap, separators=separators)
 
     return text_splitter, {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
-

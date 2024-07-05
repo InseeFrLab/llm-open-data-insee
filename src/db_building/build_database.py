@@ -74,7 +74,6 @@ def build_vector_database(
     filesystem: s3fs.S3FileSystem,
     max_pages: str = None,
 ) -> Chroma:
-
     logging.info(f"The database will temporarily be stored in {persist_directory}")
     logging.info("Start building the database")
 
