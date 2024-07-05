@@ -3,7 +3,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PosixPath
 
 import mlflow
 import pandas as pd
@@ -18,7 +18,6 @@ CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 
 # Check mlflow URL is defined
 assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
-
 
 # TODO: Cleaner le code
 # TODO: Bien gérer le log des artifacts et tout ce qu'on veut dans MLflow
@@ -41,8 +40,6 @@ with mlflow.start_run() as run:
         filesystem=fs,
         max_pages=MAX_NUMBER_PAGES,
     )
-
-    # logging.info(f"Test : {db.similarity_search("Quels sont les chiffres du chômages en 2023")}")
 
     # Log raw dataset built from web4g
     df_raw = pd.read_parquet(f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs).head(10)
@@ -70,11 +67,13 @@ with mlflow.start_run() as run:
 
     # Log all Python files in the current directory and its subdirectories
     current_dir = Path(".")
+    FILES_TO_LOG = [PosixPath("src/build_database.py")] + list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir_path = Path(tmp_dir)
 
         # Copy Python files to the temporary directory, maintaining internal structure
-        for file_path in current_dir.glob("**/*.py"):
+        for file_path in FILES_TO_LOG:
             relative_path = file_path.relative_to(current_dir)
             destination_path = tmp_dir_path / relative_path.parent
             destination_path.mkdir(parents=True, exist_ok=True)
