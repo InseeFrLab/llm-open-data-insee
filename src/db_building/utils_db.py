@@ -242,6 +242,7 @@ def complete_url_builder(table):
     return pd.Series(urls)
 
 
+# TODO : Corriger cette fonction, c'est elle qui fait nimp
 def paragraph_cleaning(paras, mode=""):
     if mode == "bs":  # read a beautiful soup module
         paras = [p.text.replace("\n", " ") for p in paras]
@@ -257,7 +258,7 @@ def paragraph_cleaning(paras, mode=""):
 def theme_parsing(parsed_list: np.array):
     try:
         return " / ".join(list(parsed_list))
-    except (ValueError, SyntaxError):
+    except (ValueError, SyntaxError, TypeError):
         return ""
 
 
@@ -298,6 +299,7 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
                 # TODO : Faire quelques chose pour rajouter la biblio/citations dans les metadata
                 para = paragraph_cleaning(paras, mode="bs")
 
+                # TODO: corriger aussi titre y a rien qui va
                 if len(para) > 0:  # filtering to only keep documents with textual informations.
                     results["paragraphs"].append(para.replace("'", "’"))
                     results["id_origin"].append(row.id)
