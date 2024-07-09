@@ -62,7 +62,7 @@ def extract_tables(row) -> list:
     # Extract tables
     tables = []
     for el in soup.find_all("Tableau"):
-        tables.append({"xml": el.extract().decode(), "id": identifier})
+        tables.append({"xml": el.extract(), "id": identifier})
     return tables
 
 
@@ -129,7 +129,7 @@ def extract_chunks(row) -> list:
                     if tag_chunk is None:
                         break
                     if tag_chunk.text.strip() != "":
-                        chunks.append({"xml": tag_chunk.extract().decode(), "tag": tag, "id": identifier})
+                        chunks.append({"xml": tag_chunk.extract(), "tag": tag, "id": identifier})
                     elif tag_chunk.text.strip() == "":
                         _ = tag_chunk.extract()
             # Here we might be removing some content
@@ -143,7 +143,7 @@ def extract_chunks(row) -> list:
             if chunk is None:
                 break
             if chunk.text.strip() != "":
-                chunks.append({"xml": chunk.extract().decode(), "tag": "other", "id": identifier})
+                chunks.append({"xml": chunk.extract(), "tag": "other", "id": identifier})
             elif chunk.text.strip() == "":
                 _ = chunk.extract()
 
