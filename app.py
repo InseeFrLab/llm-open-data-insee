@@ -80,13 +80,9 @@ async def on_chat_start():
     else:
         logging.info("------ chatbot mode : RAG")
 
-        llm, tokenizer = build_llm_model(
-            model_name=os.getenv("LLM_MODEL_NAME"),
-            quantization_config=True,
-            config=True,
-            token=os.getenv("HF_TOKEN"),
-            streaming=False
-            )
+        llm, tokenizer = build_llm_model(model_name=os.getenv("LLM_MODEL_NAME"),
+                                         token=os.getenv("HF_TOKEN")
+                                        )
         logging.info("------llm loaded")
 
         RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE,
