@@ -50,7 +50,7 @@ def build_vector_database(
     df.fillna(value="", inplace=True)
 
     # chucking of documents
-    all_splits, chunk_infos = chunk_documents(data=df, hf_tokenizer_name=EMB_MODEL_NAME, separators=MARKDOWN_SEPARATORS)
+    all_splits, chunk_infos = chunk_documents(data=df, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)
 
     logging.info("Storing the Document objects")
 

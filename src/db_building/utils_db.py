@@ -321,3 +321,48 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
                 print("issue at this row : ", row)
                 print(f"Error : {e}")
         return pd.DataFrame.from_dict(results)
+
+
+def find_paths_to_key(nested_dict, target_key, current_path=None, paths=None):
+    if current_path is None:
+        current_path = []
+    if paths is None:
+        paths = []
+
+    if isinstance(nested_dict, dict):
+        for key, value in nested_dict.items():
+            new_path = current_path + [key]
+            if key == target_key:
+                paths.append(new_path)
+            else:
+                find_paths_to_key(value, target_key, new_path, paths)
+    elif isinstance(nested_dict, list):
+        for index, item in enumerate(nested_dict):
+            new_path = current_path + [f"[{index}]"]
+            find_paths_to_key(item, target_key, new_path, paths)
+
+    return paths
+
+
+def get_value_from_path(nested_dict, path):
+    current_level = nested_dict
+    try:
+        for key in path:
+            current_level = current_level[key]
+        return current_level
+    except (KeyError, TypeError):
+        return None
+
+
+def create_formatted_string(data):
+    result = []
+
+    for item in data:
+        if 'intertitre' in item:
+            result.append(f"\n### {item['intertitre']}\n\n")
+        if 'paragraphes' in item and 'paragraphe' in item['paragraphes']:
+            for para in item['paragraphes']['paragraphe']:
+                result.append(f"{para}\n")
+
+    return ''.join(result)
+
