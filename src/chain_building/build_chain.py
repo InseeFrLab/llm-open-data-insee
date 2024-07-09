@@ -9,8 +9,8 @@ from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnableP
 from src.reranking import compress_documents_lambda
 from src.utils import format_docs
 
-RERANKER_CROSS_ENCODER = "dangvantuan/CrossEncoder-camembert-large"
-RERANKER_COLBERT = "antoinelouis/colbertv2-camembert-L4-mmarcoFR"
+RERANKER_CROSS_ENCODER = "BAAI/bge-reranker-base"
+#RERANKER_COLBERT = "bclavie/FraColBERTv2"
 
 
 def build_chain(retriever, prompt: str, llm=None, bool_log: bool = False, reranker=None):
@@ -24,22 +24,22 @@ def build_chain(retriever, prompt: str, llm=None, bool_log: bool = False, rerank
         retrieval_agent = retriever
     elif reranker == "BM25":
         retrieval_agent = RunnableParallel({"documents": retriever, "query": RunnablePassthrough()}) | RunnableLambda(
-            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=10)
+            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=5)
         )
     elif reranker == "Cross-encoder":
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
-        compressor = CrossEncoderReranker(model=model, top_n=10)
+        compressor = CrossEncoderReranker(model=model, top_n=5)
         retrieval_agent = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
     elif reranker == "Ensemble":
         # BM25
         reranker_1 = RunnableParallel({"documents": retriever, "query": RunnablePassthrough()}) | RunnableLambda(
-            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=10)
+            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=5)
         )
         # Cross encoder
-        compressor = CrossEncoderReranker(model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER), top_n=10)
+        compressor = CrossEncoderReranker(model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER), top_n=5)
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
-        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2], weigths=[1 / 2, 1 / 2])
+        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2], weigths=[1/2, 1/2])
     else:
         raise ValueError(f"Reranking method {reranker} is not implemented.")
 
@@ -53,13 +53,12 @@ def build_chain_retriever(retriever, reranker=None):
     """
     Build a langchain chain without generation, focusing on retrieving right ressources
     """
-
     # Define the retrieval reranker strategy
     if reranker is None:
         retrieval_agent = retriever
     elif reranker == "BM25":
         retrieval_agent = RunnableParallel({"documents": retriever, "query": RunnablePassthrough()}) | RunnableLambda(
-            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=10)
+            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=5)
         )
     elif reranker == "Cross-encoder":
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
@@ -68,13 +67,13 @@ def build_chain_retriever(retriever, reranker=None):
     elif reranker == "Ensemble":
         # BM25
         reranker_1 = RunnableParallel({"documents": retriever, "query": RunnablePassthrough()}) | RunnableLambda(
-            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=10)
+            lambda r: compress_documents_lambda(documents=r["documents"], query=r["query"], k=5)
         )
         # Cross encoder
-        compressor = CrossEncoderReranker(model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER), top_n=10)
+        compressor = CrossEncoderReranker(model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER), top_n=5)
         reranker_2 = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=retriever)
 
-        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2], weigths=[1 / 2, 1 / 2])
+        retrieval_agent = EnsembleRetriever(retrievers=[reranker_1, reranker_2], weigths=[1/2, 1/2])
     else:
         raise ValueError("This reranking method is not handled by the ChatBot or does not exist")
 

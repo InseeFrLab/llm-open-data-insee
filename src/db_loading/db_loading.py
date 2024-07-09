@@ -23,10 +23,18 @@ def load_retriever(
     persist_directory="data/chroma_db",
     device="cuda",
     collection_name: str = "insee_data",
+    retriever_params: dict = {}
 ):
     # Load vector database
-    vectorstore = create_vectorstore(emb_model_name=emb_model_name, persist_directory=persist_directory, device=device)
+    vectorstore = create_vectorstore(
+        emb_model_name=emb_model_name, 
+        persist_directory=persist_directory, 
+        device=device
+        )
+
+    search_type = retriever_params.get("search_type", "similarity")
+    search_kwargs = retriever_params.get("search_kwargs", {"k": 50})
 
     # Set up a retriever
-    retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"score_threshold": 0.5, "k": 10})
+    retriever = vectorstore.as_retriever(search_type, search_kwargs)
     return retriever

@@ -75,7 +75,12 @@ async def on_chat_start():
         llm = None
         prompt = None
         retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
-                                   persist_directory="./data/chroma_db")
+                                   persist_directory="./data/chroma_db",
+                                    retriever_params={
+                                        "search_type": "similarity",
+                                        "search_kwargs": {"k": 50}
+                                        }
+                                    )
         logging.info("------retriever loaded")
     else:
         logging.info("------ chatbot mode : RAG")
@@ -97,7 +102,12 @@ async def on_chat_start():
                                 template=RAG_PROMPT_TEMPLATE)
         logging.info("------prompt loaded")
         retriever = load_retriever(emb_model_name=os.getenv("EMB_MODEL_NAME"),
-                                   persist_directory="./data/chroma_db")
+                                   persist_directory= "./data/chroma_db", 
+                                   retriever_params={
+                                        "search_type": "similarity",
+                                        "search_kwargs": {"k": 50}
+                                        }
+                                    )
         logging.info("------retriever loaded")
 
     # Build chain
