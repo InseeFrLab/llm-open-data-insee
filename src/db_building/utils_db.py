@@ -323,33 +323,46 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame.from_dict(results)
 
 
-def find_paths_to_key(nested_dict, target_key, current_path=None, paths=None):
+def find_paths_to_key(nested_dict, target_key, current_path=None, paths_dict=None):
     if current_path is None:
         current_path = []
-    if paths is None:
-        paths = []
+    if paths_dict is None:
+        paths_dict = {}
 
     if isinstance(nested_dict, dict):
         for key, value in nested_dict.items():
             new_path = current_path + [key]
             if key == target_key:
-                paths.append(new_path)
+                top_level_key = current_path[0] if current_path else key
+                if top_level_key not in paths_dict:
+                    paths_dict[top_level_key] = []
+                paths_dict[top_level_key].append(new_path)
             else:
-                find_paths_to_key(value, target_key, new_path, paths)
+                find_paths_to_key(value, target_key, new_path, paths_dict)
     elif isinstance(nested_dict, list):
         for index, item in enumerate(nested_dict):
-            new_path = current_path + [f"[{index}]"]
-            find_paths_to_key(item, target_key, new_path, paths)
+            new_path = current_path + [f"{index}"]
+            find_paths_to_key(item, target_key, new_path, paths_dict)
 
-    return paths
+    return paths_dict
 
 
 def get_value_from_path(nested_dict, path):
     current_level = nested_dict
     try:
         for key in path:
-            current_level = current_level[key]
+            if key.isdigit():
+                current_level = current_level[int(key)]
+            else:
+                current_level = current_level[key]
+
+        if isinstance(current_level, dict):
+            # When there is one single dictionnary at the end of the path, we return it as a list
+            return [current_level]
+        else:
+            return current_level
         return current_level
+
     except (KeyError, TypeError):
         return None
 
@@ -365,4 +378,3 @@ def create_formatted_string(data):
                 result.append(f"{para}\n")
 
     return ''.join(result)
-
