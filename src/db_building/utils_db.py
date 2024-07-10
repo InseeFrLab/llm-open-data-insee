@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 from tqdm import tqdm
+import unicodedata
 
 HIGH_LEVEL_TAGS = [
     "description-generale-variables",
@@ -323,7 +324,7 @@ def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame.from_dict(results)
 
 
-def find_paths_to_key(nested_dict, target_key, current_path=None, paths_dict=None):
+def find_paths_to_key(nested_dict, target_key, current_path=None, paths_dict=None) -> dict[str, list]:
     if current_path is None:
         current_path = []
     if paths_dict is None:
@@ -347,7 +348,7 @@ def find_paths_to_key(nested_dict, target_key, current_path=None, paths_dict=Non
     return paths_dict
 
 
-def get_value_from_path(nested_dict, path):
+def get_value_from_path(nested_dict, path) -> list[dict]:
     current_level = nested_dict
     try:
         for key in path:
@@ -367,14 +368,46 @@ def get_value_from_path(nested_dict, path):
         return None
 
 
-def create_formatted_string(data):
-    result = []
+def create_formatted_string(data) -> str:
+    formatted_string = []
 
     for item in data:
         if 'intertitre' in item:
-            result.append(f"\n### {item['intertitre']}\n\n")
+            formatted_string.append(f"\n### {item['intertitre']}\n\n")
         if 'paragraphes' in item and 'paragraphe' in item['paragraphes']:
             for para in item['paragraphes']['paragraphe']:
-                result.append(f"{para}\n")
+                formatted_string.append(f"{para}\n")
 
-    return ''.join(result)
+    return ''.join(formatted_string)
+
+
+def extract_high_level_tags(element, tags_to_ignore) -> list[str]:
+    return [child.name for child in element.find_all(recursive=False) if child.name not in tags_to_ignore]
+
+
+def recursive_extract(element, tags_to_ignore) -> dict[str, str | dict]:
+    # Initialize a dictionary to hold extracted data
+    data = {}
+    
+    # Extract high-level tags from the current element
+    high_level_tags = extract_high_level_tags(element, tags_to_ignore)
+    
+    # Process each high-level tag
+    for tag in high_level_tags:
+        sub_elements = element.find_all(tag, recursive=False)
+        if tag != "paragraphe":
+            if len(sub_elements) > 1:
+                data[tag] = [recursive_extract(sub_element, tags_to_ignore) for sub_element in sub_elements]
+            else:
+                sub_element = sub_elements[0]
+                if sub_element.find_all(recursive=False):
+                    # If the sub-element has children, recurse into it
+                    data[tag] = recursive_extract(sub_element, tags_to_ignore)
+                else:
+                    # If the sub-element is a leaf node, extract its text
+                    data[tag] = unicodedata.normalize("NFKD", sub_element.text.strip())
+        else:
+            data[tag] = [unicodedata.normalize("NFKD", sub_element.text.strip()) for sub_element in sub_elements]
+            
+
+    return data
