@@ -2,6 +2,7 @@ import logging
 
 import pandas as pd
 from config import CHUNK_OVERLAP, CHUNK_SIZE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS
+from evaluation import RetrievalConfiguration
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
@@ -16,7 +17,7 @@ def compute_autokonenizer_chunk_size(embedding_model: str = EMB_MODEL_NAME):
     return autokenizer, chunk_size, chunk_overlap
 
 
-def build_documents_from_dataframe(df: pd.DataFrame) -> list[Document]:
+def build_documents_from_dataframe(df: pd.DataFrame, embedding_model_name=EMB_MODEL_NAME, config: RetrievalConfiguration = None) -> list[Document]:
     """
     df : DataFrame containing page content
     but also additional information which are documents metadata
@@ -37,16 +38,24 @@ def build_documents_from_dataframe(df: pd.DataFrame) -> list[Document]:
         logging.info("chunk size : ", chunk_size)
         logging.info("chunk overlap size : ", chunk_overlap)
 
+        if config is not None:
+            config.chunk_size = CHUNK_SIZE
+            config.overlap_size = CHUNK_OVERLAP
+            config.collection = config.embedding_model_name.split("/")[-1] + "_" + str(config.chunk_size) + "_" + str(config.overlap_size)
+            logging.info(f"The associated collection name : {config.collection}")
+
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             separators=MARKDOWN_SEPARATORS,
         )
+
     else:
         # do not take into account the  Tokenizer's specs from embeddnig model
         logging.info("chunk size : ", CHUNK_SIZE)
         logging.info("chunk overlap size : ", CHUNK_OVERLAP)
+
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=MARKDOWN_SEPARATORS)
 
     docs_processed = text_splitter.split_documents(document_list)
