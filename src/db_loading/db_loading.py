@@ -33,8 +33,11 @@ def load_retriever(
         )
 
     search_type = retriever_params.get("search_type", "similarity")
-    search_kwargs = retriever_params.get("search_kwargs", {"k": 50})
+    search_kwargs = retriever_params.get("search_kwargs", {'k': 20})
 
     # Set up a retriever
-    retriever = vectorstore.as_retriever(search_type, search_kwargs)
+    retriever = vectorstore.as_retriever(
+        search_type="similarity", 
+        search_kwargs=search_kwargs
+    )
     return retriever

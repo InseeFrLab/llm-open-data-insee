@@ -10,7 +10,7 @@ def str_to_bool(value):
 
 
 def format_docs(docs: list):
-    return "\n\n".join([f"Doc {i}:\nTitle: {doc.metadata["title"]}\nContent:\n{doc.page_content}"
+    return "\n\n".join([f"Doc {i + 1}:\nTitle: {doc.metadata["title"]}\nContent:\n{doc.page_content}"
                         for i, doc in enumerate(docs)])
 
 
