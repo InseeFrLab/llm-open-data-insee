@@ -7,5 +7,9 @@ __all__ = [
     "RetrievalConfiguration",
     "RetrievalEvaluator",
     "use_sbert_retrieval_evaluator",
+    "RetrievalEvaluationMeasure",
+    "build_chain_reranker_test",
+    "choosing_reranker_test",
+    
 ]
 

@@ -1,18 +1,14 @@
 import logging
-
 import time 
 import pandas as pd
 import numpy as np
-from tqdm import tqdm 
 import os
 
 from typing import Dict, Tuple
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores.chroma import Chroma
-from langchain_community.document_loaders import DataFrameLoader
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

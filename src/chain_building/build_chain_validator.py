@@ -1,11 +1,10 @@
-from langchain.agents import Agent, AgentExecutor, Tool
 from langchain.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda
 
 # Prompt Template with In-Context Learning and Justification
 EVAL_INSTRUCTION = """
-L'INSEE (Institut National de la Statistique et des Études Économiques) est l'organisme national chargé de la production, de l'analyse et de la publication des statistiques officielles en France. Les domaines d'expertise de l'INSEE incluent, mais ne sont pas limités à :
+L'INSEE (Institut National de la Statistique et des Études Économiques) est l'organisme national 
+chargé de la production, de l'analyse et de la publication des statistiques officielles en France. Les domaines d'expertise de l'INSEE incluent, mais ne sont pas limités à :
 
 1. Démographie et population
 2. Emploi et chômage

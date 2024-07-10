@@ -26,7 +26,7 @@ def build_llm_model(
     config: bool = False,
     token=None,
     streaming: bool = False,
-    generation_args: dict = {},
+    generation_args: dict = None,
 ):
     """
     Create the llm model

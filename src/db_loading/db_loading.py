@@ -23,7 +23,7 @@ def load_retriever(
     persist_directory="data/chroma_db",
     device="cuda",
     collection_name: str = "insee_data",
-    retriever_params: dict = {}
+    retriever_params: dict = None
 ):
     # Load vector database
     vectorstore = create_vectorstore(
@@ -32,7 +32,6 @@ def load_retriever(
         device=device
         )
 
-    search_type = retriever_params.get("search_type", "similarity")
     search_kwargs = retriever_params.get("search_kwargs", {'k': 20})
 
     # Set up a retriever

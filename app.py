@@ -226,10 +226,7 @@ async def check_query_relevance(validator, query):
     result = await validator.ainvoke(
         query, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler()])
     )
-    if result:
-        return True
-    else:
-        return False
+    return result
 
 class CustomDataLayer(cl_data.BaseDataLayer):
     async def upsert_feedback(self, feedback: cl_data.Feedback) -> str:

@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from abc import ABC
 from typing import List, Dict, Optional, Any
 import copy
-from config import EMB_MODEL_NAME, COLLECTION_NAME
+from config import EMB_MODEL_NAME
 
 @dataclass
 class EvalConfiguration(ABC):
