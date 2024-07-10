@@ -1,11 +1,11 @@
 import re
+import unicodedata
 from collections import Counter
 
 import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 from tqdm import tqdm
-import unicodedata
 
 HIGH_LEVEL_TAGS = [
     "description-generale-variables",
@@ -352,10 +352,7 @@ def get_value_from_path(nested_dict, path) -> list[dict]:
     current_level = nested_dict
     try:
         for key in path:
-            if key.isdigit():
-                current_level = current_level[int(key)]
-            else:
-                current_level = current_level[key]
+            current_level = current_level[int(key)] if key.isdigit() else current_level[key]
 
         if isinstance(current_level, dict):
             # When there is one single dictionnary at the end of the path, we return it as a list
@@ -372,13 +369,13 @@ def create_formatted_string(data) -> str:
     formatted_string = []
 
     for item in data:
-        if 'intertitre' in item:
+        if "intertitre" in item:
             formatted_string.append(f"\n### {item['intertitre']}\n\n")
-        if 'paragraphes' in item and 'paragraphe' in item['paragraphes']:
-            for para in item['paragraphes']['paragraphe']:
+        if "paragraphes" in item and "paragraphe" in item["paragraphes"]:
+            for para in item["paragraphes"]["paragraphe"]:
                 formatted_string.append(f"{para}\n")
 
-    return ''.join(formatted_string)
+    return "".join(formatted_string)
 
 
 def extract_high_level_tags(element, tags_to_ignore) -> list[str]:
@@ -388,10 +385,10 @@ def extract_high_level_tags(element, tags_to_ignore) -> list[str]:
 def recursive_extract(element, tags_to_ignore) -> dict[str, str | dict]:
     # Initialize a dictionary to hold extracted data
     data = {}
-    
+
     # Extract high-level tags from the current element
     high_level_tags = extract_high_level_tags(element, tags_to_ignore)
-    
+
     # Process each high-level tag
     for tag in high_level_tags:
         sub_elements = element.find_all(tag, recursive=False)
@@ -408,6 +405,15 @@ def recursive_extract(element, tags_to_ignore) -> dict[str, str | dict]:
                     data[tag] = unicodedata.normalize("NFKD", sub_element.text.strip())
         else:
             data[tag] = [unicodedata.normalize("NFKD", sub_element.text.strip()) for sub_element in sub_elements]
-            
 
+    return data
+
+
+def format_chapo(data) -> str:
+    if len(data["chapo"]["paragraphe"]) == 1:
+        chapo = data["chapo"]["paragraphe"][0]
+    else:
+        raise ValueError("Multiple chapo paragraphs found")
+    formatted_chapo = f"## Résumé \n {chapo}\n\n"
+    data["chapo"] = formatted_chapo
     return data
