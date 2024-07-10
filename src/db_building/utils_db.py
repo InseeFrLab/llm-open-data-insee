@@ -365,7 +365,7 @@ def get_value_from_path(nested_dict, path) -> list[dict]:
         return None
 
 
-def create_formatted_string(data) -> str:
+def create_formatted_string(data: dict) -> str:
     formatted_string = []
 
     for item in data:
@@ -409,11 +409,63 @@ def recursive_extract(element, tags_to_ignore) -> dict[str, str | dict]:
     return data
 
 
-def format_chapo(data) -> str:
-    if len(data["chapo"]["paragraphe"]) == 1:
-        chapo = data["chapo"]["paragraphe"][0]
+def format_chapo(data: dict) -> dict:
+    if len(data["chapo"]) == 1:
+        chapo = "\n".join(data["chapo"]["paragraphe"])
     else:
         raise ValueError("Multiple chapo paragraphs found")
     formatted_chapo = f"## Résumé \n {chapo}\n\n"
     data["chapo"] = formatted_chapo
     return data
+
+
+def format_external_links(data: dict) -> dict:
+    if len(data["liens-transverses"]) == 1:
+        biblio = "\n".join(data["liens-transverses"]["paragraphe"])
+    else:
+        raise ValueError("Multiple liens-transverses paragraphs found")
+    formatted_biblio = f"## Références \n {biblio}"
+    data["liens-transverses"] = formatted_biblio
+    return data
+
+
+def format_blocs(data: dict) -> dict:
+    PATHS_WITH_BLOC = find_paths_to_key(data, "bloc")
+
+    for high_level_tag, paths in PATHS_WITH_BLOC.items():
+        # When multiple paths are found, we merge them all into one (case len(paths) > 1)
+        # usually the cases for "definitions" blocs and encadres blocs
+        dict_to_format = [el for path in paths for el in get_value_from_path(data, path)] if len(paths) > 1 else get_value_from_path(data, paths[0])
+        formatted_string = create_formatted_string(dict_to_format)
+        data[high_level_tag] = formatted_string
+    return data
+
+
+def format_page(data: dict) -> str:
+    parts = [
+        f"{data.get('titre', '')}",
+        f"{data.get('sous-titre', '')}",
+        f"{data.get('auteur', '')}\n",
+        "## Résumé",
+        f"{data.get('chapo', '')}\n",
+        f"{data.get('blocs', '')}",
+    ]
+
+    if "sources" in data and data["sources"]:
+        parts.append("## Sources")
+        parts.append(data["sources"])
+
+    if "definitions" in data and data["definitions"]:
+        parts.append("## Définitions")
+        parts.append(data["definitions"])
+
+    if "encadres" in data and data["encadres"]:
+        parts.append("## Encadres")
+        parts.append(data["encadres"])
+
+    if "liens-transverses" in data and data["liens-transverses"]:
+        parts.append("## Références")
+        parts.append(data["liens-transverses"])
+
+    formatted_page = "\n".join(parts)
+    return formatted_page.strip()
