@@ -4,7 +4,8 @@ from langchain_core.runnables import RunnableLambda
 # Prompt Template with In-Context Learning and Justification
 EVAL_INSTRUCTION = """
 L'INSEE (Institut National de la Statistique et des Études Économiques) est l'organisme national 
-chargé de la production, de l'analyse et de la publication des statistiques officielles en France. Les domaines d'expertise de l'INSEE incluent, mais ne sont pas limités à :
+chargé de la production, de l'analyse et de la publication des statistiques officielles en France. 
+Les domaines d'expertise de l'INSEE incluent, mais ne sont pas limités à :
 
 1. Démographie et population
 2. Emploi et chômage
@@ -15,18 +16,21 @@ chargé de la production, de l'analyse et de la publication des statistiques off
 7. Conditions de vie et pauvreté
 8. Éducation et formation
 
-Évaluez la pertinence de la question utilisateur suivante en vous assurant qu'elle est liée à l'un des domaines d'expertise de l'INSEE. Répondez par "Oui" ou "Non" et fournissez une brève justification.
+Évaluez la pertinence de la question utilisateur suivante en vous assurant qu'elle est liée à l'un des domaines d'expertise de l'INSEE. 
+Répondez par "Oui" ou "Non" et fournissez une brève justification.
 
 Exemples :
 Question: "Quel est le taux de chômage en France pour l'année 2023 ?"
-Réponse: "Oui. Cette question est pertinente car elle concerne les statistiques sur l'emploi et le chômage, qui sont des domaines d'expertise de l'INSEE."
+Réponse: "Oui. Cette question est pertinente car elle concerne les statistiques sur l'emploi et le chômage, 
+qui sont des domaines d'expertise de l'INSEE."
 
 Question: "Quelle est la recette pour faire un gâteau au chocolat ?"
 Réponse: "Non. Cette question n'est pas pertinente car elle concerne la cuisine, qui n'est pas un domaine d'expertise de l'INSEE."
 """
 
 USER_INSTRUCTION = """Question utilisateur : {query}
-Cette question est-elle pertinente par rapport aux domaines d'expertise de l'INSEE ? Répondez par "Oui" ou "Non" et fournissez une brève justification."""
+Cette question est-elle pertinente par rapport aux domaines d'expertise de l'INSEE ? 
+Répondez par "Oui" ou "Non" et fournissez une brève justification."""
 
 
 EVAL_TEMPLATE = [
@@ -43,17 +47,8 @@ def build_chain_validator(evaluator_llm=None, tokenizer=None):
     """
     defining a chain to check if a given query is related to INSEE expertise.
     """
-    is_query_related_to_public_statistics = (
-        lambda generation: generation.lower().find("oui") != -1
-    )
 
-    prompt_template = tokenizer.apply_chat_template(
-        EVAL_TEMPLATE, tokenize=False, add_generation_prompt=True
-    )
+    prompt_template = tokenizer.apply_chat_template(EVAL_TEMPLATE, tokenize=False, add_generation_prompt=True)
     prompt = PromptTemplate(template=prompt_template, input_variables=["query"])
 
-    return (
-        prompt
-        | evaluator_llm
-        | RunnableLambda(func=is_query_related_to_public_statistics)
-    )
+    return prompt | evaluator_llm | RunnableLambda(func=lambda generation: generation.lower().find("oui") != -1)

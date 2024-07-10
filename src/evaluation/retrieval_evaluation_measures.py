@@ -1,6 +1,7 @@
 # retrieval_evaluation_measures.py
 import numpy as np
 
+
 class RetrievalEvaluationMeasure:
     ## Measures #############
 
@@ -8,11 +9,9 @@ class RetrievalEvaluationMeasure:
         intersection = set(retrieved) & set(relevant)
         return np.round(len(intersection) / len(relevant), 3) if len(relevant) > 0 else 0
 
-
     def precision(self, retrieved, relevant):
         intersection = set(retrieved) & set(relevant)
         return np.round(len(intersection) / len(retrieved), 3) if len(retrieved) > 0 else 0
-
 
     def hit_rate(self, retrieved, relevant):
         """
@@ -22,7 +21,6 @@ class RetrievalEvaluationMeasure:
         total_retrieved = len(retrieved)
         hit_rate = correct_retrieved / total_retrieved
         return hit_rate
-
 
     def mrr(self, retrieved, relevant):
         """
@@ -43,7 +41,7 @@ class RetrievalEvaluationMeasure:
             k = len(relevance_scores)
         relevance_scores = np.asfarray(relevance_scores)[:k]
         return np.sum(relevance_scores / np.log2(np.arange(2, relevance_scores.size + 2)))
-    
+
     def idcg(self, relevance_scores, k=None):
         if k is None:
             k = len(relevance_scores)

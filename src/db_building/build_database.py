@@ -5,11 +5,11 @@ import pandas as pd
 from chromadb.config import Settings
 from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME
 from doc_building import build_documents_from_dataframe, compute_autokonenizer_chunk_size
+from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 from .utils_db import extract_paragraphs
-from evaluation import RetrievalConfiguration
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -23,7 +23,7 @@ def build_database_from_dataframe(
     embedding_model: str = str(EMB_MODEL_NAME),
     collection_name: str = COLLECTION_NAME,
     max_pages: str = None,
-    config: RetrievalConfiguration = None
+    config: RetrievalConfiguration = None,
 ) -> Chroma:
     """
     Args:
@@ -47,16 +47,12 @@ def build_database_from_dataframe(
     )
 
     # chucking of documents
-    all_splits = build_documents_from_dataframe(
-        not_null_filtered_df, embedding_model_name=embedding_model, config=config
-    )
+    all_splits = build_documents_from_dataframe(not_null_filtered_df, embedding_model_name=embedding_model, config=config)
     logging.info("Storing the Document objects")
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=embedding_model,
-        model_kwargs={"device": EMB_DEVICE, 
-                      "trust_remote_code" : True
-                     },
+        model_kwargs={"device": EMB_DEVICE, "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )
@@ -70,7 +66,7 @@ def build_database_from_dataframe(
         embedding=embedding_model,
     )
     logging.info("The database has been built")
-  
+
     return db
 
 
@@ -142,15 +138,13 @@ def reload_database_from_local_dir(
     collection_name: str = COLLECTION_NAME,
     persist_directory: str = DB_DIR_LOCAL,
     embed_device: str = EMB_DEVICE,
-    config: RetrievalConfiguration = None
+    config: RetrievalConfiguration = None,
 ) -> Chroma:
-
     if config is not None:
         info = parse_collection_name(collection_name)
         if info is not None:
             config.chunk_size = info.get("chunk_size")
             config.overlap_size = info.get("overlap_size")
-
 
     embedding_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
@@ -168,6 +162,7 @@ def reload_database_from_local_dir(
     logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
     return db
 
+
 def parse_collection_name(collection_name: str):
     """
     Parse a concatenated string to extract the embedding model name, chunk size, and overlap size.
@@ -176,7 +171,7 @@ def parse_collection_name(collection_name: str):
     """
     try:
         # Split the string by the underscore delimiter
-        parts = collection_name.split('_')
+        parts = collection_name.split("_")
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
@@ -188,11 +183,7 @@ def parse_collection_name(collection_name: str):
         overlap_size = int(parts[2])
 
         # Return the parsed values in a dictionary
-        return {
-            "model_name": model_name,
-            "chunk_size": chunk_size,
-            "overlap_size": overlap_size
-        }
+        return {"model_name": model_name, "chunk_size": chunk_size, "overlap_size": overlap_size}
     except Exception as e:
         print(f"Error parsing string: {e}")
         return None

@@ -1,29 +1,22 @@
 import logging
-import time 
-import pandas as pd
-import numpy as np
 import os
+import time
 
-from typing import Dict, Tuple
+import chromadb
+import numpy as np
+import pandas as pd
+from config import EMB_DEVICE, EMB_MODEL_NAME
+from db_building import build_database_from_dataframe, reload_database_from_local_dir
+from langchain_community.vectorstores.chroma import Chroma
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
-from langchain_community.vectorstores.chroma import Chroma
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
 from evaluation.eval_configuration import RetrievalConfiguration
-from evaluation.retrieval_evaluation_measures import  RetrievalEvaluationMeasure
-from evaluation.utils import build_chain_reranker_test, choosing_reranker_test
-
-from config import EMB_MODEL_NAME, MODEL_NAME, EMB_DEVICE
-from db_building import build_database_from_dataframe, reload_database_from_local_dir
-
-import chromadb
+from evaluation.retrieval_evaluation_measures import RetrievalEvaluationMeasure
+from evaluation.utils import build_chain_reranker_test
 
 ## Utility function ##
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chroma:
     """
@@ -51,10 +44,10 @@ def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chr
             collection_name=collection_name,
             persist_directory=persist_directory,
             embed_device=EMB_DEVICE,
-            config=config
+            config=config,
         )
         logging.info("The database already exists")
-    else: 
+    else:
         logging.info("The database will be created")
         raw_ref_database = pd.read_csv(path_data)
         vector_db = build_database_from_dataframe(
@@ -62,54 +55,48 @@ def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chr
             persist_directory=persist_directory,
             embedding_model_name=embedding_model_name,
             collection_name=collection_name,
-            config=config
+            config=config,
         )
-        
+
     return vector_db
+
 
 ## Main class ###########
 
-class RetrievalEvaluator:
 
+class RetrievalEvaluator:
     @staticmethod
-    def run(
-        eval_configurations: list[RetrievalConfiguration],
-        eval_dict: Dict[str, pd.DataFrame]
-    ) -> Dict[str, Tuple[csr_matrix, Dict, Dict, Dict]]:
+    def run(eval_configurations: list[RetrievalConfiguration], eval_dict: dict[str, pd.DataFrame]) -> dict[str, tuple[csr_matrix, dict, dict, dict]]:
         """
         Goal : Evaluate the retrieval performance of a series of configurations.
         eval_dict : dictionary containing a DataFrame with at least a question and source columns.
         """
         results = {}
         ir_measures = RetrievalEvaluationMeasure()
-       
+
         for df_name, df in eval_dict.items():
             results[df_name] = {}
             for configuration in eval_configurations:
                 t0 = time.time()
                 config_name = configuration.name
-                logging.info(
-                    f"Start of evaluation run for dataset: {df_name} and configuration: {config_name}"
-                )
+                logging.info(f"Start of evaluation run for dataset: {df_name} and configuration: {config_name}")
                 results[df_name][config_name] = {}
 
                 # Load ref Corpus
-                vector_db = build_vector_database(
-                    path_data=configuration.database_path, config=configuration
-                )
+                vector_db = build_vector_database(path_data=configuration.database_path, config=configuration)
 
                 # create a retriever
                 # note : define the type of search "similarity", "mmr", "similarity_score_threshold"
                 # "mmr" promote diversity with 'lambda_mult': 0 (max diversity) - 1 (min diversity)
                 # 'fetch_k': fetch more documents for the MMR algo
-    
-                #retrieve queries
+
+                # retrieve queries
                 queries = [q for q in list(df["question"])]
-              
-                #choose reranker based on configuration
+
+                # choose reranker based on configuration
                 reranker = build_chain_reranker_test(configuration)
                 logging.info("Retriever sucessfully built")
-                #embed queries 
+                # embed queries
                 embedded_queries = vector_db.embeddings.embed_documents(queries)
                 logging.info("Queries have been embedded")
 
@@ -119,31 +106,20 @@ class RetrievalEvaluator:
                 all_individual_ndcgs = []
 
                 for i, row in tqdm(df.iterrows()):
-                    
                     individual_recalls = []
                     individual_precisions = []
                     individual_mrrs = []
                     individual_ndcgs = []
-        
+
                     golden_source = row.get("source_doc")
 
                     # based retriever
-                    retrieved_docs = vector_db.similarity_search_by_vector(
-                        embedding=embedded_queries[i], 
-                        k=max(configuration.k_values)
-                    )
-                    
-                    # reranker
-                    retrieved_docs = reranker.invoke(
-                        {
-                            "documents": retrieved_docs,
-                            "query": queries[i]
-                        }
-                    )
+                    retrieved_docs = vector_db.similarity_search_by_vector(embedding=embedded_queries[i], k=max(configuration.k_values))
 
-                    retrieved_sources = [
-                        doc.metadata["source"] for doc in retrieved_docs
-                    ]
+                    # reranker
+                    retrieved_docs = reranker.invoke({"documents": retrieved_docs, "query": queries[i]})
+
+                    retrieved_sources = [doc.metadata["source"] for doc in retrieved_docs]
 
                     for k in configuration.k_values:
                         recall_at_k = ir_measures.recall(retrieved_sources[:k], [golden_source])
@@ -160,20 +136,16 @@ class RetrievalEvaluator:
                     all_individual_precisions.append(individual_precisions)
                     all_individual_mrrs.append(individual_mrrs)
                     all_individual_ndcgs.append(individual_ndcgs)
-                    
+
                 # length of all_individual_recalls/precisions equals len(configuration.k_values)
                 assert len(df) == len(all_individual_recalls), "nb of individuals error"
-                logging.info(
-                    f"      length of all_individual recalls is {len(all_individual_recalls)}"
-                )
-                all_k_precisions = list(zip(*all_individual_precisions))
-                all_k_recalls = list(zip(*all_individual_recalls))
-                all_k_mrrs = list(zip(*all_individual_mrrs))
-                all_k_ndcgs = list(zip(*all_individual_ndcgs))
+                logging.info(f"      length of all_individual recalls is {len(all_individual_recalls)}")
+                all_k_precisions = list(zip(*all_individual_precisions, strict=False))
+                all_k_recalls = list(zip(*all_individual_recalls, strict=False))
+                all_k_mrrs = list(zip(*all_individual_mrrs, strict=False))
+                all_k_ndcgs = list(zip(*all_individual_ndcgs, strict=False))
 
-                assert len(configuration.k_values) == len(
-                    all_k_recalls
-                ), "Number of ks error"
+                assert len(configuration.k_values) == len(all_k_recalls), "Number of ks error"
                 results[df_name][config_name]["recall"] = {}
                 results[df_name][config_name]["precision"] = {}
                 results[df_name][config_name]["mrr"] = {}
@@ -184,13 +156,13 @@ class RetrievalEvaluator:
                     results[df_name][config_name]["precision"][k] = np.mean(all_k_precisions[i])
                     results[df_name][config_name]["mrr"][k] = np.mean(all_k_mrrs[i])
                     results[df_name][config_name]["ndcg"][k] = np.mean(all_k_ndcgs[i])
-                
+
                 results[df_name][config_name]["runtime"] = time.time() - t0
 
         return results
 
     @staticmethod
-    def build_reference_matrix(df: pd.DataFrame) -> Tuple[csr_matrix, Dict, Dict, Dict]:
+    def build_reference_matrix(df: pd.DataFrame) -> tuple[csr_matrix, dict, dict, dict]:
         unique_questions = pd.unique(df["question"])
         unique_sources = pd.unique(df["source_doc"])
         unique_objects = np.concatenate([unique_questions, unique_sources])
@@ -201,12 +173,8 @@ class RetrievalEvaluator:
         # for questions use "standard" indices (indices relative to the whole set)
         digit_df["question"] = df["question"].replace(val_to_id, inplace=False)
         # for source docs use "relative" numeric indices ("relative" to the matrix)
-        source_val_to_local_id = {
-            v: local_id for local_id, v in enumerate(unique_sources)
-        }
-        digit_df["source_doc"] = df["source_doc"].replace(
-            source_val_to_local_id, inplace=False
-        )
+        source_val_to_local_id = {v: local_id for local_id, v in enumerate(unique_sources)}
+        digit_df["source_doc"] = df["source_doc"].replace(source_val_to_local_id, inplace=False)
         # Build a matrix using the indices of all the objects
         question_ids = digit_df["question"].values
         source_ids = digit_df["source_doc"].values
