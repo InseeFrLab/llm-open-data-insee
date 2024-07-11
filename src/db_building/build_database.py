@@ -8,11 +8,9 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 from .document_chunker import chunk_documents
-from .utils_db import extract_paragraphs
+from .utils_db import parse_xmls
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# TODO : pourquoi on a les config dans ce fichier ?
 
 
 def build_vector_database(
@@ -31,23 +29,10 @@ def build_vector_database(
     if max_pages is not None:
         data = data.head(max_pages)
 
-    logging.info("Extracting paragraphs and metadata")
-    df = extract_paragraphs(data)
+    parsed_pages = parse_xmls(data)
 
-    # rename the column names:
-    df.rename(
-        columns={
-            "paragraphs": "content",
-            "url_source": "source",
-            "dateDiffusion": "date_diffusion",
-            "id_origin": "insee_id",
-        },
-        inplace=True,
-    )
-
-    # remove NaN value to empty strings
-    logging.info("Remove NaN values by empty strings")
-    df.fillna(value="", inplace=True)
+    df = data.set_index("id").merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
+    df = df[["titre", "categorie", "url", "dateDiffusion", "theme", "collection", "libelleAffichageGeo", "content"]]
 
     # chucking of documents
     all_splits, chunk_infos = chunk_documents(data=df, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)
