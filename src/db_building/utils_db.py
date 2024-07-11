@@ -1,8 +1,7 @@
+import logging
 import re
 import unicodedata
-from collections import Counter
 
-import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 from tqdm import tqdm
@@ -21,6 +20,16 @@ CHUNK_TAGS = [
     "liste",
 ]
 
+HIGH_LEVEL_TAGS_TO_IGNORE = [
+    "donnees-complementaires",
+    "document-imprimable",
+    "figure",
+    "fichiers-donnees",
+    "dictionnaire-variables",
+    "tableau",
+    "image",
+]
+
 
 def extract_text_tag(xmlstring, tag="paragraphe"):
     """
@@ -35,14 +44,6 @@ def extract_text_tag(xmlstring, tag="paragraphe"):
 def get_soup(xml_string: str) -> BeautifulSoup:
     soup = BeautifulSoup(xml_string, features="xml")
     return soup
-
-
-def html_tag_finder(xmlstring):
-    """
-    find all the html type in a xmlstring
-    """
-    pattern = "<[^<>]+>"
-    return Counter(re.findall(pattern, xmlstring))
 
 
 def extract_tables(row) -> list:
@@ -97,75 +98,6 @@ def extract_links(row) -> list:
         links.append({"title": title, "uri": uri, "type": "external"})
 
     return links
-
-
-def extract_chunks(row) -> list:
-    """
-    Extract chunks inside for given page identifier,
-    according to the following heuristic: content inside
-    of block tags are treated as separate chunks. This is
-    an example of a chunking method - its output should
-    be studied to see if it is appropriate (chunk lengths, etc.)
-
-    This function is suited for "Chiffres détaillés" pages.
-
-    Args:
-        identifier (str): Page identifier.
-
-    Returns:
-        List: List of chunks.
-    """
-    xml_string = str(row["xml_content"])
-    identifier = row["id"]
-
-    soup = get_soup(xml_string)
-
-    # Extract chunks
-    chunks = []
-    for tag in HIGH_LEVEL_TAGS:
-        for el in soup(tag):
-            for chunk_tag in CHUNK_TAGS:
-                while True:
-                    tag_chunk = el.find(chunk_tag)
-                    if tag_chunk is None:
-                        break
-                    if tag_chunk.text.strip() != "":
-                        chunks.append({"xml": tag_chunk.extract(), "tag": tag, "id": identifier})
-                    elif tag_chunk.text.strip() == "":
-                        _ = tag_chunk.extract()
-            # Here we might be removing some content
-            # if CHUNK_TAGS is missing tags
-            _ = el.extract()
-
-    # Remaining chunks
-    for chunk_tag in CHUNK_TAGS:
-        while True:
-            chunk = soup.find(chunk_tag)
-            if chunk is None:
-                break
-            if chunk.text.strip() != "":
-                chunks.append({"xml": chunk.extract(), "tag": "other", "id": identifier})
-            elif chunk.text.strip() == "":
-                _ = chunk.extract()
-
-    return chunks
-
-
-def extract_xml(row) -> tuple:
-    """
-    Extract content of xml for the given page
-    identifier.
-
-    Args:
-        identifier (str): Page identifier
-
-    Returns:
-        Tuple: xml text chunks, xml tables and links.
-    """
-    chunks = extract_chunks(row)
-    tables = extract_tables(row)
-    links = extract_links(row)
-    return chunks, tables, links
 
 
 def url_builder(row: pd.Series):
@@ -241,87 +173,6 @@ def complete_url_builder(table):
         urls.append(url)  # add URL or None
 
     return pd.Series(urls)
-
-
-# TODO : Corriger cette fonction, c'est elle qui fait nimp
-def paragraph_cleaning(paras, mode=""):
-    if mode == "bs":  # read a beautiful soup module
-        paras = [p.text.replace("\n", " ") for p in paras]
-        paras = [p.replace("\t", "") for p in paras]
-
-    html_tag_re = re.compile(r"<[^>]+>")
-    paras = [p.replace("\xa0", "") for p in paras]  # remove \xa0
-    paras = [html_tag_re.sub("", p) for p in paras]  # remove html tag
-    paras = [re.sub(r" +", " ", s) for s in paras]
-    return " ".join(paras)
-
-
-def theme_parsing(parsed_list: np.array):
-    try:
-        return " / ".join(list(parsed_list))
-    except (ValueError, SyntaxError, TypeError):
-        return ""
-
-
-def extract_paragraphs(table: pd.DataFrame) -> pd.DataFrame:
-    """
-    extract the paragraphs from the database and associate a relevant url to get access to
-    the paragraph on INSEE website. add metadatas associated to textual informations.
-    """
-    results = {
-        "id_origin": [],
-        "paragraphs": [],
-        "url_source": [],
-        "title": [],
-        "categories": [],
-        "dateDiffusion": [],
-        "themes": [],
-        "collections": [],
-        "libelleAffichageGeo": [],
-        "intertitres": [],
-        "authors": [],
-        "subtitle": [],
-    }
-
-    url_bool = "url" in table.columns
-
-    if "xml_content" in table.columns:
-        for _, row in tqdm(table.iterrows()):
-            try:
-                xmlstring = str(row["xml_content"])
-                tag = "paragraphe"
-
-                # TODO : Essaier de gérer l'encodage de manière plus fluide + Gérer l'encodage aussi pour intertitre,
-                # autheur et sous titre. Idem pour apostrophe
-                # title = str(row.titre).replace("\xa0", "")
-                soup = BeautifulSoup(xmlstring, "xml")
-                paras = soup.find_all(tag)
-
-                # TODO : Faire quelques chose pour rajouter la biblio/citations dans les metadata
-                para = paragraph_cleaning(paras, mode="bs")
-
-                # TODO: corriger aussi titre y a rien qui va
-                if len(para) > 0:  # filtering to only keep documents with textual informations.
-                    results["paragraphs"].append(para.replace("'", "’"))
-                    results["id_origin"].append(row.id)
-                    results["title"].append(str(row.titre).replace("\xa0", ""))
-                    results["categories"].append(row.categorie)
-                    results["dateDiffusion"].append(row.dateDiffusion)
-                    results["themes"].append(theme_parsing(row.theme))
-                    results["collections"].append(row.collection)
-                    results["libelleAffichageGeo"].append(row.libelleAffichageGeo)
-                    results["intertitres"].append(str(row.xml_intertitre).replace("\xa0", ""))
-                    results["authors"].append(str(row.xml_auteurs).replace("\xa0", ""))
-                    results["subtitle"].append(str(row.sousTitre).replace("\xa0", "")) if row.sousTitre is not None else results["subtitle"].append(
-                        row.sousTitre
-                    )
-
-                    if url_bool:
-                        results["url_source"].append(row["url"])
-            except Exception as e:
-                print("issue at this row : ", row)
-                print(f"Error : {e}")
-        return pd.DataFrame.from_dict(results)
 
 
 def find_paths_to_key(nested_dict, target_key, current_path=None, paths_dict=None) -> dict[str, list]:
@@ -485,6 +336,40 @@ def format_page(data: dict) -> str:
 
     formatted_page = "\n".join(parts)
     return formatted_page.strip()
+
+
+def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
+    parsed_pages = {"id": [], "content": []}
+
+    for i, row in data.iterrows():
+        page_id = row[id]
+        logging.info(f"Processing page {page_id} -- {i}/{len(data)}")
+
+        if not row[xml_column]:
+            # When xml_content is empty, we skip the page
+            # TODO: (to be changed, we should extract the xml in the first place)
+            continue
+
+        soup = get_soup(row[xml_column])
+        root = soup.find()
+
+        # Extract data from the XML
+        result = recursive_extract(root, HIGH_LEVEL_TAGS_TO_IGNORE)
+
+        # Format chapo if it exists and is not empty
+        result = format_chapo(result) if "chapo" in result and result["chapo"] else result
+
+        # Format all high level tags that contains bloc tags (corps de texte, encadres, définitions etc.)
+        result = format_blocs(result)
+
+        # Format external links if it exists and is not empty
+        result = format_external_links(result) if "liens-transverses" in result and result["liens-transverses"] else result
+
+        formatted_page = format_page(result)
+        parsed_pages["id"].append(page_id)
+        parsed_pages["content"].append(formatted_page)
+
+    return pd.DataFrame(parsed_pages).set_index("id")
 
 
 # Attention 10613 (id : 1521268) pas bien récupéré, xml vide
