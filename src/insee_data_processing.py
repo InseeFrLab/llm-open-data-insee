@@ -25,6 +25,7 @@ def main():
 
     joined_table = tables["applishare_extract"].merge(tables["solr_extract"], how="inner", on="id")
     joined_table["url"] = complete_url_builder(joined_table)
+    joined_table["theme"] = [x[0] if x is not None else x for x in joined_table["theme"]]
     subset_table = joined_table.reset_index(drop=True)[
         [
             "id",
