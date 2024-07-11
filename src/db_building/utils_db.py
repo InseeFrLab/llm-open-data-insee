@@ -382,16 +382,18 @@ def extract_high_level_tags(element, tags_to_ignore) -> list[str]:
     return [child.name for child in element.find_all(recursive=False) if child.name not in tags_to_ignore]
 
 
-def recursive_extract(element, tags_to_ignore) -> dict[str, str | dict]:
+def recursive_extract(element, tags_to_ignore):
     # Initialize a dictionary to hold extracted data
     data = {}
 
     # Extract high-level tags from the current element
-    high_level_tags = extract_high_level_tags(element, tags_to_ignore)
+    high_level_tags = set(extract_high_level_tags(element, tags_to_ignore))
 
     # Process each high-level tag
     for tag in high_level_tags:
         sub_elements = element.find_all(tag, recursive=False)
+        # TODO: Géner ce qu'il se passe à l'interieur des paragraphes. Notamment au niveau des url,
+        # italique, gras qui rajoutent des retours à la ligne
         if tag != "paragraphe":
             if len(sub_elements) > 1:
                 data[tag] = [recursive_extract(sub_element, tags_to_ignore) for sub_element in sub_elements]
@@ -405,37 +407,44 @@ def recursive_extract(element, tags_to_ignore) -> dict[str, str | dict]:
                     data[tag] = unicodedata.normalize("NFKD", sub_element.text.strip())
         else:
             data[tag] = [unicodedata.normalize("NFKD", sub_element.text.strip()) for sub_element in sub_elements]
-
     return data
 
 
-def format_chapo(data: dict) -> dict:
+def format_chapo(data) -> dict:
+    # TODO: improve this handler not proper enough
     if len(data["chapo"]) == 1:
         chapo = "\n".join(data["chapo"]["paragraphe"])
     else:
         raise ValueError("Multiple chapo paragraphs found")
-    formatted_chapo = f"## Résumé \n {chapo}\n\n"
+    formatted_chapo = f"{chapo}"
     data["chapo"] = formatted_chapo
     return data
 
 
-def format_external_links(data: dict) -> dict:
+def format_external_links(data) -> dict:
+    # TODO: improve this handler not proper enough
     if len(data["liens-transverses"]) == 1:
         biblio = "\n".join(data["liens-transverses"]["paragraphe"])
     else:
         raise ValueError("Multiple liens-transverses paragraphs found")
-    formatted_biblio = f"## Références \n {biblio}"
+    formatted_biblio = f"{biblio}"
     data["liens-transverses"] = formatted_biblio
     return data
 
 
 def format_blocs(data: dict) -> dict:
+    # TODO : Ici il va falloir prendre en compte les cas ou y a autres choses au dessus des blocs,
+    # notamment les titres (e.g pour les sources 22995 et 23000)
     PATHS_WITH_BLOC = find_paths_to_key(data, "bloc")
 
     for high_level_tag, paths in PATHS_WITH_BLOC.items():
-        # When multiple paths are found, we merge them all into one (case len(paths) > 1)
-        # usually the cases for "definitions" blocs and encadres blocs
-        dict_to_format = [el for path in paths for el in get_value_from_path(data, path)] if len(paths) > 1 else get_value_from_path(data, paths[0])
+        if len(paths) > 1:
+            # Multiple paths found, we merge them all into one
+            # usually the cases for "definitions" blocs and encadres blocs
+            dict_to_format = (
+                [el for path in paths for el in get_value_from_path(data, path)] if len(paths) > 1 else get_value_from_path(data, paths[0])
+            )
+
         formatted_string = create_formatted_string(dict_to_format)
         data[high_level_tag] = formatted_string
     return data
@@ -451,11 +460,18 @@ def format_page(data: dict) -> str:
         f"{data.get('blocs', '')}",
     ]
 
-    if "sources" in data and data["sources"]:
+    # TODO: Onglets à mieux formmater notamment choper les titres
+    if "onglets" in data and data["onglets"]:
+        parts.append("## Onglets")
+        parts.append(data["onglets"])
+
+    # TODO: temporary fix the isinstance check
+    if "sources" in data and data["sources"] and isinstance(data["sources"], str):
         parts.append("## Sources")
         parts.append(data["sources"])
 
-    if "definitions" in data and data["definitions"]:
+    # TODO: temporary fix the isinstance check (when empty dict but not normal)
+    if "definitions" in data and data["definitions"] and isinstance(data["definitions"], str):
         parts.append("## Définitions")
         parts.append(data["definitions"])
 
@@ -469,3 +485,17 @@ def format_page(data: dict) -> str:
 
     formatted_page = "\n".join(parts)
     return formatted_page.strip()
+
+
+# Attention 10613 (id : 1521268) pas bien récupéré, xml vide
+# 6699
+# 6700
+# 6701
+# 6702
+# 6703
+# 6704
+# 6705
+# 10613 ("xml_null")
+# 29281 (definitions pas présentes dans xml)
+# 31083 (long à vérifier)
+# 39570 (long à vérifier)
