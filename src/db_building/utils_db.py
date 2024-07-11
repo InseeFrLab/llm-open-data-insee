@@ -289,12 +289,9 @@ def format_blocs(data: dict) -> dict:
     PATHS_WITH_BLOC = find_paths_to_key(data, "bloc")
 
     for high_level_tag, paths in PATHS_WITH_BLOC.items():
-        if len(paths) > 1:
-            # Multiple paths found, we merge them all into one
-            # usually the cases for "definitions" blocs and encadres blocs
-            dict_to_format = (
-                [el for path in paths for el in get_value_from_path(data, path)] if len(paths) > 1 else get_value_from_path(data, paths[0])
-            )
+        # Multiple paths found, we merge them all into one
+        # usually the cases for "definitions" blocs and encadres blocs
+        dict_to_format = [el for path in paths for el in get_value_from_path(data, path)] if len(paths) > 1 else get_value_from_path(data, paths[0])
 
         formatted_string = create_formatted_string(dict_to_format)
         data[high_level_tag] = formatted_string

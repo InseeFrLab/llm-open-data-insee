@@ -35,7 +35,7 @@ def build_vector_database(
     df = df[["titre", "categorie", "url", "dateDiffusion", "theme", "collection", "libelleAffichageGeo", "content"]]
 
     # chucking of documents
-    all_splits, chunk_infos = chunk_documents(data=df, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)
+    all_splits, chunk_infos = chunk_documents(data=df, md_split=True, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)
 
     logging.info("Storing the Document objects")
 

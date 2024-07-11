@@ -59,7 +59,7 @@ def chunk_documents(
 
     logging.info(f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database")
 
-    return docs_processed_unique, chunk_infos
+    return docs_processed_unique, chunk_infos | {"md_split": md_split}
 
 
 def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:

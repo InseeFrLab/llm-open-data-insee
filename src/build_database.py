@@ -12,7 +12,7 @@ from db_building import build_vector_database
 
 # Global parameters
 EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
-MAX_NUMBER_PAGES = None
+MAX_NUMBER_PAGES = 150
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 
 # Check mlflow URL is defined
@@ -71,9 +71,9 @@ with mlflow.start_run() as run:
     mlflow.log_param("collection_name", COLLECTION_NAME)
     mlflow.log_param("number_pages", MAX_NUMBER_PAGES)
     mlflow.log_param("model_name", EMB_MODEL_NAME)
-    mlflow.log_param("chunk_size", chunk_infos["chunk_size"])
-    mlflow.log_param("chunk_overlap", chunk_infos["chunk_overlap"])
     mlflow.log_metric("number_documents", len(db_docs))
+    for key, value in chunk_infos.items():
+        mlflow.log_param(key, value)
 
     # Log environment necessary to reproduce the experiment
     current_dir = Path(".")
