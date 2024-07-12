@@ -118,12 +118,27 @@ def get_text_splitter(hf_tokenizer_name: str, chunk_size: int, chunk_overlap: in
 
 
 def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
+    """
+    Splits the content of each document in the document list based on Markdown headers,
+    and preserves the original metadata in each split section.
+
+    Args:
+        document_list (list[Document]): List of Document objects to be split.
+        markdown_splitter (MarkdownHeaderTextSplitter): An instance of MarkdownHeaderTextSplitter
+            used to perform the text splitting based on Markdown headers.
+
+    Returns:
+        list[Document]: List of split Document objects with updated metadata.
+    """
     splitted_docs = []
+
     for doc in document_list:
+        # Split the document content into sections based on Markdown headers
         md_header_splits = markdown_splitter.split_text(doc.page_content)
 
-        for md_sections in md_header_splits:
-            # Add original metadata to the splitted document
-            md_sections.metadata.update(doc.metadata)
-            splitted_docs.append(md_sections)
+        for md_section in md_header_splits:
+            # Update metadata for each split section with the original document's metadata
+            md_section.metadata.update(doc.metadata)
+            splitted_docs.append(md_section)
+
     return splitted_docs

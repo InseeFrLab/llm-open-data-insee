@@ -33,6 +33,7 @@ def build_vector_database(
 
     df = data.set_index("id").merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
     df = df[["titre", "categorie", "url", "dateDiffusion", "theme", "collection", "libelleAffichageGeo", "content"]]
+    df.fillna(value="", inplace=True)
 
     # chucking of documents
     all_splits, chunk_infos = chunk_documents(data=df, md_split=True, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)

@@ -1,9 +1,11 @@
 import logging
 import re
 import unicodedata
+from typing import Any
 
 import pandas as pd
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from tqdm import tqdm
 
 HIGH_LEVEL_TAGS = [
@@ -42,6 +44,15 @@ def extract_text_tag(xmlstring, tag="paragraphe"):
 
 
 def get_soup(xml_string: str) -> BeautifulSoup:
+    """
+    Parses an XML string and returns a BeautifulSoup object.
+
+    Args:
+        xml_string (str): The XML string to be parsed.
+
+    Returns:
+        BeautifulSoup: A BeautifulSoup object initialized with the provided XML string.
+    """
     soup = BeautifulSoup(xml_string, features="xml")
     return soup
 
@@ -175,7 +186,22 @@ def complete_url_builder(table):
     return pd.Series(urls)
 
 
-def find_paths_to_key(nested_dict, target_key, current_path=None, paths_dict=None) -> dict[str, list]:
+def find_paths_to_key(
+    nested_dict: dict[str, Any] | list[Any], target_key: str, current_path: list[str] = None, paths_dict: dict[str, list[list[str]]] = None
+) -> dict[str, list[list[str]]]:
+    """
+    Recursively finds all paths to a target tag within a nested dictionary or list.
+
+    Args:
+        nested_dict (Union[dict[str, Any], list[Any]]): The nested dictionary or list to search.
+        target_key (str): The key to find within the nested structure.
+        current_path (list[str], optional): The current path being traversed. Defaults to an empty list.
+        paths_dict (dict[str, list[list[str]]], optional): A dictionary to store the paths to the target key. Defaults to an empty dictionary.
+
+    Returns:
+        dict[str, list[list[str]]]: A dictionary where each key is a top-level key from the original nested dictionary,
+                                    and each value is a list of paths (as lists of strings) to the target key.
+    """
     if current_path is None:
         current_path = []
     if paths_dict is None:
@@ -193,30 +219,52 @@ def find_paths_to_key(nested_dict, target_key, current_path=None, paths_dict=Non
                 find_paths_to_key(value, target_key, new_path, paths_dict)
     elif isinstance(nested_dict, list):
         for index, item in enumerate(nested_dict):
-            new_path = current_path + [f"{index}"]
+            new_path = current_path + [str(index)]
             find_paths_to_key(item, target_key, new_path, paths_dict)
 
     return paths_dict
 
 
-def get_value_from_path(nested_dict, path) -> list[dict]:
+def get_value_from_path(nested_dict: dict[str, Any] | list[Any], path: list[str]) -> list[dict[str, Any]]:
+    """
+    Retrieves the value from a nested dictionary or list based on a given path.
+
+    Args:
+        nested_dict (Union[Dict[str, Any], List[Any]]): The nested dictionary or list to search.
+        path (List[str]): The path of keys/indices to navigate through the nested structure.
+
+    Returns:
+        Union[List[Dict[str, Any]], Any, None]: The value found at the specified path, wrapped in a list if it is a dictionary,
+                                                or None if the path does not exist.
+    """
     current_level = nested_dict
     try:
         for key in path:
+            # Convert key to integer if it is a digit to handle list indices
             current_level = current_level[int(key)] if key.isdigit() else current_level[key]
 
+        # Return as a list if the final value is a dictionary
         if isinstance(current_level, dict):
-            # When there is one single dictionnary at the end of the path, we return it as a list
             return [current_level]
         else:
             return current_level
-        return current_level
 
-    except (KeyError, TypeError):
+    except (KeyError, TypeError, IndexError):
+        # Return None if the path does not exist in the nested structure
         return None
 
 
-def create_formatted_string(data: dict) -> str:
+def create_formatted_string(data: list[dict[str, Any]]) -> str:
+    """
+    Creates a formatted string from a list of dictionaries containing 'intertitre' and 'paragraphes'.
+
+    Args:
+        data (list[dict[str, Any]]): The list of dictionaries to format. Each dictionary can contain an 'intertitre' key
+                                     and a 'paragraphes' key, which itself contains a 'paragraphe' key.
+
+    Returns:
+        str: The formatted string with 'intertitre' as headers and 'paragraphe' contents as paragraphs.
+    """
     formatted_string = []
 
     for item in data:
@@ -229,12 +277,31 @@ def create_formatted_string(data: dict) -> str:
     return "".join(formatted_string)
 
 
-def extract_high_level_tags(element, tags_to_ignore) -> list[str]:
+def extract_high_level_tags(element: Tag, tags_to_ignore: set[str]) -> list[str]:
+    """
+    Extracts the names of high-level tags (direct children) from a BeautifulSoup Tag object, excluding specified tags.
+
+    Args:
+        element (Tag): A BeautifulSoup Tag object from which to extract child tag names.
+        tags_to_ignore (set[str]): A set of tag names to ignore during extraction.
+
+    Returns:
+        List[str]: A list of names of the direct child tags that are not in the tags_to_ignore set.
+    """
     return [child.name for child in element.find_all(recursive=False) if child.name not in tags_to_ignore]
 
 
-def recursive_extract(element, tags_to_ignore):
-    # Initialize a dictionary to hold extracted data
+def recursive_extract(element: Tag, tags_to_ignore: set[str]) -> dict[str, Any]:
+    """
+    Recursively extracts text and structures from a BeautifulSoup Tag object, excluding specified tags.
+
+    Args:
+        element (Tag): A BeautifulSoup Tag object from which to extract data.
+        tags_to_ignore (set[str]): A set of tag names to ignore during extraction.
+
+    Returns:
+        Dict[str, Any]: A dictionary representing the structure and text content of the extracted data.
+    """
     data = {}
 
     # Extract high-level tags from the current element
@@ -257,7 +324,9 @@ def recursive_extract(element, tags_to_ignore):
                     # If the sub-element is a leaf node, extract its text
                     data[tag] = unicodedata.normalize("NFKD", sub_element.text.strip())
         else:
+            # Process paragraph tags
             data[tag] = [unicodedata.normalize("NFKD", sub_element.text.strip()) for sub_element in sub_elements]
+
     return data
 
 
@@ -298,7 +367,18 @@ def format_blocs(data: dict) -> dict:
     return data
 
 
-def format_page(data: dict) -> str:
+def format_page(data: dict[str, Any]) -> str:
+    """
+    Formats a page from the given data dictionary into a structured string.
+
+    Args:
+        data (Dict[str, Any]): A dictionary containing page data with keys such as 'titre', 'sous-titre',
+                               'auteur', 'chapo', 'blocs', 'onglets', 'sources', 'definitions', 'encadres',
+                               and 'liens-transverses'.
+
+    Returns:
+        str: A formatted string representing the structured content of the page.
+    """
     parts = [
         f"{data.get('titre', '')}",
         f"{data.get('sous-titre', '')}",
@@ -336,6 +416,17 @@ def format_page(data: dict) -> str:
 
 
 def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
+    """
+    Parses XML content from a DataFrame, extracts data, formats it, and returns a new DataFrame with the formatted content.
+
+    Args:
+        data (pd.DataFrame): The input DataFrame containing XML data.
+        id (str, optional): The column name for the unique identifier of each row. Defaults to "id".
+        xml_column (str, optional): The column name containing the XML content. Defaults to "xml_content".
+
+    Returns:
+        pd.DataFrame: A DataFrame with 'id' as the index and formatted content in the 'content' column.
+    """
     parsed_pages = {"id": [], "content": []}
 
     for i, row in data.iterrows():
