@@ -8,8 +8,6 @@ from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-from .utils_db import extract_paragraphs
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
@@ -76,6 +74,7 @@ def build_database_from_csv(
     max_pages: str = None,
 ) -> Chroma:
     from doc_building import build_documents_from_dataframe
+    from db_building.utils_db import extract_paragraphs
 
     logging.info(f"The database will be stored in {persist_directory}")
 
