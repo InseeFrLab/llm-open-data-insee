@@ -18,10 +18,7 @@ CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 # Check mlflow URL is defined
 assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
 
-# TODO: Bien gérer le log des artifacts et tout ce qu'on veut dans MLflow
-# TODO: Bien faire un script qui s'execute selon divers params
-# TODO: Charger la db sur s3 (avec un paramètre ?)
-# TODO: Revoir le chunking
+# TODO: Bien faire un script qui s'execute selon divers params pour argo workflows
 
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_experiment(EXPERIMENT_NAME)
