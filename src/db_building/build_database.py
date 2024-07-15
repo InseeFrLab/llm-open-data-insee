@@ -8,7 +8,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 from .document_chunker import chunk_documents
-from .utils_db import parse_xmls
+from .utils_db import parse_xmls, split_list
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -47,13 +47,17 @@ def build_vector_database(
         show_progress=False,
     )
 
-    db = Chroma.from_documents(
-        collection_name=collection_name,
-        documents=all_splits,
-        persist_directory=persist_directory,
-        embedding=embedding_model,
-        client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
-    )
+    split_docs_chunked = split_list(all_splits, 41000)  # Max batch size is 41666
+
+    for split_docs_chunk in split_docs_chunked:
+        db = Chroma.from_documents(
+            collection_name=collection_name,
+            documents=split_docs_chunk,
+            persist_directory=persist_directory,
+            embedding=embedding_model,
+            client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
+        )
+
     logging.info("The database has been built")
     return db, data, chunk_infos
 
