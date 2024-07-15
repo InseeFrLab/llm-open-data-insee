@@ -12,7 +12,7 @@ from db_building import build_vector_database
 
 # Global parameters
 EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
-MAX_NUMBER_PAGES = 150
+MAX_NUMBER_PAGES = None
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 
 # Check mlflow URL is defined
