@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+from markdownify import MarkdownConverter
 from tqdm import tqdm
 
 HIGH_LEVEL_TAGS = [
@@ -381,7 +382,7 @@ def format_page(data: dict[str, Any]) -> str:
         str: A formatted string representing the structured content of the page.
     """
     parts = [
-        f"{data.get('titre', '')}",
+        f"# {data.get('titre', '')}",
         f"{data.get('sous-titre', '')}",
         f"{data.get('auteur', '')}\n",
         "## Résumé",
@@ -497,3 +498,120 @@ def split_list(input_list: list[Any], chunk_size: int) -> Generator[list[Any]]:
 
     for i in range(0, len(input_list), chunk_size):
         yield input_list[i : i + chunk_size]
+
+
+def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
+    soup_copy = soup
+    for tag in soup_copy.find_all():
+        # Remove tags to ignore
+        if tag.name in tags_to_ignore:
+            tag.decompose()
+            continue
+
+        # Rename titre tags
+        if tag.name == "titre" and len(list(tag.parents)) == 2:
+            tag.name = "h1"
+            continue
+
+        # Rename sous-titre tags
+        if tag.name == "sous-titre":
+            tag.name = "h2"
+            continue
+
+        # Rename chapo tags
+        if tag.name == "chapo":
+            prepend_text_to_tag(tag, "Résumé: ")
+            tag.name = "h2"
+            continue
+
+        # Rename intertitre tags
+        if tag.name == "intertitre":
+            if tag.has_attr("niveau"):
+                level = int(tag["niveau"]) + 2
+                tag.name = f"h{level}"
+            else:
+                tag.name = "h3"
+            continue
+
+        # Rename avertissement tags
+        if tag.name == "avertissement" and len(list(tag.parents)) == 2:
+            tag.name = "h2"
+            continue
+
+        # Rename lignes tags
+        if tag.name == "lignes":
+            if tag.has_attr("type") and tag["type"] == "entete":
+                tag.name = "thead"
+            elif tag.has_attr("type") and tag["type"] == "donnees":
+                tag.name = "tbody"
+            continue
+
+        # Rename ligne tags
+        if tag.name == "ligne":
+            tag.name = "tr"
+            continue
+
+        # Rename cellule entete tags
+        if tag.name == "cellule":
+            if tag.has_attr("entete") and tag["entete"] == "colonne":
+                tag.name = "th"
+            # elif tag.has_attr('entete') and tag['entete'] == 'ligne':
+            #     tag.name = 'td'
+            else:
+                tag.name = "td"
+            continue
+
+        # Rename paragraphe tags
+        if tag.name == "paragraphe":
+            tag.name = "p"
+            continue
+
+        # Rename tableau tags
+        if tag.name == "tableau":
+            tag.name = "table"
+            continue
+
+        # Rename lien-externe tags
+        if tag.name == "lien-externe":
+            tag.name = "a"
+            tag["href"] = tag["url"]
+            del tag["url"]
+            continue
+
+        # # Rename liste tags
+        # if tag.name == 'liste':
+        #     tag.name = 'ul'
+        #     continue
+
+        # # Rename item tags
+        # if tag.name == 'item':
+        #     tag.name = 'li'
+        #     continue
+
+        # Rename emphase-faible tags
+        if tag.name == "emphase-faible":
+            tag.name = "em"
+            continue
+
+        # Rename note tags
+        if tag.name == "note":
+            tag.name = "em"
+
+    return soup_copy
+
+
+def remove_excessive_newlines(text):
+    # Replace instances of more than three consecutive newlines with exactly three newlines
+    cleaned_text = re.sub(r"\n{3,}", "\n\n", text)
+    return cleaned_text
+
+
+def prepend_text_to_tag(tag, text):
+    if tag.string:
+        tag.string.insert_before(text)
+    else:
+        tag.insert(0, text)
+
+
+def md(soup, **options):
+    return MarkdownConverter(**options).convert_soup(soup)

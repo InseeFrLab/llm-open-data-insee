@@ -53,7 +53,6 @@ with mlflow.start_run() as run:
     # Log a result of a similarity search
     query = "Quels sont les chiffres du chômages en 2023 ?"
     retrieved_docs = db.similarity_search(query, k=5)
-    # TODO: What about the duplicates ?
 
     result_list = []
     for doc in retrieved_docs:
