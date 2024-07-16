@@ -48,7 +48,7 @@ def extract_rmes_data(data: dict):
     Returns:
         dict: A dictionary containing the processed fields.
     """
-
+    id = get_content(data, "id")
     titre = data.get("titre", "")
     note_historique = md(data.get("noteHistorique", [{}])[0].get("contenu", ""), bullets="-")
     label = get_content(data, "label", 0)
@@ -58,7 +58,7 @@ def extract_rmes_data(data: dict):
     organismes_responsables = get_content(data, "organismesResponsables", 0, "label", 0)
     partenaires = get_content(data, "partenaires", 0, "label", 0)
     # services_collecteurs = get_content(data, "servicesCollecteurs", 0, "label", 0)
-    url = f"https://www.insee.fr/fr/metadonnees/source/serie/{get_content(data, "id")}"
+    url = f"https://www.insee.fr/fr/metadonnees/source/serie/{id}"
 
     parts = [
         f"## {label}",
@@ -75,7 +75,7 @@ def extract_rmes_data(data: dict):
     parts.append(f"### Partenaires\n{partenaires}\n") if partenaires else None
     formatted_page = "\n".join(parts).replace("\\.", ".").replace("\\-", "-")
 
-    return url, formatted_page
+    return id, label, url, formatted_page
 
 
 def process_row(row):
@@ -114,8 +114,10 @@ def main():
     subset_table["dateDiffusion"] = pd.to_datetime(subset_table["dateDiffusion"], format="mixed").dt.strftime("%Y-%m-%d %H:%M")
     subset_table.to_parquet(f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs)
 
-    rmes_sources_content = pd.DataFrame(tables["rmes_extract_sources"]["xml_content"].apply(process_row).to_list(), columns=["url", "content"])
-    rmes_sources_content.to_parquet(f"s3://{S3_BUCKET}/data/processed_data/rmes_sources_content.parquet", filesystem=fs)
+    rmes_sources_content = pd.DataFrame(
+        tables["rmes_extract_sources"]["xml_content"].apply(process_row).to_list(), columns=["id", "titre", "url", "content"]
+    )
+    rmes_sources_content.set_index("id").to_parquet(f"s3://{S3_BUCKET}/data/processed_data/rmes_sources_content.parquet", filesystem=fs)
 
 
 if __name__ == "__main__":

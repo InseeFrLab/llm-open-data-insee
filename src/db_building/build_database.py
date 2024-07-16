@@ -29,16 +29,22 @@ def build_vector_database(
     if max_pages is not None:
         data = data.head(max_pages)
 
+    # Parse the XML content
     parsed_pages = parse_xmls(data)
 
     df = data.set_index("id").merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
     df = df[["titre", "categorie", "url", "dateDiffusion", "theme", "collection", "libelleAffichageGeo", "content"]]
+
+    # Temporary solution to add the RMES data
+    data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
+    data_rmes = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem)
+    df = pd.concat([df, data_rmes])
+
+    # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
     df.fillna(value="", inplace=True)
 
     # chucking of documents
     all_splits, chunk_infos = chunk_documents(data=df, md_split=True, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)
-
-    logging.info("Storing the Document objects")
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=embedding_model,
