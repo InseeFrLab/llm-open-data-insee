@@ -516,8 +516,12 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
         # in the children tags (graphique, tableau...)
         # Maybe we still want to keep it ?
         if any(remove_figure) and tag.name == "figure":
-            for i, rm_fig in enumerate(remove_figure):
-                tag.decompose() if rm_fig and tag.find(TAGS_FIGURE_CHILDREN[i]) else None
+            if any([tag.find(TAGS_FIGURE_CHILDREN[i]) is not None for i, value in enumerate(remove_figure) if value is False]):
+                # This make sure there is no children tags to keep in the figure tag
+                continue
+            else:
+                for i, rm_fig in enumerate(remove_figure):
+                    tag.decompose() if rm_fig and tag.find(TAGS_FIGURE_CHILDREN[i]) else None
 
         # Rename titre tags
         if tag.name == "titre" and len(list(tag.parents)) == 2:
