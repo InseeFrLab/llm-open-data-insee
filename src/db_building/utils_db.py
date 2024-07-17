@@ -1,6 +1,5 @@
 import logging
 import re
-import unicodedata
 from collections.abc import Generator
 from typing import Any
 
@@ -10,27 +9,14 @@ from bs4.element import Tag
 from markdownify import MarkdownConverter
 from tqdm import tqdm
 
-HIGH_LEVEL_TAGS = [
-    "description-generale-variables",
-    "documentation-pour-comprendre",
-    "dictionnaire-variables",
-    "source",
-    "definitions",
-]
-
-CHUNK_TAGS = [
-    "bloc",
-    "paragraphe",
-    "liste",
-]
-
-HIGH_LEVEL_TAGS_TO_IGNORE = [
+TAGS_TO_IGNORE = [
+    "sage",
+    "numero",
     "donnees-complementaires",
     "document-imprimable",
-    "figure",
+    "graphique",
     "fichiers-donnees",
     "dictionnaire-variables",
-    "tableau",
     "image",
 ]
 
@@ -57,60 +43,6 @@ def get_soup(xml_string: str) -> BeautifulSoup:
     """
     soup = BeautifulSoup(xml_string, features="xml")
     return soup
-
-
-def extract_tables(row) -> list:
-    """
-    Extract tables for a given page identifier.
-
-    Args:
-        identifier (str): Page identifier.
-
-    Returns:
-        List: Table xml chunks.
-    """
-    xml_string = str(row["xml_content"])
-    identifier = row["id"]
-
-    soup = get_soup(xml_string)
-
-    # Extract tables
-    tables = []
-    for el in soup.find_all("Tableau"):
-        tables.append({"xml": el.extract(), "id": identifier})
-    return tables
-
-
-def extract_links(row) -> list:
-    """
-    Extract links for a given page identifier.
-
-    Args:
-        identifier (str): Page identifier.
-
-    Returns:
-        List: Links.
-    """
-    xml_string = str(row["xml_content"])
-    # identifier = row["id"]
-
-    soup = get_soup(xml_string)
-    links = []
-
-    # TODO: to complete
-    # Find "fichiers-donnees" links
-    for el in soup.find_all("fichiers-donnees"):
-        title = el.find("titre").get_text()
-        uri = el.find("uri").get_text()
-        links.append({"title": title, "uri": uri, "type": "data"})
-
-    # External links
-    for el in soup.find_all("lien-externe"):
-        uri = el.get("url")
-        title = el.get_text()
-        links.append({"title": title, "uri": uri, "type": "external"})
-
-    return links
 
 
 def url_builder(row: pd.Series):
@@ -188,235 +120,6 @@ def complete_url_builder(table):
     return pd.Series(urls)
 
 
-def find_paths_to_key(
-    nested_dict: dict[str, Any] | list[Any], target_key: str, current_path: list[str] = None, paths_dict: dict[str, list[list[str]]] = None
-) -> dict[str, list[list[str]]]:
-    """
-    Recursively finds all paths to a target tag within a nested dictionary or list.
-
-    Args:
-        nested_dict (Union[dict[str, Any], list[Any]]): The nested dictionary or list to search.
-        target_key (str): The key to find within the nested structure.
-        current_path (list[str], optional): The current path being traversed. Defaults to an empty list.
-        paths_dict (dict[str, list[list[str]]], optional): A dictionary to store the paths to the target key. Defaults to an empty dictionary.
-
-    Returns:
-        dict[str, list[list[str]]]: A dictionary where each key is a top-level key from the original nested dictionary,
-                                    and each value is a list of paths (as lists of strings) to the target key.
-    """
-    if current_path is None:
-        current_path = []
-    if paths_dict is None:
-        paths_dict = {}
-
-    if isinstance(nested_dict, dict):
-        for key, value in nested_dict.items():
-            new_path = current_path + [key]
-            if key == target_key:
-                top_level_key = current_path[0] if current_path else key
-                if top_level_key not in paths_dict:
-                    paths_dict[top_level_key] = []
-                paths_dict[top_level_key].append(new_path)
-            else:
-                find_paths_to_key(value, target_key, new_path, paths_dict)
-    elif isinstance(nested_dict, list):
-        for index, item in enumerate(nested_dict):
-            new_path = current_path + [str(index)]
-            find_paths_to_key(item, target_key, new_path, paths_dict)
-
-    return paths_dict
-
-
-def get_value_from_path(nested_dict: dict[str, Any] | list[Any], path: list[str]) -> list[dict[str, Any]]:
-    """
-    Retrieves the value from a nested dictionary or list based on a given path.
-
-    Args:
-        nested_dict (Union[Dict[str, Any], List[Any]]): The nested dictionary or list to search.
-        path (List[str]): The path of keys/indices to navigate through the nested structure.
-
-    Returns:
-        Union[List[Dict[str, Any]], Any, None]: The value found at the specified path, wrapped in a list if it is a dictionary,
-                                                or None if the path does not exist.
-    """
-    current_level = nested_dict
-    try:
-        for key in path:
-            # Convert key to integer if it is a digit to handle list indices
-            current_level = current_level[int(key)] if key.isdigit() else current_level[key]
-
-        # Return as a list if the final value is a dictionary
-        if isinstance(current_level, dict):
-            return [current_level]
-        else:
-            return current_level
-
-    except (KeyError, TypeError, IndexError):
-        # Return None if the path does not exist in the nested structure
-        return None
-
-
-def create_formatted_string(data: list[dict[str, Any]]) -> str:
-    """
-    Creates a formatted string from a list of dictionaries containing 'intertitre' and 'paragraphes'.
-
-    Args:
-        data (list[dict[str, Any]]): The list of dictionaries to format. Each dictionary can contain an 'intertitre' key
-                                     and a 'paragraphes' key, which itself contains a 'paragraphe' key.
-
-    Returns:
-        str: The formatted string with 'intertitre' as headers and 'paragraphe' contents as paragraphs.
-    """
-    formatted_string = []
-
-    for item in data:
-        if "intertitre" in item:
-            formatted_string.append(f"\n### {item['intertitre']}\n\n")
-        if "paragraphes" in item and "paragraphe" in item["paragraphes"]:
-            for para in item["paragraphes"]["paragraphe"]:
-                formatted_string.append(f"{para}\n")
-
-    return "".join(formatted_string)
-
-
-def extract_high_level_tags(element: Tag, tags_to_ignore: set[str]) -> list[str]:
-    """
-    Extracts the names of high-level tags (direct children) from a BeautifulSoup Tag object, excluding specified tags.
-
-    Args:
-        element (Tag): A BeautifulSoup Tag object from which to extract child tag names.
-        tags_to_ignore (set[str]): A set of tag names to ignore during extraction.
-
-    Returns:
-        List[str]: A list of names of the direct child tags that are not in the tags_to_ignore set.
-    """
-    return [child.name for child in element.find_all(recursive=False) if child.name not in tags_to_ignore]
-
-
-def recursive_extract(element: Tag, tags_to_ignore: set[str]) -> dict[str, Any]:
-    """
-    Recursively extracts text and structures from a BeautifulSoup Tag object, excluding specified tags.
-
-    Args:
-        element (Tag): A BeautifulSoup Tag object from which to extract data.
-        tags_to_ignore (set[str]): A set of tag names to ignore during extraction.
-
-    Returns:
-        Dict[str, Any]: A dictionary representing the structure and text content of the extracted data.
-    """
-    data = {}
-
-    # Extract high-level tags from the current element
-    high_level_tags = set(extract_high_level_tags(element, tags_to_ignore))
-
-    # Process each high-level tag
-    for tag in high_level_tags:
-        sub_elements = element.find_all(tag, recursive=False)
-        # TODO: Géner ce qu'il se passe à l'interieur des paragraphes. Notamment au niveau des url,
-        # italique, gras qui rajoutent des retours à la ligne
-        if tag != "paragraphe":
-            if len(sub_elements) > 1:
-                data[tag] = [recursive_extract(sub_element, tags_to_ignore) for sub_element in sub_elements]
-            else:
-                sub_element = sub_elements[0]
-                if sub_element.find_all(recursive=False):
-                    # If the sub-element has children, recurse into it
-                    data[tag] = recursive_extract(sub_element, tags_to_ignore)
-                else:
-                    # If the sub-element is a leaf node, extract its text
-                    data[tag] = unicodedata.normalize("NFKD", sub_element.text.strip())
-        else:
-            # Process paragraph tags
-            data[tag] = [unicodedata.normalize("NFKD", sub_element.text.strip()) for sub_element in sub_elements]
-
-    return data
-
-
-def format_chapo(data) -> dict:
-    # TODO: improve this handler not proper enough
-    if len(data["chapo"]) == 1:
-        chapo = "\n".join(data["chapo"]["paragraphe"])
-    else:
-        raise ValueError("Multiple chapo paragraphs found")
-    formatted_chapo = f"{chapo}"
-    data["chapo"] = formatted_chapo
-    return data
-
-
-def format_external_links(data) -> dict:
-    # TODO: improve this handler not proper enough
-    if len(data["liens-transverses"]) == 1:
-        biblio = "\n".join(data["liens-transverses"]["paragraphe"])
-    else:
-        raise ValueError("Multiple liens-transverses paragraphs found")
-    formatted_biblio = f"{biblio}"
-    data["liens-transverses"] = formatted_biblio
-    return data
-
-
-def format_blocs(data: dict) -> dict:
-    # TODO : Ici il va falloir prendre en compte les cas ou y a autres choses au dessus des blocs,
-    # notamment les titres (e.g pour les sources 22995 et 23000)
-    PATHS_WITH_BLOC = find_paths_to_key(data, "bloc")
-
-    for high_level_tag, paths in PATHS_WITH_BLOC.items():
-        # Multiple paths found, we merge them all into one
-        # usually the cases for "definitions" blocs and encadres blocs
-        dict_to_format = [el for path in paths for el in get_value_from_path(data, path)] if len(paths) > 1 else get_value_from_path(data, paths[0])
-
-        formatted_string = create_formatted_string(dict_to_format)
-        data[high_level_tag] = formatted_string
-    return data
-
-
-def format_page(data: dict[str, Any]) -> str:
-    """
-    Formats a page from the given data dictionary into a structured string.
-
-    Args:
-        data (Dict[str, Any]): A dictionary containing page data with keys such as 'titre', 'sous-titre',
-                               'auteur', 'chapo', 'blocs', 'onglets', 'sources', 'definitions', 'encadres',
-                               and 'liens-transverses'.
-
-    Returns:
-        str: A formatted string representing the structured content of the page.
-    """
-    parts = [
-        f"# {data.get('titre', '')}",
-        f"{data.get('sous-titre', '')}",
-        f"{data.get('auteur', '')}\n",
-        "## Résumé",
-        f"{data.get('chapo', '')}\n",
-        f"{data.get('blocs', '')}",
-    ]
-
-    # TODO: Onglets à mieux formmater notamment choper les titres
-    if "onglets" in data and data["onglets"]:
-        parts.append("## Onglets")
-        parts.append(data["onglets"])
-
-    # TODO: temporary fix the isinstance check
-    if "sources" in data and data["sources"] and isinstance(data["sources"], str):
-        parts.append("## Sources")
-        parts.append(data["sources"])
-
-    # TODO: temporary fix the isinstance check (when empty dict but not normal)
-    if "definitions" in data and data["definitions"] and isinstance(data["definitions"], str):
-        parts.append("## Définitions")
-        parts.append(data["definitions"])
-
-    if "encadres" in data and data["encadres"]:
-        parts.append("## Encadres")
-        parts.append(data["encadres"])
-
-    if "liens-transverses" in data and data["liens-transverses"]:
-        parts.append("## Références")
-        parts.append(data["liens-transverses"])
-
-    formatted_page = "\n".join(parts)
-    return formatted_page.strip()
-
-
 def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
     """
     Parses XML content from a DataFrame, extracts data, formats it, and returns a new DataFrame with the formatted content.
@@ -440,40 +143,18 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
             # TODO: (to be changed, we should extract the xml in the first place)
             continue
 
-        soup = get_soup(row[xml_column])
-        root = soup.find()
+        # Extract the xml content and making it hmtl compliant
+        soup = format_tags(get_soup(row[xml_column]), TAGS_TO_IGNORE)
 
-        # Extract data from the XML
-        result = recursive_extract(root, HIGH_LEVEL_TAGS_TO_IGNORE)
+        soup.find("liste")
 
-        # Format chapo if it exists and is not empty
-        result = format_chapo(result) if "chapo" in result and result["chapo"] else result
+        # Transform the xml content into markdown
+        parsed_page = md(soup, escape_misc=False, escape_asterisks=False, bullets="-", heading_style="ATX")
 
-        # Format all high level tags that contains bloc tags (corps de texte, encadres, définitions etc.)
-        result = format_blocs(result)
-
-        # Format external links if it exists and is not empty
-        result = format_external_links(result) if "liens-transverses" in result and result["liens-transverses"] else result
-
-        formatted_page = format_page(result)
         parsed_pages["id"].append(page_id)
-        parsed_pages["content"].append(formatted_page)
+        parsed_pages["content"].append(remove_excessive_newlines(parsed_page))
 
     return pd.DataFrame(parsed_pages).set_index("id")
-
-
-# Attention 10613 (id : 1521268) pas bien récupéré, xml vide
-# 6699
-# 6700
-# 6701
-# 6702
-# 6703
-# 6704
-# 6705
-# 10613 ("xml_null")
-# 29281 (definitions pas présentes dans xml)
-# 31083 (long à vérifier)
-# 39570 (long à vérifier)
 
 
 def split_list(input_list: list[Any], chunk_size: int) -> Generator[list[Any]]:
@@ -649,3 +330,7 @@ def prepend_text_to_tag(tag, text):
 
 def md(soup, **options):
     return MarkdownConverter(**options).convert_soup(soup)
+
+
+# Attention 10613 (id : 1521268) ("xml_null")
+# 29281 (definitions pas présentes dans xml)
