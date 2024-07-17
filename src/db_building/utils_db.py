@@ -502,11 +502,22 @@ def split_list(input_list: list[Any], chunk_size: int) -> Generator[list[Any]]:
 
 def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
     soup_copy = soup
+    TAGS_FIGURE_CHILDREN = ["graphique", "tableau"]
+    remove_figure = [tag in tags_to_ignore for tag in TAGS_FIGURE_CHILDREN]
+
     for tag in soup_copy.find_all():
         # Remove tags to ignore
         if tag.name in tags_to_ignore:
             tag.decompose()
             continue
+
+        # Remove figure tags when they contain tags to ignore
+        # We need to do that because some content (e.g titles, sources...) are in the figure tag and not
+        # in the children tags (graphique, tableau...)
+        # Maybe we still want to keep it ?
+        if any(remove_figure) and tag.name == "figure":
+            for i, rm_fig in enumerate(remove_figure):
+                tag.decompose() if rm_fig and tag.find(TAGS_FIGURE_CHILDREN[i]) else None
 
         # Rename titre tags
         if tag.name == "titre" and len(list(tag.parents)) == 2:
