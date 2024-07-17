@@ -531,7 +531,19 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
 
         # Rename chapo tags
         if tag.name == "chapo":
-            prepend_text_to_tag(tag, "Résumé: ")
+            prepend_text_to_tag(tag, "Résumé : ")
+            tag.name = "h2"
+            continue
+
+        # Rename sources tags
+        if tag.name == "sources" and len(list(tag.parents)) == 2:
+            prepend_text_to_tag(tag, "Sources : ")
+            tag.name = "h2"
+            continue
+
+        # Rename definition tags
+        if tag.name == "definitions":
+            prepend_text_to_tag(tag, "Définitions : ")
             tag.name = "h2"
             continue
 
@@ -598,6 +610,11 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
         # if tag.name == 'item':
         #     tag.name = 'li'
         #     continue
+
+        # Rename emphase-normale tags
+        if tag.name == "emphase-normale":
+            tag.name = "b"
+            continue
 
         # Rename emphase-faible tags
         if tag.name == "emphase-faible":
