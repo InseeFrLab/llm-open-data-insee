@@ -32,3 +32,4 @@ urllib3
 ruff
 pre-commit
 pipreqs
+mardownify
