@@ -284,8 +284,9 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
         # Rename lien-externe tags
         if tag.name == "lien-externe":
             tag.name = "a"
-            tag["href"] = tag["url"]
-            del tag["url"]
+            tag["href"] = tag.get("url")
+            if tag.get("url") is not None:
+                del tag["url"]
             continue
 
         # # Rename liste tags
