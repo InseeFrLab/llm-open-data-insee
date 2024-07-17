@@ -525,7 +525,7 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
             continue
 
         # Rename sous-titre tags
-        if tag.name == "sous-titre":
+        if tag.name == "sous-titre" and tag.contents:
             tag.name = "h2"
             continue
 
@@ -547,13 +547,15 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
             tag.name = "h2"
             continue
 
+        if tag.name == "liens-transverses":
+            txt = tag.get("titre") if tag.get("titre") is not None else "Références"
+            prepend_text_to_tag(tag, txt)
+            tag.name = "h2"
+            continue
+
         # Rename intertitre tags
         if tag.name == "intertitre":
-            if tag.has_attr("niveau"):
-                level = int(tag["niveau"]) + 2
-                tag.name = f"h{level}"
-            else:
-                tag.name = "h3"
+            tag.name = f"h{int(tag.get("niveau")) + 2}" if tag.get("niveau") is not None else "h3"
             continue
 
         # Rename avertissement tags
