@@ -21,16 +21,6 @@ TAGS_TO_IGNORE = [
 ]
 
 
-def extract_text_tag(xmlstring, tag="paragraphe"):
-    """
-    Extract the elements between xml tag , note that the html and xml file associated to the same page are different,
-    xml files do not have any attribute like paragraphe-chapeau, ...
-    """
-    # tag paragraphe without attribute
-    pattern = "<" + tag + ">(.*?)</" + tag + ">"
-    return re.findall(pattern, xmlstring)
-
-
 def get_soup(xml_string: str) -> BeautifulSoup:
     """
     Parses an XML string and returns a BeautifulSoup object.
@@ -45,13 +35,19 @@ def get_soup(xml_string: str) -> BeautifulSoup:
     return soup
 
 
-def url_builder(row: pd.Series):
-    category = row.categorie
+def url_builder(row: pd.Series) -> str:
+    """
+    Constructs a URL based on the category and id of a given pandas Series row.
 
+    Parameters:
+    row (pd.Series): A pandas Series containing 'categorie' and 'id' fields.
+
+    Returns:
+    str: Constructed URL if valid category and id are present, otherwise None.
+    """
+    category = row.get("categorie")
     if category is None:
         return None
-
-    i = row.id
 
     dict_url = {
         "Publications grand public": "statistiques",
@@ -72,52 +68,78 @@ def url_builder(row: pd.Series):
         "Outils interactifs": "statistiques",
     }
 
-    if category in set(dict_url.keys()):
-        base_url = "https://www.insee.fr/fr/"
-
-        section = dict_url[category]
-
-        if section is None or len(section) == 0:
-            return None
-
-        url = base_url + section + "/" + i
-
-        return url
-    else:
+    section = dict_url.get(category)
+    if section is None:
         return None
 
+    base_url = "https://www.insee.fr/fr"
+    return f"""{base_url}/{section}/{row["id"]}"""
 
-def url_builder_metadata(row: pd.Series):
-    """
-    rebuild valid URL for metadata
-    base url looks like : https://www.insee.fr/fr/metadonnees/
-    """
 
-    base_url = "https://www.insee.fr/fr/metadonnees/"
+def url_builder_metadata(row: pd.Series) -> str:
+    """
+    Rebuilds a valid URL for metadata based on the id of a given pandas Series row.
+
+    The base URL looks like: https://www.insee.fr/fr/metadonnees/
+
+    Parameters:
+    row (pd.Series): A pandas Series containing an 'id' field.
+
+    Returns:
+    str: Constructed metadata URL if the id matches a known pattern, otherwise None.
+    """
+    base_url = "https://www.insee.fr/fr/metadonnees"
     pattern_source = r"^s"
     pattern_indicator = r"^p"
 
-    row_id = row.id
+    row_id = row.get("id")
+    if row_id is None:
+        return None
 
     if re.match(pattern_source, row_id):
-        return base_url + f"source/serie/{row_id}"
+        return f"{base_url}/source/serie/{row_id}"
 
     if re.match(pattern_indicator, row_id):
-        return base_url + f"source/indicateur/{row_id}/description"
+        return f"{base_url}/source/indicateur/{row_id}/description"
 
     return None
 
 
-def complete_url_builder(table):
+def complete_url_builder(table: pd.DataFrame) -> pd.Series:
+    """
+    Builds a complete list of URLs for each row in the given DataFrame.
+
+    If the URL cannot be constructed using `url_builder`, it tries `url_builder_metadata`.
+
+    Parameters:
+    table (pd.DataFrame): A pandas DataFrame containing rows with necessary fields.
+
+    Returns:
+    pd.Series: A pandas Series containing the constructed URLs or None for each row.
+    """
     urls = []
-    for _, row in tqdm(table.iterrows()):
+    for _, row in tqdm(table.iterrows(), total=table.shape[0], desc="Building URLs"):
         url = url_builder(row)
         if url is None:
             url = url_builder_metadata(row)
-
-        urls.append(url)  # add URL or None
+        urls.append(url)
 
     return pd.Series(urls)
+
+
+def prepend_text_to_tag(tag, text):
+    """
+    Prepends the given text to the content of the specified tag.
+
+    Parameters:
+    tag (Tag): The BeautifulSoup tag object to which the text will be prepended.
+    text (str): The text to prepend to the tag's content.
+
+    """
+    if tag.string is not None:
+        tag.insert(0, text)
+    else:
+        tag.string = text
 
 
 def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
@@ -143,10 +165,8 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
             # TODO: (to be changed, we should extract the xml in the first place)
             continue
 
-        # Extract the xml content and making it hmtl compliant
+        # Extract the xml content and making it html compliant
         soup = format_tags(get_soup(row[xml_column]), TAGS_TO_IGNORE)
-
-        soup.find("liste")
 
         # Transform the xml content into markdown
         parsed_page = md(soup, escape_misc=False, escape_asterisks=False, bullets="-", heading_style="ATX")
@@ -182,8 +202,20 @@ def split_list(input_list: list[Any], chunk_size: int) -> Generator[list[Any]]:
 
 
 def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
+    """
+    Formats the tags in the provided BeautifulSoup object according to specific HTML rules.
+
+    Parameters:
+    soup (Tag): The BeautifulSoup tag object to format.
+    tags_to_ignore (list[str]): A list of tag names to ignore and remove.
+
+    Returns:
+    Tag: The formatted BeautifulSoup tag object.
+    """
     soup_copy = soup
     TAGS_FIGURE_CHILDREN = ["graphique", "tableau"]
+
+    # Determine if figure tags should be removed
     remove_figure = [tag in tags_to_ignore for tag in TAGS_FIGURE_CHILDREN]
 
     for tag in soup_copy.find_all():
@@ -197,13 +229,11 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
         # in the children tags (graphique, tableau...)
         # Maybe we still want to keep it ?
         if any(remove_figure) and tag.name == "figure":
-            if any([tag.find(TAGS_FIGURE_CHILDREN[i]) is not None for i, value in enumerate(remove_figure) if value is False]):
-                # This make sure there is no children tags to keep in the figure tag
-                continue
-            else:
-                for i, rm_fig in enumerate(remove_figure):
-                    tag.decompose() if rm_fig and tag.find(TAGS_FIGURE_CHILDREN[i]) else None
+            if all(tag.find(child_tag) is None for child_tag, remove in zip(TAGS_FIGURE_CHILDREN, remove_figure, strict=False) if not remove):
+                tag.decompose()
+            continue
 
+        ## HEADINGS
         # Rename titre tags
         if tag.name == "titre" and len(list(tag.parents)) == 2:
             tag.name = "h1"
@@ -227,14 +257,20 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
             continue
 
         # Rename definition tags
-        if tag.name == "definitions":
+        if tag.name == "definitions" and len(list(tag.parents)) == 2:
             prepend_text_to_tag(tag, "Définitions : ")
             tag.name = "h2"
             continue
 
-        if tag.name == "liens-transverses":
+        # Rename liens-transverses tags
+        if tag.name == "liens-transverses" and len(list(tag.parents)) == 2:
             txt = tag.get("titre") if tag.get("titre") is not None else "Références"
             prepend_text_to_tag(tag, txt)
+            tag.name = "h2"
+            continue
+
+        # Rename avertissement tags
+        if tag.name == "avertissement" and len(list(tag.parents)) == 2:
             tag.name = "h2"
             continue
 
@@ -243,16 +279,12 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
             tag.name = f"h{int(tag.get("niveau")) + 2}" if tag.get("niveau") is not None else "h3"
             continue
 
-        # Rename avertissement tags
-        if tag.name == "avertissement" and len(list(tag.parents)) == 2:
-            tag.name = "h2"
-            continue
-
+        ## TABLES
         # Rename lignes tags
         if tag.name == "lignes":
-            if tag.has_attr("type") and tag["type"] == "entete":
+            if tag.get("type") == "entete":
                 tag.name = "thead"
-            elif tag.has_attr("type") and tag["type"] == "donnees":
+            elif tag.get("type") == "donnees":
                 tag.name = "tbody"
             continue
 
@@ -263,22 +295,18 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
 
         # Rename cellule entete tags
         if tag.name == "cellule":
-            if tag.has_attr("entete") and tag["entete"] == "colonne":
-                tag.name = "th"
-            # elif tag.has_attr('entete') and tag['entete'] == 'ligne':
-            #     tag.name = 'td'
-            else:
-                tag.name = "td"
-            continue
-
-        # Rename paragraphe tags
-        if tag.name == "paragraphe":
-            tag.name = "p"
+            tag.name = "th" if tag.get("entete") == "colonne" else "td"
             continue
 
         # Rename tableau tags
         if tag.name == "tableau":
             tag.name = "table"
+            continue
+
+        ## TEXT
+        # Rename paragraphe tags
+        if tag.name == "paragraphe":
+            tag.name = "p"
             continue
 
         # Rename lien-externe tags
@@ -288,16 +316,6 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
             if tag.get("url") is not None:
                 del tag["url"]
             continue
-
-        # # Rename liste tags
-        # if tag.name == 'liste':
-        #     tag.name = 'ul'
-        #     continue
-
-        # # Rename item tags
-        # if tag.name == 'item':
-        #     tag.name = 'li'
-        #     continue
 
         # Rename emphase-normale tags
         if tag.name == "emphase-normale":
@@ -313,20 +331,32 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
         if tag.name == "note":
             tag.name = "em"
 
+        # # Rename liste tags
+        # if tag.name == 'liste':
+        #     tag.name = 'ul'
+        #     continue
+
+        # # Rename item tags
+        # if tag.name == 'item':
+        #     tag.name = 'li'
+        #     continue
+
     return soup_copy
 
 
 def remove_excessive_newlines(text):
-    # Replace instances of more than three consecutive newlines with exactly three newlines
+    """
+    Replaces instances of more than two consecutive newlines with exactly two newlines.
+
+    Parameters:
+    text (str): The input text where excessive newlines need to be removed.
+
+    Returns:
+    str: The text with excessive newlines replaced by exactly two newlines.
+    """
+    # Replace instances of more than two consecutive newlines with exactly two newlines
     cleaned_text = re.sub(r"\n{3,}", "\n\n", text)
     return cleaned_text
-
-
-def prepend_text_to_tag(tag, text):
-    if tag.string:
-        tag.string.insert_before(text)
-    else:
-        tag.insert(0, text)
 
 
 def md(soup, **options):
