@@ -61,7 +61,7 @@ spec:
             cd llm-open-data-insee/ &&
             git checkout db-build-pipeline &&
             pip install -r requirements-dev.txt &&
-            python src/build_database.py
+            python src/run_build_database.py
         volumeMounts:
           - mountPath: /dev/shm
             name: dshm
