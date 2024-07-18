@@ -45,13 +45,15 @@ spec:
             - name: RETRIEVER_ONLY
               value: 'false'
             - name: RERANKING_METHOD
+              # Possibles values : ['BM25', 'Cross-encoder', 'Ensemble']
+              # If left empty, defauts to None
               value: ''
           resources:
             requests:
-              memory: "8Gi"
-              cpu: "2000m"
+              memory: "2Gi"
+              cpu: "1"
             limits:
-              memory: "100Gi"
-              cpu: "12000m"
-      nodeSelector: 
+              memory: "50Gi"
+              cpu: "30"
+      nodeSelector:
         nvidia.com/gpu.product: NVIDIA-H100-PCIe

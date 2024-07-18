@@ -1,60 +1,64 @@
 import logging
+import os
+import time
 
+import chromadb
 import numpy as np
 import pandas as pd
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from config import EMB_DEVICE, EMB_MODEL_NAME
+from db_building import build_database_from_dataframe, reload_database_from_local_dir
 from langchain_community.vectorstores.chroma import Chroma
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
-from evaluation import RetrievalConfiguration
+from evaluation.eval_configuration import RetrievalConfiguration
+from evaluation.retrieval_evaluation_measures import RetrievalEvaluationMeasure
+from evaluation.utils import build_chain_reranker_test
 
+## Utility function ##
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-## Utility function ######
-
-
-def build_embedding_model(model_name):
-    return HuggingFaceEmbeddings(
-        model_name=model_name,
-        multi_process=True,
-        model_kwargs={"device": "cuda"},
-        encode_kwargs={"normalize_embeddings": True},
-        show_progress=False,
-    )
-
-
-## Measures #############
-
-
-def recall(retrieved, relevant):
-    intersection = set(retrieved) & set(relevant)
-    return np.round(len(intersection) / len(relevant), 3) if len(relevant) > 0 else 0
-
-
-def precision(retrieved, relevant):
-    intersection = set(retrieved) & set(relevant)
-    return np.round(len(intersection) / len(retrieved), 3) if len(retrieved) > 0 else 0
-
-
-def hit_rate(retrieved, relevant):
+def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chroma:
     """
-    Hit rate metric is equivalent to the accuracy
+    Building vector database based on a given embedding model
     """
-    correct_retrieved = sum(1 for pred, label in zip(retrieved, relevant, strict=False) if pred == label)
-    total_retrieved = len(retrieved)
-    hit_rate = correct_retrieved / total_retrieved
-    return hit_rate
+    embedding_model_name = config.get("embedding_model_name", EMB_MODEL_NAME)
+    persist_directory = "./data/chroma_db"
 
+    # Ensure the persist directory exists
+    if not os.path.exists(persist_directory):
+        os.makedirs(persist_directory)
+        logging.info(f"Created persist directory: {persist_directory}")
 
-def mmr(retrieved, relevant):
-    # compute Mean Reciprocal Rank (Order Aware Metrics)
-    if relevant not in retrieved:
-        mrr_score = 1 / np.inf
+    client = chromadb.PersistentClient(path=persist_directory)
+
+    collection_name = config.collection
+    list_collections = [c.name for c in client.list_collections()]
+
+    logging.info(f"collection name : {collection_name}")
+    logging.info(f"The available collections : {list_collections}")
+
+    if collection_name in list_collections:
+        vector_db = reload_database_from_local_dir(
+            embed_model_name=embedding_model_name,
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            embed_device=EMB_DEVICE,
+            config=config,
+        )
+        logging.info("The database already exists")
     else:
-        rank_q = retrieved.index(relevant)
-        mrr_score = 1 / (rank_q + 1)
-    return mrr_score
+        logging.info("The database will be created")
+        raw_ref_database = pd.read_csv(path_data)
+        vector_db = build_database_from_dataframe(
+            df=raw_ref_database,
+            persist_directory=persist_directory,
+            embedding_model_name=embedding_model_name,
+            collection_name=collection_name,
+            config=config,
+        )
+
+    return vector_db
 
 
 ## Main class ###########
@@ -62,57 +66,99 @@ def mmr(retrieved, relevant):
 
 class RetrievalEvaluator:
     @staticmethod
-    def run(
-        eval_configurations: list[RetrievalConfiguration],
-        vector_db: Chroma,
-        dataframe_dict: dict[str, pd.DataFrame],
-    ) -> dict[str, tuple[csr_matrix, dict, dict, dict]]:
+    def run(eval_configurations: list[RetrievalConfiguration], eval_dict: dict[str, pd.DataFrame]) -> dict[str, tuple[csr_matrix, dict, dict, dict]]:
+        """
+        Goal : Evaluate the retrieval performance of a series of configurations.
+        eval_dict : dictionary containing a DataFrame with at least a question and source columns.
+        """
         results = {}
-        for df_name, df in dataframe_dict.items():
+        ir_measures = RetrievalEvaluationMeasure()
+
+        for df_name, df in eval_dict.items():
             results[df_name] = {}
             for configuration in eval_configurations:
+                t0 = time.time()
                 config_name = configuration.name
                 logging.info(f"Start of evaluation run for dataset: {df_name} and configuration: {config_name}")
                 results[df_name][config_name] = {}
-                embedding_model = build_embedding_model(configuration.embedding_model_name)
-                queries = list(df["question"])
-                logging.info("   Starting to embed questions")
-                query_embeddings = embedding_model.embed_documents(queries)
-                logging.info("   The questions have been embedded")
+
+                # Load ref Corpus
+                vector_db = build_vector_database(path_data=configuration.database_path, config=configuration)
+
+                # create a retriever
+                # note : define the type of search "similarity", "mmr", "similarity_score_threshold"
+                # "mmr" promote diversity with 'lambda_mult': 0 (max diversity) - 1 (min diversity)
+                # 'fetch_k': fetch more documents for the MMR algo
+
+                # retrieve queries
+                queries = [q for q in list(df["question"])]
+
+                # choose reranker based on configuration
+                reranker = build_chain_reranker_test(configuration)
+                logging.info("Retriever sucessfully built")
+                # embed queries
+                embedded_queries = vector_db.embeddings.embed_documents(queries)
+                logging.info("Queries have been embedded")
+
                 all_individual_recalls = []
                 all_individual_precisions = []
+                all_individual_mrrs = []
+                all_individual_ndcgs = []
+
                 for i, row in tqdm(df.iterrows()):
                     individual_recalls = []
                     individual_precisions = []
-                    # q = row["question"]
-                    golden_source = row["source_doc"]
-                    query_embedding = query_embeddings[i]
-                    nb_retrieved = max(configuration.k_values)
-                    retrieved_docs = vector_db.similarity_search_by_vector(embedding=query_embedding, k=nb_retrieved)
+                    individual_mrrs = []
+                    individual_ndcgs = []
+
+                    golden_source = row.get("source_doc")
+
+                    # based retriever
+                    retrieved_docs = vector_db.similarity_search_by_vector(embedding=embedded_queries[i], k=max(configuration.k_values))
+
+                    # reranker
+                    retrieved_docs = reranker.invoke({"documents": retrieved_docs, "query": queries[i]})
+
                     retrieved_sources = [doc.metadata["source"] for doc in retrieved_docs]
-                    if i % 50 == 0:
-                        logging.info(f"      Relevant sources have been retrieved for question {i} ")
+
                     for k in configuration.k_values:
-                        if i % 50 == 0:
-                            logging.info(f"      Computing measures at level {k} in {configuration.k_values}  for question {i}")
-                        recall_at_k = recall(retrieved_sources[:k], [golden_source])
-                        precision_at_k = precision(retrieved_sources[:k], [golden_source])
+                        recall_at_k = ir_measures.recall(retrieved_sources[:k], [golden_source])
+                        precision_at_k = ir_measures.precision(retrieved_sources[:k], [golden_source])
+                        mrr_at_k = ir_measures.mrr(retrieved_sources[:k], [golden_source])
+                        ndcg_at_k = ir_measures.ndcg(retrieved_sources[:k], [golden_source])
+
                         individual_recalls.append(recall_at_k)
                         individual_precisions.append(precision_at_k)
+                        individual_mrrs.append(mrr_at_k)
+                        individual_ndcgs.append(ndcg_at_k)
+
                     all_individual_recalls.append(individual_recalls)
                     all_individual_precisions.append(individual_precisions)
+                    all_individual_mrrs.append(individual_mrrs)
+                    all_individual_ndcgs.append(individual_ndcgs)
+
                 # length of all_individual_recalls/precisions equals len(configuration.k_values)
-                assert len(df) == len(all_individual_recalls), "nb of indivduals error"
+                assert len(df) == len(all_individual_recalls), "nb of individuals error"
                 logging.info(f"      length of all_individual recalls is {len(all_individual_recalls)}")
                 all_k_precisions = list(zip(*all_individual_precisions, strict=False))
                 all_k_recalls = list(zip(*all_individual_recalls, strict=False))
-                # logging.info(f"      length of all_individual recalls is {len(all_individual_recalls)}")
+                all_k_mrrs = list(zip(*all_individual_mrrs, strict=False))
+                all_k_ndcgs = list(zip(*all_individual_ndcgs, strict=False))
+
                 assert len(configuration.k_values) == len(all_k_recalls), "Number of ks error"
                 results[df_name][config_name]["recall"] = {}
                 results[df_name][config_name]["precision"] = {}
+                results[df_name][config_name]["mrr"] = {}
+                results[df_name][config_name]["ndcg"] = {}
+
                 for i, k in enumerate(configuration.k_values):
                     results[df_name][config_name]["recall"][k] = np.mean(all_k_recalls[i])
                     results[df_name][config_name]["precision"][k] = np.mean(all_k_precisions[i])
+                    results[df_name][config_name]["mrr"][k] = np.mean(all_k_mrrs[i])
+                    results[df_name][config_name]["ndcg"][k] = np.mean(all_k_ndcgs[i])
+
+                results[df_name][config_name]["runtime"] = time.time() - t0
+
         return results
 
     @staticmethod
