@@ -2,7 +2,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path, PosixPath
+from pathlib import Path
 
 import mlflow
 import pandas as pd
@@ -16,7 +16,9 @@ MAX_NUMBER_PAGES = 20
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 
 # Check mlflow URL is defined
-assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
+assert (
+    "MLFLOW_TRACKING_URI" in os.environ
+), "Please set the MLFLOW_TRACKING_URI environment variable."
 
 # TODO: Bien faire un script qui s'execute selon divers params pour argo workflows
 
@@ -25,7 +27,9 @@ mlflow.set_experiment(EXPERIMENT_NAME)
 
 # Build database
 with mlflow.start_run() as run:
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+    fs = s3fs.S3FileSystem(
+        client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
+    )
 
     db, data, chunk_infos = build_vector_database(
         data_path="data/raw_data/applishare_solr_joined.parquet",
@@ -37,8 +41,14 @@ with mlflow.start_run() as run:
     )
 
     # Log raw dataset built from web4g
-    df_raw = pd.read_parquet(f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs).head(10)
-    mlflow_data_raw = mlflow.data.from_pandas(df_raw, source=f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", name="web4g_data")
+    df_raw = pd.read_parquet(
+        f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs
+    ).head(10)
+    mlflow_data_raw = mlflow.data.from_pandas(
+        df_raw,
+        source=f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet",
+        name="web4g_data",
+    )
     mlflow.log_input(mlflow_data_raw, context="pre-embedding")
     mlflow.log_table(data=df_raw, artifact_file="web4g_data.json")
 
@@ -73,7 +83,9 @@ with mlflow.start_run() as run:
 
     # Log environment necessary to reproduce the experiment
     current_dir = Path(".")
-    FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
+    FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(
+        current_dir.glob("src/config/*.py")
+    )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir_path = Path(tmp_dir)
