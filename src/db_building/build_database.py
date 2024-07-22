@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
+
 # from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -15,6 +16,7 @@ from src.config import (
     MARKDOWN_SEPARATORS,
     S3_BUCKET,
 )
+
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 import s3fs
+
 from src.chain_building import build_chain_validator
 from src.config import COLLECTION_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE, S3_BUCKET
 from src.db_building import build_vector_database, load_retriever
