@@ -1,5 +1,6 @@
 import os
 import shutil
+import argparse
 import subprocess
 import tempfile
 from pathlib import Path
@@ -10,17 +11,37 @@ import s3fs
 from config import COLLECTION_NAME, EMB_MODEL_NAME, S3_BUCKET
 from db_building import build_vector_database
 
-# Global parameters
-EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
-MAX_NUMBER_PAGES = 20
-CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
+
+# PARAMETERS ----------------------------------------
 
 # Check mlflow URL is defined
 assert (
     "MLFLOW_TRACKING_URI" in os.environ
 ), "Please set the MLFLOW_TRACKING_URI environment variable."
 
-# TODO: Bien faire un script qui s'execute selon divers params pour argo workflows
+# Global parameters
+EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
+MAX_NUMBER_PAGES = 20
+CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
+
+# Define user-level parameters
+parser = argparse.ArgumentParser(description="LLM building parameters")
+parser.add_argument(
+    "--embedding", type=str, default=None,
+    help="""
+    Embedding model.
+    Should be a huggingface model.
+    Default to OrdalieTech/Solon-embeddings-large-0.1
+    """
+)
+args = parser.parse_args()
+
+# Replacing None with default values
+if args.embedding is None:
+    args.embedding = "OrdalieTech/Solon-embeddings-large-0.1"
+
+
+# PIPELINE ----------------------------------------------------
 
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
 mlflow.set_experiment(EXPERIMENT_NAME)
@@ -34,7 +55,7 @@ with mlflow.start_run() as run:
     db, data, chunk_infos = build_vector_database(
         data_path="data/raw_data/applishare_solr_joined.parquet",
         persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-        embedding_model=EMB_MODEL_NAME,
+        embedding_model=args.embedding,
         collection_name=COLLECTION_NAME,
         filesystem=fs,
         max_pages=MAX_NUMBER_PAGES,
