@@ -33,3 +33,4 @@ ruff
 pre-commit
 pipreqs
 markdownify
+langchain-chroma

@@ -19,15 +19,31 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.DEBUG)
 
 
+# PARAMETERS --------------------------------------
+
+model = os.getenv("LLM_MODEL_NAME")
+quantization = True
+max_new_tokens = 10
+model_temperature = 1
+embedding = os.getenv("EMB_MODEL_NAME", EMB_MODEL_NAME)
+
+
+# APPLICATION -----------------------------------------
+
 @cl.on_chat_start
 async def on_chat_start():
     # Initial message
-    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!", disable_feedback=True)
+    init_msg = cl.Message(
+        content="Bienvenue sur le ChatBot de l'INSEE!",
+        disable_feedback=True
+        )
     await init_msg.send()
 
     # Logging configuration
     IS_LOGGING_ON = True
-    ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
+    ASK_USER_BEFORE_LOGGING = str_to_bool(
+        os.getenv("ASK_USER_BEFORE_LOGGING", "false")
+    )
     if ASK_USER_BEFORE_LOGGING:
         res = await cl.AskActionMessage(
             content="Autorisez-vous le partage de vos interactions avec le ChatBot!",
@@ -45,15 +61,22 @@ async def on_chat_start():
 
     # Set Validator chain in chainlit session
     llm, tokenizer = build_llm_model(
-        model_name=os.getenv("LLM_MODEL_NAME"),
-        quantization_config=True,
+        model_name=model,
+        quantization_config=quantization,
         config=True,
         token=os.getenv("HF_TOKEN"),
         streaming=False,
-        generation_args={"max_new_tokens": 10, "return_full_text": False, "do_sample": False},
+        generation_args={
+            "max_new_tokens": max_new_tokens,
+            "return_full_text": False, "do_sample": False,
+            "temperature": model_temperature
+        },
     )
     # Set Validator chain in chainlit session
-    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
+    validator = build_chain_validator(
+        evaluator_llm=llm,
+        tokenizer=tokenizer
+    )
     cl.user_session.set("validator", validator)
     logging.info("------validator loaded")
 
@@ -65,9 +88,12 @@ async def on_chat_start():
         llm = None
         prompt = None
         retriever = load_retriever(
-            emb_model_name=os.getenv("EMB_MODEL_NAME"),
+            emb_model_name=embedding,
             persist_directory="./data/chroma_db",
-            retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+            retriever_params={
+                "search_type": "similarity",
+                "search_kwargs": {"k": 30}
+            },
         )
         logging.info("------retriever loaded")
 
@@ -75,16 +101,16 @@ async def on_chat_start():
         logging.info("------ chatbot mode : RAG")
 
         llm, tokenizer = build_llm_model(
-            model_name=os.getenv("LLM_MODEL_NAME"),
-            quantization_config=True,
+            model_name=model,
+            quantization_config=quantization,
             config=True,
             token=os.getenv("HF_TOKEN"),
             streaming=False,
             generation_args={
-                "max_new_tokens": 2000,
+                "max_new_tokens": max_new_tokens,
                 "return_full_text": False,
                 "do_sample": True,
-                "temperature": 0.2,
+                "temperature": model_temperature,
             },
         )
         logging.info("------llm loaded")

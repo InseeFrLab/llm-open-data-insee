@@ -142,7 +142,9 @@ def prepend_text_to_tag(tag, text):
         tag.string = text
 
 
-def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
+def parse_xmls(
+    data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content"
+) -> pd.DataFrame:
     """
     Parses XML content from a DataFrame, extracts data, formats it, and returns a new DataFrame with the formatted content.
 
@@ -169,7 +171,13 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
         soup = format_tags(get_soup(row[xml_column]), TAGS_TO_IGNORE)
 
         # Transform the xml content into markdown
-        parsed_page = md(soup, escape_misc=False, escape_asterisks=False, bullets="-", heading_style="ATX")
+        parsed_page = md(
+            soup,
+            escape_misc=False,
+            escape_asterisks=False,
+            bullets="-",
+            heading_style="ATX",
+        )
 
         parsed_pages["id"].append(page_id)
         parsed_pages["content"].append(remove_excessive_newlines(parsed_page))
@@ -229,7 +237,13 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
         # in the children tags (graphique, tableau...)
         # Maybe we still want to keep it ?
         if any(remove_figure) and tag.name == "figure":
-            if all(tag.find(child_tag) is None for child_tag, remove in zip(TAGS_FIGURE_CHILDREN, remove_figure, strict=False) if not remove):
+            if all(
+                tag.find(child_tag) is None
+                for child_tag, remove in zip(
+                    TAGS_FIGURE_CHILDREN, remove_figure, strict=False
+                )
+                if not remove
+            ):
                 tag.decompose()
             continue
 
@@ -276,7 +290,11 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
 
         # Rename intertitre tags
         if tag.name == "intertitre":
-            tag.name = f"h{int(tag.get("niveau")) + 2}" if tag.get("niveau") is not None else "h3"
+            tag.name = (
+                f"h{int(tag.get("niveau")) + 2}"
+                if tag.get("niveau") is not None
+                else "h3"
+            )
             continue
 
         ## TABLES

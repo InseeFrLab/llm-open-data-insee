@@ -3,7 +3,14 @@ import logging
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-from config import COLLECTION_NAME, DB_DIR_LOCAL, EMB_DEVICE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS, S3_BUCKET
+from config import (
+    COLLECTION_NAME,
+    DB_DIR_LOCAL,
+    EMB_DEVICE,
+    EMB_MODEL_NAME,
+    MARKDOWN_SEPARATORS,
+    S3_BUCKET,
+)
 
 # from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -12,7 +19,10 @@ from langchain_community.vectorstores import Chroma
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 def parse_collection_name(collection_name: str):
     """
@@ -26,7 +36,9 @@ def parse_collection_name(collection_name: str):
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
-            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
+            raise ValueError(
+                "String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'"
+            )
 
         # Extract and assign the parts
         model_name = parts[0]
@@ -34,13 +46,18 @@ def parse_collection_name(collection_name: str):
         overlap_size = int(parts[2])
 
         # Return the parsed values in a dictionary
-        return {"model_name": model_name, "chunk_size": chunk_size, "overlap_size": overlap_size}
+        return {
+            "model_name": model_name,
+            "chunk_size": chunk_size,
+            "overlap_size": overlap_size,
+        }
     except Exception as e:
         print(f"Error parsing string: {e}")
         return None
 
 
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
+
 
 def build_vector_database(
     data_path: str,
@@ -62,19 +79,39 @@ def build_vector_database(
     # Parse the XML content
     parsed_pages = parse_xmls(data)
 
-    df = data.set_index("id").merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
-    df = df[["titre", "categorie", "url", "dateDiffusion", "theme", "collection", "libelleAffichageGeo", "content"]]
+    df = data.set_index("id").merge(
+        pd.DataFrame(parsed_pages), left_index=True, right_index=True
+    )
+    df = df[
+        [
+            "titre",
+            "categorie",
+            "url",
+            "dateDiffusion",
+            "theme",
+            "collection",
+            "libelleAffichageGeo",
+            "content",
+        ]
+    ]
 
     # Temporary solution to add the RMES data
     data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
-    data_rmes = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem)
+    data_rmes = pd.read_parquet(
+        f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem
+    )
     df = pd.concat([df, data_rmes])
 
     # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
     df.fillna(value="", inplace=True)
 
     # chucking of documents
-    all_splits, chunk_infos = chunk_documents(data=df, md_split=True, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)
+    all_splits, chunk_infos = chunk_documents(
+        data=df,
+        md_split=True,
+        hf_tokenizer_name=embedding_model,
+        separators=MARKDOWN_SEPARATORS,
+    )
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=embedding_model,
@@ -100,6 +137,7 @@ def build_vector_database(
 
 # RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
 
+
 def reload_database_from_local_dir(
     embed_model_name: str = EMB_MODEL_NAME,
     collection_name: str = COLLECTION_NAME,
@@ -120,26 +158,40 @@ def reload_database_from_local_dir(
         embedding_function=embedding_model,
     )
 
-    logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
+    logging.info(
+        f"The database (collection {collection_name}) "
+        f"has been reloaded from directory {persist_directory}"
+    )
     return db
 
 
 def load_retriever(
     emb_model_name,
+    vectorstore=None,
     persist_directory="data/chroma_db",
-    device="cuda", collection_name: str = "insee_data",
-    retriever_params: dict = None
+    device="cuda",
+    collection_name: str = "insee_data",
+    retriever_params: dict = None,
 ):
     # Load vector database
-    vectorstore = reload_database_from_local_dir(
-        embed_model_name=emb_model_name,
-        collection_name=collection_name,
-        persist_directory=persist_directory,
-        embed_device=device,
-    )
+    if vectorstore is None:
+        logging.info("Reloading database in session")
+        vectorstore = reload_database_from_local_dir(
+            embed_model_name=emb_model_name,
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            embed_device=device,
+        )
+    else:
+        logging.info("vectorstore being provided, skipping the reloading")
+
+    if retriever_params is None:
+        retriever_params = {"search_type": "similarity", "search_kwargs": {"k": 30}}
 
     search_kwargs = retriever_params.get("search_kwargs", {"k": 20})
 
     # Set up a retriever
-    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
-    return retriever
+    retriever = vectorstore.as_retriever(
+        search_type="similarity", search_kwargs=search_kwargs
+    )
+    return retriever, vectorstore

@@ -40,21 +40,29 @@ def build_llm_model(
 
     configs = {
         # Load quantization config
-        "quantization_config": BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype="float16",
-            bnb_4bit_use_double_quant=False,
-        )
-        if quantization_config
-        else None,
+        "quantization_config": (
+            BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype="float16",
+                bnb_4bit_use_double_quant=False,
+            )
+            if quantization_config
+            else None
+        ),
         # Load LLM config
-        "config": AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token) if config else None,
+        "config": (
+            AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token)
+            if config
+            else None
+        ),
         "token": token,
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, use_fast=True, device_map="auto", token=configs["token"]
+    )
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)

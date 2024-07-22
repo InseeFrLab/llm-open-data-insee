@@ -15,7 +15,12 @@ HEADERS_TO_SPLIT_ON = [
 
 
 def chunk_documents(
-    data: pd.DataFrame, md_split: bool, hf_tokenizer_name: str = None, chunk_size: int = None, chunk_overlap: int = None, separators: list = None
+    data: pd.DataFrame,
+    md_split: bool,
+    hf_tokenizer_name: str = None,
+    chunk_size: int = None,
+    chunk_overlap: int = None,
+    separators: list = None,
 ) -> tuple[list[Document], dict]:
     """
     Chunks documents from a dataframe into smaller pieces using specified tokenizer settings or custom settings.
@@ -40,11 +45,15 @@ def chunk_documents(
     document_list = DataFrameLoader(data, page_content_column="content").load()
 
     if md_split:
-        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False)
+        markdown_splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False
+        )
         document_list = make_md_splits(document_list, markdown_splitter)
 
     # Initialize token/char splitter
-    text_splitter, chunk_infos = get_text_splitter(hf_tokenizer_name, chunk_size, chunk_overlap, separators)
+    text_splitter, chunk_infos = get_text_splitter(
+        hf_tokenizer_name, chunk_size, chunk_overlap, separators
+    )
 
     # Split documents into chunks
     docs_processed = text_splitter.split_documents(document_list)
@@ -57,7 +66,9 @@ def chunk_documents(
             unique_texts.add(doc.page_content)
             docs_processed_unique.append(doc)
 
-    logging.info(f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database")
+    logging.info(
+        f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database"
+    )
 
     return docs_processed_unique, chunk_infos | {"md_split": md_split}
 
@@ -85,7 +96,9 @@ def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
     return autokenizer, chunk_size, chunk_overlap
 
 
-def get_text_splitter(hf_tokenizer_name: str, chunk_size: int, chunk_overlap: int, separators: list) -> tuple[RecursiveCharacterTextSplitter, dict]:
+def get_text_splitter(
+    hf_tokenizer_name: str, chunk_size: int, chunk_overlap: int, separators: list
+) -> tuple[RecursiveCharacterTextSplitter, dict]:
     """
     Get a text splitter based on the specified parameters.
 
@@ -100,7 +113,9 @@ def get_text_splitter(hf_tokenizer_name: str, chunk_size: int, chunk_overlap: in
     """
 
     if hf_tokenizer_name:
-        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(hf_tokenizer_name)
+        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(
+            hf_tokenizer_name
+        )
 
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
@@ -110,14 +125,20 @@ def get_text_splitter(hf_tokenizer_name: str, chunk_size: int, chunk_overlap: in
         )
     else:
         if chunk_size is None or chunk_overlap is None:
-            raise ValueError("chunk_size and chunk_overlap must be specified if hf_tokenizer is not provided")
+            raise ValueError(
+                "chunk_size and chunk_overlap must be specified if hf_tokenizer is not provided"
+            )
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap, separators=separators)
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap, separators=separators
+        )
 
     return text_splitter, {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
 
 
-def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
+def make_md_splits(
+    document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter
+) -> list[Document]:
     """
     Splits the content of each document in the document list based on Markdown headers,
     and preserves the original metadata in each split section.

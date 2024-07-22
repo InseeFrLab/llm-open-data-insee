@@ -9,13 +9,18 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 import s3fs
+from chain_building import build_chain_validator
 from config import COLLECTION_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE, S3_BUCKET
 from db_building import build_vector_database, load_retriever
 from model_building import build_llm_model
 
 # Logging configuration
 logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.DEBUG)
+logging.basicConfig(
+    format="%(asctime)s %(message)s",
+    datefmt="%Y-%m-%d %I:%M:%S %p",
+    level=logging.DEBUG,
+)
 
 
 fs = s3fs.S3FileSystem(
@@ -38,44 +43,51 @@ CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 # Define user-level parameters
 parser = argparse.ArgumentParser(description="LLM building parameters")
 parser.add_argument(
-    "--embedding", type=str, default=None,
+    "--embedding",
+    type=str,
+    default=None,
     help="""
     Embedding model.
     Should be a huggingface model.
     Defaults to OrdalieTech/Solon-embeddings-large-0.1
-    """
+    """,
 )
 parser.add_argument(
-    "--model", type=str, default=None,
+    "--model",
+    type=str,
+    default=None,
     help="""
     LLM used to generate chat.
     Should be a huggingface model.
     Defaults to mistralai/Mistral-7B-Instruct-v0.2
-    """
+    """,
 )
 parser.add_argument(
-    "--quantization", default=True,
+    "--quantization",
+    default=True,
     action=argparse.BooleanOptionalAction,
     help="""
     Should we use a quantized version of "model" argument ?
     --quantization yields True and --no-quantization yields False
-    """
+    """,
 )
 parser.add_argument(
-    "--max_new_tokens", type=int,
+    "--max_new_tokens",
+    type=int,
     default=2000,
     help="""
     The maximum numbers of tokens to generate, ignoring the number of tokens in the prompt.
     See https://huggingface.co/docs/transformers/main_classes/text_generation
-    """
+    """,
 )
 parser.add_argument(
-    "--model_temperature", type=int,
+    "--model_temperature",
+    type=int,
     default=1,
     help="""
     The value used to modulate the next token probabilities.
     See https://huggingface.co/docs/transformers/main_classes/text_generation
-    """
+    """,
 )
 
 args = parser.parse_args()
@@ -85,9 +97,7 @@ if args.embedding is None:
     args.embedding = EMB_MODEL_NAME
 
 if args.model is None:
-    args.model = os.getenv(
-        "LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2"
-    )
+    args.model = os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2")
 
 
 # PIPELINE ----------------------------------------------------
@@ -196,7 +206,7 @@ with mlflow.start_run() as run:
             "max_new_tokens": args.max_new_tokens,
             "return_full_text": False,
             "do_sample": False,
-            "temperature": args.model_temperature
+            "temperature": args.model_temperature,
         },
     )
 
@@ -204,12 +214,14 @@ with mlflow.start_run() as run:
     example_text = "Quels sont les chiffres du chômage ?"
     mlflow.log_text(
         f"{example_text} \n ---------> \n {', '.join(tokenizer.tokenize(example_text))}",
-        "example_tokenizer.json"
+        "example_tokenizer.json",
     )
 
     retriever = load_retriever(
-                emb_model_name=os.getenv("EMB_MODEL_NAME"),
-                persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-                retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
-            )
+        emb_model_name=args.embedding,
+        vectorstore=db,
+        persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+        retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+    )
 
+    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
