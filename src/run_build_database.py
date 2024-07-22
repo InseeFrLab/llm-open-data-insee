@@ -4,12 +4,27 @@ import argparse
 import subprocess
 import tempfile
 from pathlib import Path
+import logging
 
-import mlflow
-import pandas as pd
 import s3fs
-from config import COLLECTION_NAME, EMB_MODEL_NAME, S3_BUCKET
+import pandas as pd
+import mlflow
+from config import (
+    COLLECTION_NAME, EMB_MODEL_NAME, S3_BUCKET,
+    RAG_PROMPT_TEMPLATE
+)
 from db_building import build_vector_database
+from model_building import build_llm_model
+
+
+# Logging configuration
+logger = logging.getLogger(__name__)
+logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.DEBUG)
+
+
+fs = s3fs.S3FileSystem(
+    client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
+)
 
 
 # PARAMETERS ----------------------------------------
@@ -31,14 +46,52 @@ parser.add_argument(
     help="""
     Embedding model.
     Should be a huggingface model.
-    Default to OrdalieTech/Solon-embeddings-large-0.1
+    Defaults to OrdalieTech/Solon-embeddings-large-0.1
     """
 )
+parser.add_argument(
+    "--model", type=str, default=None,
+    help="""
+    LLM used to generate chat.
+    Should be a huggingface model.
+    Defaults to mistralai/Mistral-7B-Instruct-v0.2
+    """
+)
+parser.add_argument(
+    "--quantization", default=True,
+    action=argparse.BooleanOptionalAction,
+    help="""
+    Should we use a quantized version of "model" argument ?
+    --quantization yields True and --no-quantization yields False
+    """
+)
+parser.add_argument(
+    "--max_new_tokens", type=int,
+    default=2000,
+    help="""
+    The maximum numbers of tokens to generate, ignoring the number of tokens in the prompt.
+    See https://huggingface.co/docs/transformers/main_classes/text_generation
+    """
+)
+parser.add_argument(
+    "--model_temperature", type=int,
+    default=1,
+    help="""
+    The value used to modulate the next token probabilities.
+    See https://huggingface.co/docs/transformers/main_classes/text_generation
+    """
+)
+
 args = parser.parse_args()
 
 # Replacing None with default values
 if args.embedding is None:
-    args.embedding = "OrdalieTech/Solon-embeddings-large-0.1"
+    args.embedding = EMB_MODEL_NAME
+
+if args.model is None:
+    args.model = os.getenv(
+        "LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2"
+    )
 
 
 # PIPELINE ----------------------------------------------------
@@ -48,9 +101,11 @@ mlflow.set_experiment(EXPERIMENT_NAME)
 
 # Build database
 with mlflow.start_run() as run:
-    fs = s3fs.S3FileSystem(
-        client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
-    )
+
+    # ------------------------
+    # I - BUILD VECTOR DATABASE
+
+    logging.info(f"Building vector database {80*'='}")
 
     db, data, chunk_infos = build_vector_database(
         data_path="data/raw_data/applishare_solr_joined.parquet",
@@ -97,7 +152,7 @@ with mlflow.start_run() as run:
     # Log parameters and metrics
     mlflow.log_param("collection_name", COLLECTION_NAME)
     mlflow.log_param("number_pages", MAX_NUMBER_PAGES)
-    mlflow.log_param("model_name", EMB_MODEL_NAME)
+    mlflow.log_param("embedding_model_name", args.embedding)
     mlflow.log_metric("number_documents", len(db_docs))
     for key, value in chunk_infos.items():
         mlflow.log_param(key, value)
@@ -124,3 +179,29 @@ with mlflow.start_run() as run:
 
         # Log all Python files to MLflow artifact
         mlflow.log_artifacts(tmp_dir, artifact_path="environment")
+
+    # ------------------------
+    # II - CREATING RETRIEVER
+
+    logging.info(f"Training retriever {80*'='}")
+
+    mlflow.log_param("llm_model_name", args.model)
+    mlflow.log_param("max_new_tokens", args.max_new_tokens)
+    mlflow.log_param("temperature", args.model_temperature)
+    mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
+
+    llm, tokenizer = build_llm_model(
+        model_name=args.model,
+        quantization_config=args.quantization,
+        config=True,
+        token=os.getenv("HF_TOKEN"),
+        streaming=False,
+        generation_args={
+            "max_new_tokens": args.max_new_tokens,
+            "return_full_text": False,
+            "do_sample": False,
+            "temperature": args.model_temperature
+        },
+    )
+
+
