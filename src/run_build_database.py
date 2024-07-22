@@ -1,19 +1,20 @@
+import argparse
+import logging
 import os
 import shutil
-import argparse
 import subprocess
 import tempfile
 from pathlib import Path
-import logging
 
-import s3fs
-import pandas as pd
 import mlflow
+import pandas as pd
+import s3fs
+
 from config import (
-    COLLECTION_NAME, EMB_MODEL_NAME, S3_BUCKET,
-    RAG_PROMPT_TEMPLATE
+    COLLECTION_NAME, EMB_MODEL_NAME,
+    RAG_PROMPT_TEMPLATE, S3_BUCKET
 )
-from db_building import build_vector_database
+from db_building import build_vector_database, load_retriever
 from model_building import build_llm_model
 
 
@@ -204,9 +205,15 @@ with mlflow.start_run() as run:
         },
     )
 
+    logging.info("Logging an example of tokenized text")
     mlflow.log_text(
-        " ".join(tokenizer.tokenize(db_docs[0])),
+        ", ".join(tokenizer.tokenize("Quels sont les chiffres du chômage ?")),
         "example_tokenizer.json"
     )
 
+    retriever = load_retriever(
+                emb_model_name=os.getenv("EMB_MODEL_NAME"),
+                persist_directory="./data/chroma_db",
+                retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+            )
 

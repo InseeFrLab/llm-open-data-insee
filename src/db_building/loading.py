@@ -20,7 +20,10 @@ def create_vectorstore(
 
 
 def load_retriever(
-    emb_model_name, persist_directory="data/chroma_db", device="cuda", collection_name: str = "insee_data", retriever_params: dict = None
+    emb_model_name,
+    persist_directory="data/chroma_db",
+    device="cuda", collection_name: str = "insee_data",
+    retriever_params: dict = None
 ):
     # Load vector database
     vectorstore = create_vectorstore(emb_model_name=emb_model_name, persist_directory=persist_directory, device=device)

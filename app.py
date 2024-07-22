@@ -6,16 +6,13 @@ import chainlit.data as cl_data
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.prompts import PromptTemplate
 
-from src.config import (
-    CHATBOT_TEMPLATE
-)
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
-from src.db_loading import load_retriever
+from src.config import CHATBOT_TEMPLATE
+from src.db_building import load_retriever
 from src.model_building import build_llm_model
 from src.results_logging.log_conversations import log_feedback_to_s3, log_qa_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
-
 
 # Logging configuration
 logger = logging.getLogger(__name__)
