@@ -9,10 +9,10 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 import s3fs
-from chain_building import build_chain_validator
-from config import COLLECTION_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE, S3_BUCKET
-from db_building import build_vector_database, load_retriever
-from model_building import build_llm_model
+from src.chain_building import build_chain_validator
+from src.config import COLLECTION_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE, S3_BUCKET
+from src.db_building import build_vector_database, load_retriever
+from src.model_building import build_llm_model
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -211,9 +211,8 @@ with mlflow.start_run() as run:
     )
 
     logging.info("Logging an example of tokenized text")
-    example_text = "Quels sont les chiffres du chômage ?"
     mlflow.log_text(
-        f"{example_text} \n ---------> \n {', '.join(tokenizer.tokenize(example_text))}",
+        f"{query} \n ---------> \n {', '.join(tokenizer.tokenize(query))}",
         "example_tokenizer.json",
     )
 

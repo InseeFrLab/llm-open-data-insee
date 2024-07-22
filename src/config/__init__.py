@@ -50,7 +50,7 @@ Instruction: Réponds à la question en te basant sur le contexte donné:
 Question:
 {question}
 [/INST]
- """
+"""
 
 RAG_PROMPT_TEMPLATE = """
 <s>[INST]

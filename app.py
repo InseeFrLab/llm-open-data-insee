@@ -6,6 +6,7 @@ import chainlit.data as cl_data
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.prompts import PromptTemplate
 
+from src.config import EMB_MODEL_NAME
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
 from src.config import CHATBOT_TEMPLATE
