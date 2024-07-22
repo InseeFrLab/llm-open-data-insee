@@ -204,4 +204,9 @@ with mlflow.start_run() as run:
         },
     )
 
+    mlflow.log_text(
+        " ".join(tokenizer.tokenize(db_docs[0])),
+        "example_tokenizer.json"
+    )
+
 
