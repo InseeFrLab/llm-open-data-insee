@@ -4,6 +4,7 @@ import pandas as pd
 import s3fs
 from chromadb.config import Settings
 from config import COLLECTION_NAME, DB_DIR_LOCAL, EMB_DEVICE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS, S3_BUCKET
+
 # from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
