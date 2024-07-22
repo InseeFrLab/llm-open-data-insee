@@ -9,14 +9,9 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 import s3fs
-
-from config import (
-    COLLECTION_NAME, EMB_MODEL_NAME,
-    RAG_PROMPT_TEMPLATE, S3_BUCKET
-)
+from config import COLLECTION_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE, S3_BUCKET
 from db_building import build_vector_database, load_retriever
 from model_building import build_llm_model
-
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -206,14 +201,15 @@ with mlflow.start_run() as run:
     )
 
     logging.info("Logging an example of tokenized text")
+    example_text = "Quels sont les chiffres du chômage ?"
     mlflow.log_text(
-        ", ".join(tokenizer.tokenize("Quels sont les chiffres du chômage ?")),
+        f"{example_text} \n ---------> \n {', '.join(tokenizer.tokenize(example_text))}",
         "example_tokenizer.json"
     )
 
     retriever = load_retriever(
                 emb_model_name=os.getenv("EMB_MODEL_NAME"),
-                persist_directory="./data/chroma_db",
+                persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
                 retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
             )
 

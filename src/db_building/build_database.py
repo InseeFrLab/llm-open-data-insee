@@ -14,6 +14,33 @@ from .utils_db import parse_xmls, split_list
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+def parse_collection_name(collection_name: str):
+    """
+    Parse a concatenated string to extract the embedding model name, chunk size, and overlap size.
+    :param concatenated_string: A string in the format 'embeddingmodelname_chunkSize_overlapSize'
+    :return: A dictionary with the parsed values
+    """
+    try:
+        # Split the string by the underscore delimiter
+        parts = collection_name.split("_")
+
+        # Ensure there are exactly three parts
+        if len(parts) != 3:
+            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
+
+        # Extract and assign the parts
+        model_name = parts[0]
+        chunk_size = int(parts[1])
+        overlap_size = int(parts[2])
+
+        # Return the parsed values in a dictionary
+        return {"model_name": model_name, "chunk_size": chunk_size, "overlap_size": overlap_size}
+    except Exception as e:
+        print(f"Error parsing string: {e}")
+        return None
+
+
+# BUILD VECTOR DATABASE FROM COLLECTION -------------------------
 
 def build_vector_database(
     data_path: str,
@@ -71,18 +98,14 @@ def build_vector_database(
     return db, data, chunk_infos
 
 
+# RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
+
 def reload_database_from_local_dir(
     embed_model_name: str = EMB_MODEL_NAME,
     collection_name: str = COLLECTION_NAME,
     persist_directory: str = DB_DIR_LOCAL,
     embed_device: str = EMB_DEVICE,
-    config=None,
 ) -> Chroma:
-    if config is not None:
-        info = parse_collection_name(collection_name)
-        if info is not None:
-            config.chunk_size = info.get("chunk_size")
-            config.overlap_size = info.get("overlap_size")
 
     embedding_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
@@ -101,27 +124,22 @@ def reload_database_from_local_dir(
     return db
 
 
-def parse_collection_name(collection_name: str):
-    """
-    Parse a concatenated string to extract the embedding model name, chunk size, and overlap size.
-    :param concatenated_string: A string in the format 'embeddingmodelname_chunkSize_overlapSize'
-    :return: A dictionary with the parsed values
-    """
-    try:
-        # Split the string by the underscore delimiter
-        parts = collection_name.split("_")
+def load_retriever(
+    emb_model_name,
+    persist_directory="data/chroma_db",
+    device="cuda", collection_name: str = "insee_data",
+    retriever_params: dict = None
+):
+    # Load vector database
+    vectorstore = reload_database_from_local_dir(
+        embed_model_name=emb_model_name,
+        collection_name=collection_name,
+        persist_directory=persist_directory,
+        embed_device=device,
+    )
 
-        # Ensure there are exactly three parts
-        if len(parts) != 3:
-            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
+    search_kwargs = retriever_params.get("search_kwargs", {"k": 20})
 
-        # Extract and assign the parts
-        model_name = parts[0]
-        chunk_size = int(parts[1])
-        overlap_size = int(parts[2])
-
-        # Return the parsed values in a dictionary
-        return {"model_name": model_name, "chunk_size": chunk_size, "overlap_size": overlap_size}
-    except Exception as e:
-        print(f"Error parsing string: {e}")
-        return None
+    # Set up a retriever
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
+    return retriever
