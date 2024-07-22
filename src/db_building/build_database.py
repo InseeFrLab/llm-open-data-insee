@@ -4,7 +4,7 @@ import pandas as pd
 import s3fs
 from chromadb.config import Settings
 from config import COLLECTION_NAME, DB_DIR_LOCAL, EMB_DEVICE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS, S3_BUCKET
-from evaluation import RetrievalConfiguration
+# from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
@@ -21,7 +21,7 @@ def build_vector_database(
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
     max_pages: str = None,
-    config: RetrievalConfiguration = None,
+    config=None,
 ) -> Chroma:
     logging.info(f"The database will temporarily be stored in {persist_directory}")
     logging.info("Start building the database")
@@ -75,7 +75,7 @@ def reload_database_from_local_dir(
     collection_name: str = COLLECTION_NAME,
     persist_directory: str = DB_DIR_LOCAL,
     embed_device: str = EMB_DEVICE,
-    config: RetrievalConfiguration = None,
+    config=None,
 ) -> Chroma:
     if config is not None:
         info = parse_collection_name(collection_name)

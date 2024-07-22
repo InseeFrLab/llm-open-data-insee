@@ -1,26 +1,70 @@
-from .data_paths_config import LOG_FILE_PATH, RELATIVE_DATA_DIR
-from .db_config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3
-from .embed_config import EMB_DEVICE, EMB_MODEL_NAME
-from .llm_config import MODEL_DEVICE, MODEL_NAME
-from .loading_config import CHUNK_OVERLAP, CHUNK_SIZE, MARKDOWN_SEPARATORS
-from .prompting_config import BASIC_RAG_PROMPT_TEMPLATE, RAG_PROMPT_TEMPLATE
-from .s3_config import S3_BUCKET, S3_ENDPOINT_URL
+import os
 
-__all__ = [
-    "COLLECTION_NAME",
-    "DB_DIR_S3",
-    "DB_DIR_LOCAL",
-    "MODEL_NAME",
-    "MODEL_DEVICE",
-    "EMB_MODEL_NAME",
-    "RELATIVE_DATA_DIR",
-    "EMB_DEVICE",
-    "LOG_FILE_PATH",
-    "S3_ENDPOINT_URL",
-    "S3_BUCKET",
-    "BASIC_RAG_PROMPT_TEMPLATE",
-    "RAG_PROMPT_TEMPLATE",
-    "CHUNK_SIZE",
-    "CHUNK_OVERLAP",
-    "MARKDOWN_SEPARATORS",
-]
+
+# SSPCLOUD RELATED PARAMETERS ----------------------------
+
+S3_ENDPOINT_URL = "https://" + os.environ["AWS_S3_ENDPOINT"]
+S3_BUCKET = "projet-llm-insee-open-data"
+MLFLOW_TRACKING_URI = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
+MLFLOW_S3_ENDPOINT_URL = "https://minio.lab.sspcloud.fr"
+
+
+# LOCAL FILES -------------------------------------
+
+RELATIVE_DATA_DIR = "data"
+RELATIVE_LOG_DIR = "logs"
+LOG_FILE_PATH = f"{RELATIVE_LOG_DIR}/conversation_logs.json"
+
+
+# VECTOR DATABASE ------------------------------------
+
+DB_DIR_S3 = "data/chroma_database/chroma_db/"
+DB_DIR_LOCAL = "data/chroma_db"
+COLLECTION_NAME = "insee_data"
+
+
+# MODELS USED   ---------------------------------------
+
+# Embedding model
+EMB_DEVICE = "cuda"
+EMB_MODEL_NAME = "OrdalieTech/Solon-embeddings-large-0.1"
+
+# Model
+MODEL_DEVICE = {"": 0}
+MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.2"
+
+# PARSING  ----------------------------------------
+
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 100
+MARKDOWN_SEPARATORS = ["\n\n", "\n", ".", " ", ""]
+
+
+# INSTRUCTION PROMPT --------------------------------
+
+BASIC_RAG_PROMPT_TEMPLATE = """
+<s>[INST]
+Instruction: Réponds à la question en te basant sur le contexte donné:
+
+{context}
+
+Question:
+{question}
+[/INST]
+ """
+
+RAG_PROMPT_TEMPLATE = """
+<s>[INST]
+Tu es un assistant spécialisé dans la statistique publique répondant aux questions d'agent de l'INSEE.
+Réponds en Français seulement.
+Utilise les informations obtenues dans le contexte, réponds de manière argumentée à la question posée.
+La réponse doit être développée et citer ses sources.
+
+Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
+Voici le contexte sur lequel tu dois baser ta réponse :
+Contexte: {context}
+        ---
+Voici la question à laquelle tu dois répondre :
+Question: {question}
+[/INST]
+"""

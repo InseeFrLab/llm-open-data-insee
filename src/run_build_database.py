@@ -12,7 +12,7 @@ from db_building import build_vector_database
 
 # Global parameters
 EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
-MAX_NUMBER_PAGES = None
+MAX_NUMBER_PAGES = 20
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 
 # Check mlflow URL is defined
@@ -73,7 +73,7 @@ with mlflow.start_run() as run:
 
     # Log environment necessary to reproduce the experiment
     current_dir = Path(".")
-    FILES_TO_LOG = [PosixPath("src/build_database.py")] + list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
+    FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_dir_path = Path(tmp_dir)
