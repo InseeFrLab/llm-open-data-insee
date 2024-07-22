@@ -18,7 +18,7 @@ from evaluation.utils import build_chain_reranker_test
 ## Utility function ##
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chroma:
+def _build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chroma:
     """
     Building vector database based on a given embedding model
     """
@@ -83,7 +83,7 @@ class RetrievalEvaluator:
                 results[df_name][config_name] = {}
 
                 # Load ref Corpus
-                vector_db = build_vector_database(path_data=configuration.database_path, config=configuration)
+                vector_db = _build_vector_database(path_data=configuration.database_path, config=configuration)
 
                 # create a retriever
                 # note : define the type of search "similarity", "mmr", "similarity_score_threshold"
