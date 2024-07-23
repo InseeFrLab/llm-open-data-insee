@@ -268,13 +268,8 @@ with mlflow.start_run() as run:
     true_negative_validator = 1 - (
         validator_answers.loc[~validator_answers["real"], "real"].mean()
     )
-    mlflow.log_metric(
-        "validator_true_positive", 100*true_positive_validator
-    )
-    mlflow.log_metric(
-        "validator_negative",
-        100*true_negative_validator
-    )
+    mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
+    mlflow.log_metric("validator_negative", 100 * true_negative_validator)
 
     # ------------------------
     # IV - RERANKER

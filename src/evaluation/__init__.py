@@ -10,5 +10,5 @@ __all__ = [
     "RetrievalEvaluationMeasure",
     "build_chain_reranker_test",
     "choosing_reranker_test",
-    "evaluate_question_validator"
+    "evaluate_question_validator",
 ]
