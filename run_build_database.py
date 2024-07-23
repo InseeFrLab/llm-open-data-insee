@@ -19,7 +19,10 @@ from src.config import (
     RAG_PROMPT_TEMPLATE,
     S3_BUCKET,
 )
-from src.db_building import build_vector_database, load_retriever
+from src.db_building import (
+    build_vector_database, load_retriever,
+    chroma_topk_to_df
+)
 from src.model_building import build_llm_model
 
 # Logging configuration
@@ -164,13 +167,7 @@ with mlflow.start_run() as run:
     # Log a result of a similarity search
     query = "Quels sont les chiffres du chômages en 2023 ?"
     retrieved_docs = db.similarity_search(query, k=5)
-
-    result_list = []
-    for doc in retrieved_docs:
-        row = {"page_content": doc.page_content}
-        row.update(doc.metadata)
-        result_list.append(row)
-    result = pd.DataFrame(result_list)
+    result = chroma_topk_to_df(retrieved_docs)
     mlflow.log_table(data=result, artifact_file="retrieved_documents.json")
     mlflow.log_param("question_asked", query)
 
@@ -235,11 +232,17 @@ with mlflow.start_run() as run:
         "example_tokenizer.json",
     )
 
-    retriever = load_retriever(
+    retriever, vectorstore = load_retriever(
         emb_model_name=args.embedding,
         vectorstore=db,
         persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
     )
+
+    # Log retriever
+    retrieved_docs = retriever.invoke("Quels sont les chiffres du chômage en 2023 ?")
+    result_retriever_raw = chroma_topk_to_df(retrieved_docs)
+    mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents_raw.json")
+
 
     validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)

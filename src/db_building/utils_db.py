@@ -9,6 +9,7 @@ from bs4.element import Tag
 from markdownify import MarkdownConverter
 from tqdm import tqdm
 
+
 TAGS_TO_IGNORE = [
     "sage",
     "numero",
@@ -383,3 +384,24 @@ def md(soup, **options):
 
 # Attention 10613 (id : 1521268) ("xml_null")
 # 29281 (definitions pas présentes dans xml)
+
+
+def chroma_topk_to_df(retrieved_docs):
+    """
+    Converts a list of retrieved documents into a pandas DataFrame.
+
+    Parameters:
+    retrieved_docs (list): A list of documents, where each document has 
+                           `page_content` and `metadata` attributes.
+
+    Returns:
+    pd.DataFrame: A DataFrame containing the page content and metadata of each document.
+    """
+    result_list = []
+    for doc in retrieved_docs:
+        row = {"page_content": doc.page_content}
+        row.update(doc.metadata)
+        result_list.append(row)
+    
+    result = pd.DataFrame(result_list)
+    return result
