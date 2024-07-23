@@ -11,7 +11,11 @@ import pandas as pd
 import s3fs
 
 from src.chain_building import build_chain_validator
-from src.config import COLLECTION_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE, S3_BUCKET
+from src.config import (
+    COLLECTION_NAME, EMB_MODEL_NAME,
+    RAG_PROMPT_TEMPLATE, S3_BUCKET,
+    CHUNK_SIZE, CHUNK_OVERLAP
+)
 from src.db_building import build_vector_database, load_retriever
 from src.model_building import build_llm_model
 
@@ -46,7 +50,7 @@ parser = argparse.ArgumentParser(description="LLM building parameters")
 parser.add_argument(
     "--embedding",
     type=str,
-    default=None,
+    default=EMB_MODEL_NAME,
     help="""
     Embedding model.
     Should be a huggingface model.
@@ -56,7 +60,7 @@ parser.add_argument(
 parser.add_argument(
     "--model",
     type=str,
-    default=None,
+    default=os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2"),
     help="""
     LLM used to generate chat.
     Should be a huggingface model.
@@ -90,15 +94,27 @@ parser.add_argument(
     See https://huggingface.co/docs/transformers/main_classes/text_generation
     """,
 )
+parser.add_argument(
+    "--chunk_size",
+    type=str,
+    default=CHUNK_SIZE,
+    help="""
+    Chunk size
+    """,
+)
+parser.add_argument(
+    "--chunk_overlap",
+    type=str,
+    default=CHUNK_OVERLAP,
+    help="""
+    Chunk overlap
+    """,
+)
+
+logging.info("At this time, chunk_overlap and chunk_size are ignored")
 
 args = parser.parse_args()
 
-# Replacing None with default values
-if args.embedding is None:
-    args.embedding = EMB_MODEL_NAME
-
-if args.model is None:
-    args.model = os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2")
 
 
 # PIPELINE ----------------------------------------------------
