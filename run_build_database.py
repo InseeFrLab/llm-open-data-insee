@@ -11,11 +11,7 @@ import pandas as pd
 import s3fs
 
 from src.chain_building import build_chain_validator
-from src.config import (
-    COLLECTION_NAME, EMB_MODEL_NAME,
-    RAG_PROMPT_TEMPLATE, S3_BUCKET,
-    CHUNK_SIZE, CHUNK_OVERLAP
-)
+from src.config import CHUNK_OVERLAP, CHUNK_SIZE, COLLECTION_NAME, EMB_MODEL_NAME, RAG_PROMPT_TEMPLATE, S3_BUCKET
 from src.db_building import build_vector_database, load_retriever
 from src.model_building import build_llm_model
 

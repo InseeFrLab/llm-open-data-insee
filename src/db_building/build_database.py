@@ -8,14 +8,7 @@ from chromadb.config import Settings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-from src.config import (
-    COLLECTION_NAME,
-    DB_DIR_LOCAL,
-    EMB_DEVICE,
-    EMB_MODEL_NAME,
-    MARKDOWN_SEPARATORS,
-    S3_BUCKET,
-)
+from src.config import CHUNK_OVERLAP, CHUNK_SIZE, COLLECTION_NAME, DB_DIR_LOCAL, EMB_DEVICE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS, S3_BUCKET
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
@@ -76,6 +69,12 @@ def build_vector_database(
 
     if max_pages is not None:
         data = data.head(max_pages)
+    
+    if config is None:
+        config = {}
+    
+    # Max batch size is 41666
+    max_batch_size = config.get("max_batch_size", 41000)
 
     # Parse the XML content
     parsed_pages = parse_xmls(data)
@@ -104,13 +103,15 @@ def build_vector_database(
     df = pd.concat([df, data_rmes])
 
     # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
-    df.fillna(value="", inplace=True)
+    df = df.fillna(value="")
 
     # chucking of documents
     all_splits, chunk_infos = chunk_documents(
         data=df,
         md_split=True,
         hf_tokenizer_name=embedding_model,
+        chunk_size=config.get("chunk_size", CHUNK_SIZE),
+        chunk_overlap=config.get("chunk_overlap", CHUNK_OVERLAP),
         separators=MARKDOWN_SEPARATORS,
     )
 
@@ -121,7 +122,7 @@ def build_vector_database(
         show_progress=False,
     )
 
-    split_docs_chunked = split_list(all_splits, 41000)  # Max batch size is 41666
+    split_docs_chunked = split_list(all_splits, max_batch_size)
 
     for split_docs_chunk in split_docs_chunked:
         db = Chroma.from_documents(
