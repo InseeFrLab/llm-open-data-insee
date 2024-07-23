@@ -8,7 +8,16 @@ from chromadb.config import Settings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-from src.config import CHUNK_OVERLAP, CHUNK_SIZE, COLLECTION_NAME, DB_DIR_LOCAL, EMB_DEVICE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS, S3_BUCKET
+from src.config import (
+    CHUNK_OVERLAP,
+    CHUNK_SIZE,
+    COLLECTION_NAME,
+    DB_DIR_LOCAL,
+    EMB_DEVICE,
+    EMB_MODEL_NAME,
+    MARKDOWN_SEPARATORS,
+    S3_BUCKET,
+)
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
@@ -62,6 +71,7 @@ def build_vector_database(
     max_pages: str = None,
     config=None,
 ) -> Chroma:
+
     logging.info(f"The database will temporarily be stored in {persist_directory}")
     logging.info("Start building the database")
 
@@ -69,10 +79,10 @@ def build_vector_database(
 
     if max_pages is not None:
         data = data.head(max_pages)
-    
+
     if config is None:
         config = {}
-    
+
     # Max batch size is 41666
     max_batch_size = config.get("max_batch_size", 41000)
 

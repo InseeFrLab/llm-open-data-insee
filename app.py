@@ -16,7 +16,11 @@ from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
 # Logging configuration
 logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.DEBUG)
+logging.basicConfig(
+    format="%(asctime)s %(message)s",
+    datefmt="%Y-%m-%d %I:%M:%S %p",
+    level=logging.DEBUG,
+)
 
 
 # PARAMETERS --------------------------------------
@@ -30,20 +34,18 @@ embedding = os.getenv("EMB_MODEL_NAME", EMB_MODEL_NAME)
 
 # APPLICATION -----------------------------------------
 
+
 @cl.on_chat_start
 async def on_chat_start():
     # Initial message
     init_msg = cl.Message(
-        content="Bienvenue sur le ChatBot de l'INSEE!",
-        disable_feedback=True
-        )
+        content="Bienvenue sur le ChatBot de l'INSEE!", disable_feedback=True
+    )
     await init_msg.send()
 
     # Logging configuration
     IS_LOGGING_ON = True
-    ASK_USER_BEFORE_LOGGING = str_to_bool(
-        os.getenv("ASK_USER_BEFORE_LOGGING", "false")
-    )
+    ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
     if ASK_USER_BEFORE_LOGGING:
         res = await cl.AskActionMessage(
             content="Autorisez-vous le partage de vos interactions avec le ChatBot!",
@@ -53,10 +55,14 @@ async def on_chat_start():
             ],
         ).send()
         if res and res.get("value") == "log":
-            await cl.Message(content="Vous avez choisi de partager vos interactions.").send()
+            await cl.Message(
+                content="Vous avez choisi de partager vos interactions."
+            ).send()
         if res and res.get("value") == "no_log":
             IS_LOGGING_ON = False
-            await cl.Message(content="Vous avez choisi de garder vos interactions avec le ChatBot privées.").send()
+            await cl.Message(
+                content="Vous avez choisi de garder vos interactions avec le ChatBot privées."
+            ).send()
     cl.user_session.set("IS_LOGGING_ON", IS_LOGGING_ON)
 
     # Set Validator chain in chainlit session
@@ -68,15 +74,13 @@ async def on_chat_start():
         streaming=False,
         generation_args={
             "max_new_tokens": max_new_tokens,
-            "return_full_text": False, "do_sample": False,
-            "temperature": model_temperature
+            "return_full_text": False,
+            "do_sample": False,
+            "temperature": model_temperature,
         },
     )
     # Set Validator chain in chainlit session
-    validator = build_chain_validator(
-        evaluator_llm=llm,
-        tokenizer=tokenizer
-    )
+    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
     cl.user_session.set("validator", validator)
     logging.info("------validator loaded")
 
@@ -90,10 +94,7 @@ async def on_chat_start():
         retriever = load_retriever(
             emb_model_name=embedding,
             persist_directory="./data/chroma_db",
-            retriever_params={
-                "search_type": "similarity",
-                "search_kwargs": {"k": 30}
-            },
+            retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
         )
         logging.info("------retriever loaded")
 
@@ -115,8 +116,12 @@ async def on_chat_start():
         )
         logging.info("------llm loaded")
 
-        RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True)
-        prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
+        RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
+            CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
+        )
+        prompt = PromptTemplate(
+            input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE
+        )
         logging.info("------prompt loaded")
         retriever = load_retriever(
             emb_model_name=os.getenv("EMB_MODEL_NAME"),
@@ -129,7 +134,13 @@ async def on_chat_start():
     RERANKING_METHOD = os.getenv("RERANKING_METHOD")
     if RERANKING_METHOD == "":
         RERANKING_METHOD = None
-    chain = build_chain(retriever=retriever, prompt=prompt, llm=llm, bool_log=IS_LOGGING_ON, reranker=RERANKING_METHOD)
+    chain = build_chain(
+        retriever=retriever,
+        prompt=prompt,
+        llm=llm,
+        bool_log=IS_LOGGING_ON,
+        reranker=RERANKING_METHOD,
+    )
     cl.user_session.set("chain", chain)
     logging.info("------chain built")
 
@@ -142,7 +153,9 @@ async def on_message(message: cl.Message):
     Handle incoming messages and process the response using the RAG chain.
     """
     validator = cl.user_session.get("validator")
-    test_relevancy = await check_query_relevance(validator=validator, query=message.content)
+    test_relevancy = await check_query_relevance(
+        validator=validator, query=message.content
+    )
     if test_relevancy:
         # Retrieve the chain from the user session
         chain = cl.user_session.get("chain")
@@ -154,7 +167,10 @@ async def on_message(message: cl.Message):
 
         # Generate ChatBot's answer
         async for chunk in chain.astream(
-            message.content, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
+            message.content,
+            config=RunnableConfig(
+                callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]
+            ),
         ):
             if "answer" in chunk:
                 await answer_msg.stream_token(chunk["answer"])
@@ -170,7 +186,10 @@ async def on_message(message: cl.Message):
         await cl.sleep(1)
 
         # Add sources to answer
-        sources_msg = cl.Message(content=add_sources_to_messages(message="", sources=sources, titles=titles), disable_feedback=False)
+        sources_msg = cl.Message(
+            content=add_sources_to_messages(message="", sources=sources, titles=titles),
+            disable_feedback=False,
+        )
         await sources_msg.send()
 
         # Log Q/A
@@ -183,24 +202,35 @@ async def on_message(message: cl.Message):
                 thread_id=message.thread_id,
                 message_id=sources_msg.id,
                 user_query=message.content,
-                generated_answer=None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer,
+                generated_answer=(
+                    None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer
+                ),
                 retrieved_documents=docs,
                 embedding_model_name=embedding_model_name,
                 LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else LLM_name,
                 reranker=reranker,
             )
     else:
-        await cl.Message(content=f"Votre requête '{message.content}' ne concerne pas les domaines d'expertise de l'INSEE.").send()
+        await cl.Message(
+            content=f"Votre requête '{message.content}' ne concerne pas les domaines d'expertise de l'INSEE."
+        ).send()
 
 
 async def check_query_relevance(validator, query):
-    result = await validator.ainvoke(query, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler()]))
+    result = await validator.ainvoke(
+        query, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler()])
+    )
     return result
 
 
 class CustomDataLayer(cl_data.BaseDataLayer):
     async def upsert_feedback(self, feedback: cl_data.Feedback) -> str:
-        log_feedback_to_s3(thread_id=feedback.threadId, message_id=feedback.forId, feedback_value=feedback.value, feedback_comment=feedback.comment)
+        log_feedback_to_s3(
+            thread_id=feedback.threadId,
+            message_id=feedback.forId,
+            feedback_value=feedback.value,
+            feedback_comment=feedback.comment,
+        )
 
 
 # Enable data persistence for human feedbacks
