@@ -19,10 +19,7 @@ from src.config import (
     RAG_PROMPT_TEMPLATE,
     S3_BUCKET,
 )
-from src.db_building import (
-    build_vector_database, load_retriever,
-    chroma_topk_to_df
-)
+from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever
 from src.model_building import build_llm_model
 
 # Logging configuration

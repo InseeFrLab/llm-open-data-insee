@@ -9,7 +9,6 @@ from bs4.element import Tag
 from markdownify import MarkdownConverter
 from tqdm import tqdm
 
-
 TAGS_TO_IGNORE = [
     "sage",
     "numero",
