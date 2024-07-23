@@ -390,7 +390,7 @@ def chroma_topk_to_df(retrieved_docs):
     Converts a list of retrieved documents into a pandas DataFrame.
 
     Parameters:
-    retrieved_docs (list): A list of documents, where each document has 
+    retrieved_docs (list): A list of documents, where each document has
                            `page_content` and `metadata` attributes.
 
     Returns:
@@ -401,6 +401,6 @@ def chroma_topk_to_df(retrieved_docs):
         row = {"page_content": doc.page_content}
         row.update(doc.metadata)
         result_list.append(row)
-    
+
     result = pd.DataFrame(result_list)
     return result

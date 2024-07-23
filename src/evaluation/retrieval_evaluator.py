@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from src.config import EMB_DEVICE, EMB_MODEL_NAME
 from src.db_building import build_vector_database, reload_database_from_local_dir
+
 from .eval_configuration import RetrievalConfiguration
 from .retrieval_evaluation_measures import RetrievalEvaluationMeasure
 from .utils import build_chain_reranker_test

@@ -1,10 +1,7 @@
 from .eval_configuration import RetrievalConfiguration
 from .retrieval_evaluation_measures import RetrievalEvaluationMeasure
 from .retrieval_evaluator import RetrievalEvaluator
-from .utils import (
-    build_chain_reranker_test,
-    choosing_reranker_test
-)
+from .utils import build_chain_reranker_test, choosing_reranker_test
 from .validator_evaluation import evaluate_question_validator
 
 __all__ = [
@@ -13,4 +10,5 @@ __all__ = [
     "RetrievalEvaluationMeasure",
     "build_chain_reranker_test",
     "choosing_reranker_test",
+    "evaluate_question_validator"
 ]

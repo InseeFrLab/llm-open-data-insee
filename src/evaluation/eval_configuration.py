@@ -3,7 +3,7 @@ from abc import ABC
 from dataclasses import dataclass, field
 from typing import Any
 
-from config import EMB_MODEL_NAME
+from src.config import EMB_MODEL_NAME
 
 
 @dataclass

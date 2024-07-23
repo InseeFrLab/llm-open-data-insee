@@ -42,18 +42,19 @@ def compress_documents_lambda(
 
 
 def build_chain(
-    retriever, prompt: str,
-    llm=None, bool_log: bool = False,
+    retriever,
+    prompt: str,
+    llm=None,
+    bool_log: bool = False,
     reranker: str = None,
-    number_candidates_reranking: int = 10
+    number_candidates_reranking: int = 10,
 ):
     """
     Build a LLM chain based on Langchain package and INSEE data
     """
 
-    if reranker not in [
-        None, "BM25", "Cross-encoder", "Ensemble"
-    ]:
+    accepted_rerankers = [None, "BM25", "Cross-encoder", "Ensemble"]
+    if reranker not in accepted_rerankers:
         raise ValueError(
             f"Invalid reranker: {reranker}. Accepted values are: {', '.join(accepted_rerankers)}"
         )
@@ -66,12 +67,16 @@ def build_chain(
             {"documents": retriever, "query": RunnablePassthrough()}
         ) | RunnableLambda(
             lambda r: compress_documents_lambda(
-                documents=r["documents"], query=r["query"], k=number_candidates_reranking
+                documents=r["documents"],
+                query=r["query"],
+                k=number_candidates_reranking,
             )
         )
     elif reranker == "Cross-encoder":
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
-        compressor = CrossEncoderReranker(model=model, top_n=number_candidates_reranking)
+        compressor = CrossEncoderReranker(
+            model=model, top_n=number_candidates_reranking
+        )
         retrieval_agent = ContextualCompressionRetriever(
             base_compressor=compressor, base_retriever=retriever
         )
@@ -81,7 +86,9 @@ def build_chain(
             {"documents": retriever, "query": RunnablePassthrough()}
         ) | RunnableLambda(
             lambda r: compress_documents_lambda(
-                documents=r["documents"], query=r["query"], k=number_candidates_reranking
+                documents=r["documents"],
+                query=r["query"],
+                k=number_candidates_reranking,
             )
         )
         # Cross encoder

@@ -23,7 +23,7 @@ from langchain_core.runnables import (
 from ragatouille import RAGPretrainedModel
 
 # evaluation
-from evaluation import RetrievalConfiguration
+from .eval_configuration import RetrievalConfiguration
 
 T = TypeVar("T")
 H = TypeVar("H", bound=Hashable)
