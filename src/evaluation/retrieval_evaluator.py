@@ -5,15 +5,15 @@ import time
 import chromadb
 import numpy as np
 import pandas as pd
-from config import EMB_DEVICE, EMB_MODEL_NAME
-from db_building import build_database_from_dataframe, reload_database_from_local_dir
 from langchain_community.vectorstores.chroma import Chroma
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
-from evaluation.eval_configuration import RetrievalConfiguration
-from evaluation.retrieval_evaluation_measures import RetrievalEvaluationMeasure
-from evaluation.utils import build_chain_reranker_test
+from src.config import EMB_DEVICE, EMB_MODEL_NAME
+from src.db_building import build_vector_database, reload_database_from_local_dir
+from .eval_configuration import RetrievalConfiguration
+from .retrieval_evaluation_measures import RetrievalEvaluationMeasure
+from .utils import build_chain_reranker_test
 
 ## Utility function ##
 logging.basicConfig(
@@ -53,7 +53,7 @@ def _build_vector_database(path_data: str, config: RetrievalConfiguration) -> Ch
     else:
         logging.info("The database will be created")
         raw_ref_database = pd.read_csv(path_data)
-        vector_db = build_database_from_dataframe(
+        vector_db = build_vector_database(
             df=raw_ref_database,
             persist_directory=persist_directory,
             embedding_model_name=embedding_model_name,

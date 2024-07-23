@@ -42,12 +42,21 @@ def compress_documents_lambda(
 
 
 def build_chain(
-    retriever, prompt: str, llm=None, bool_log: bool = False, reranker=None
+    retriever, prompt: str,
+    llm=None, bool_log: bool = False,
+    reranker: str = None,
+    number_candidates_reranking: int = 10
 ):
     """
     Build a LLM chain based on Langchain package and INSEE data
     """
-    rerank_k = 10
+
+    if reranker not in [
+        None, "BM25", "Cross-encoder", "Ensemble"
+    ]:
+        raise ValueError(
+            f"Invalid reranker: {reranker}. Accepted values are: {', '.join(accepted_rerankers)}"
+        )
 
     # Define the retrieval reranker strategy
     if reranker is None:
@@ -57,12 +66,12 @@ def build_chain(
             {"documents": retriever, "query": RunnablePassthrough()}
         ) | RunnableLambda(
             lambda r: compress_documents_lambda(
-                documents=r["documents"], query=r["query"], k=rerank_k
+                documents=r["documents"], query=r["query"], k=number_candidates_reranking
             )
         )
     elif reranker == "Cross-encoder":
         model = HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER)
-        compressor = CrossEncoderReranker(model=model, top_n=rerank_k)
+        compressor = CrossEncoderReranker(model=model, top_n=number_candidates_reranking)
         retrieval_agent = ContextualCompressionRetriever(
             base_compressor=compressor, base_retriever=retriever
         )
@@ -72,13 +81,13 @@ def build_chain(
             {"documents": retriever, "query": RunnablePassthrough()}
         ) | RunnableLambda(
             lambda r: compress_documents_lambda(
-                documents=r["documents"], query=r["query"], k=rerank_k
+                documents=r["documents"], query=r["query"], k=number_candidates_reranking
             )
         )
         # Cross encoder
         compressor = CrossEncoderReranker(
             model=HuggingFaceCrossEncoder(model_name=RERANKER_CROSS_ENCODER),
-            top_n=rerank_k,
+            top_n=number_candidates_reranking,
         )
         reranker_2 = ContextualCompressionRetriever(
             base_compressor=compressor, base_retriever=retriever

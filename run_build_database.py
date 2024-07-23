@@ -18,9 +18,11 @@ from src.config import (
     EMB_MODEL_NAME,
     RAG_PROMPT_TEMPLATE,
     S3_BUCKET,
+    CHATBOT_TEMPLATE
 )
 from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever
 from src.model_building import build_llm_model
+from src.evaluation import evaluate_question_validator
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -113,6 +115,16 @@ parser.add_argument(
     Chunk overlap
     """,
 )
+parser.add_argument(
+    "--reranking_method",
+    type=str,
+    default=None,
+    help="""
+    Reranking document relevancy after retrieval phase.
+    Defaults to None (no reranking)
+    """,
+)
+
 
 logging.info("At this time, chunk_overlap and chunk_size are ignored")
 
@@ -165,7 +177,7 @@ with mlflow.start_run() as run:
     query = "Quels sont les chiffres du chômages en 2023 ?"
     retrieved_docs = db.similarity_search(query, k=5)
     result = chroma_topk_to_df(retrieved_docs)
-    mlflow.log_table(data=result, artifact_file="retrieved_documents.json")
+    mlflow.log_table(data=result, artifact_file="retrieved_documents_db_only.json")
     mlflow.log_param("question_asked", query)
 
     # Log parameters and metrics
@@ -239,7 +251,37 @@ with mlflow.start_run() as run:
     # Log retriever
     retrieved_docs = retriever.invoke("Quels sont les chiffres du chômage en 2023 ?")
     result_retriever_raw = chroma_topk_to_df(retrieved_docs)
-    mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents_raw.json")
+    mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents_retriever_raw.json")
 
+    # ------------------------
+    # III - QUESTION VALIDATOR
 
+    logging.info("Testing the questions that are accepted/refused by our agent")
+        
     validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
+    validator_answers = evaluate_question_validator(validator=validator)
+    true_positive_validator = (
+        validator_answers
+        .loc[validator_answers["real"], "real"]
+        .mean()
+    )
+    true_negative_validator = 1 - (
+        validator_answers
+        .loc[~validator_answers["real"], "real"]
+        .mean()    
+    )
+    mlflow.log_metric("validator_true_positive", true_positive_validator)
+    mlflow.log_metric("validator_negative", true_negative_validator)
+
+    # ------------------------
+    # IV - RERANKER
+
+    reranking_method = args.reranking_method
+
+    if reranking_method is not None:
+        logging.info(f"Applying reranking {80*'='}")
+        logging.info(f"Selected method: {reranking_method}")
+    else:
+        logging.info(f"Skipping reranking since value is None {80*'='}")
+
+
