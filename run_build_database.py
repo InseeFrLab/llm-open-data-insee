@@ -20,7 +20,7 @@ from src.config import (
     S3_BUCKET,
 )
 from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever
-from src.evaluation import evaluate_question_validator
+from src.evaluation import answer_faq_by_bot, evaluate_question_validator, transform_answers_bot
 from src.model_building import build_llm_model
 
 # Logging configuration
@@ -48,6 +48,7 @@ assert (
 EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
 MAX_NUMBER_PAGES = 20
 CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
+TOP_K = 5
 
 # Define user-level parameters
 parser = argparse.ArgumentParser(description="LLM building parameters")
@@ -294,8 +295,38 @@ with mlflow.start_run() as run:
     else:
         logging.info(f"Skipping reranking since value is None {80*'='}")
 
-
-    # TODO: introduire le reranker 
+    # TODO: introduire le reranker
 
     # ------------------------
-    # IV - RERANKER
+    # V - EVALUATION
+
+    logging.info(f"Evaluating model performance against expectations {80*'='}")
+
+    answers_bot = answer_faq_by_bot(retriever, faq)
+    eval_reponses_bot, answers_bot_topk = transform_answers_bot(
+        answers_bot,
+        k=TOP_K
+    )
+    document_among_topk = answers_bot_topk['cumsum_url_expected'].max()
+    document_is_top = answers_bot_topk['cumsum_url_expected'].min()
+
+    # Store FAQ
+    mlflow_faq_raw = mlflow.data.from_pandas(
+        faq,
+        source=f"s3://{bucket}/{path}",
+        name="FAQ_data",
+    )
+    mlflow.log_input(mlflow_faq_raw, context="faq-raw")
+    mlflow.log_table(data=faq, artifact_file="faq_data.json")
+
+    # Check if document expected is in topk answers =========================
+    mlflow.log_metric("document_is_first", 100*document_is_top)
+    mlflow.log_metric("document_among_topk", 100*document_among_topk)    
+    mlflow.log_metrics(
+        {
+            f'document_in_top_{int(row["document_position"])}':
+            100*row["cumsum_url_expected"] for _, row in answers_bot_topk.iterrows()
+        }
+    )    
+    mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+

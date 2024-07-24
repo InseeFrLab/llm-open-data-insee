@@ -1,4 +1,5 @@
 import pandas as pd
+
 from src.db_building import chroma_topk_to_df
 
 
@@ -67,9 +68,9 @@ def _answer_faq_by_bot(retriever, question, valid_urls):
 
 def answer_faq_by_bot(retriever, faq):
     answers_bot = []
-    for idx, faq_items in faq.iterrows():
+    for _idx, faq_items in faq.iterrows():
         answers_bot.append(
-            answer_faq_by_bot(
+            _answer_faq_by_bot(
                 retriever, faq_items['titre'], faq_items['urls'].split(", ")
             )
         )
