@@ -35,17 +35,18 @@ def str_to_list(arg):
     # Convert the argument string to a list
     return ast.literal_eval(arg)
 
-TOP_K = 5
 
-# Define user-level parameters
+# PARSER FOR USED LEVEL ARGUMENTS --------------------------------
+
 parser = argparse.ArgumentParser(description="LLM building parameters")
 parser.add_argument(
     "--experiment_name",
     type=str,
+    default="BUILD_CHROMA_TEST",
     help="""
     Name of the experiment.
     """,
-    required=True,
+    #required=True,
 )
 parser.add_argument(
     "--data_raw_s3_path",
@@ -55,7 +56,7 @@ parser.add_argument(
     Path to the raw data.
     Default to data/raw_data/applishare_solr_joined.parquet
     """,
-    required=True,
+    #required=True,
 )
 parser.add_argument(
     "--collection_name",
@@ -65,7 +66,7 @@ parser.add_argument(
     Collection name.
     Default to insee_data
     """,
-    required=True,
+    #required=True,
 )
 parser.add_argument(
     "--markdown_split",
@@ -118,7 +119,7 @@ parser.add_argument(
     Should be a huggingface model.
     Defaults to mistralai/Mistral-7B-Instruct-v0.2
     """,
-    required=True,
+    #required=True,
 )
 parser.add_argument(
     "--quantization",
@@ -195,8 +196,21 @@ def run_build_database(
 ):
     mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(experiment_name)
+
+    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+
+    # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
+    bucket = "projet-llm-insee-open-data"
+    path = "data/FAQ_site/faq.parquet"
+    faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
+    # Extract all URLs from the 'sources' column
+    faq['urls'] = (
+        faq['sources']
+        .str.findall(r'https?://www\.insee\.fr[^\s]*')
+        .apply(lambda s: ", ".join(s))
+    )
+
     with mlflow.start_run():
-        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
         # ------------------------
         # I - BUILD VECTOR DATABASE
