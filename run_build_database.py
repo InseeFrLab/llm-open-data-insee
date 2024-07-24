@@ -130,6 +130,18 @@ logging.info("At this time, chunk_overlap and chunk_size are ignored")
 args = parser.parse_args()
 
 
+# INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
+
+bucket = "projet-llm-insee-open-data"
+path = "data/FAQ_site/faq.parquet"
+faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
+# Extract all URLs from the 'sources' column
+faq['urls'] = (
+    faq['sources']
+    .str.findall(r'https?://www\.insee\.fr[^\s]*')
+    .apply(lambda s: ", ".join(s))
+)
+
 # PIPELINE ----------------------------------------------------
 
 mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
@@ -281,3 +293,9 @@ with mlflow.start_run() as run:
         logging.info(f"Selected method: {reranking_method}")
     else:
         logging.info(f"Skipping reranking since value is None {80*'='}")
+
+
+    # TODO: introduire le reranker 
+
+    # ------------------------
+    # IV - RERANKER
