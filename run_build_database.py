@@ -265,8 +265,7 @@ def run_build_database(
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
         FILES_TO_LOG = (
-            [PosixPath("src/build_database.py")]
-            + list(current_dir.glob("src/db_building/*.py"))
+            list(current_dir.glob("src/db_building/*.py"))
             + list(current_dir.glob("src/config/*.py"))
         )
 
