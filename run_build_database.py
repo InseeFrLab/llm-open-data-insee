@@ -1,10 +1,11 @@
 import argparse
+import ast
 import logging
 import os
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PosixPath
 
 import mlflow
 import pandas as pd
@@ -12,10 +13,7 @@ import s3fs
 
 from src.chain_building import build_chain_validator
 from src.config import (
-    CHUNK_OVERLAP,
-    CHUNK_SIZE,
-    COLLECTION_NAME,
-    EMB_MODEL_NAME,
+    CHROMA_DB_LOCAL_DIRECTORY,
     RAG_PROMPT_TEMPLATE,
     S3_BUCKET,
 )
@@ -32,29 +30,70 @@ logging.basicConfig(
 )
 
 
-fs = s3fs.S3FileSystem(
-    client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
-)
+# Command-line arguments
+def str_to_list(arg):
+    # Convert the argument string to a list
+    return ast.literal_eval(arg)
 
-
-# PARAMETERS ----------------------------------------
-
-# Check mlflow URL is defined
-assert (
-    "MLFLOW_TRACKING_URI" in os.environ
-), "Please set the MLFLOW_TRACKING_URI environment variable."
-
-# Global parameters
-EXPERIMENT_NAME = "BUILD_CHROMA_TEST"
-MAX_NUMBER_PAGES = 20
-CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_database/chroma_test/"
 
 # Define user-level parameters
 parser = argparse.ArgumentParser(description="LLM building parameters")
 parser.add_argument(
-    "--embedding",
+    "--experiment_name",
     type=str,
-    default=EMB_MODEL_NAME,
+    help="""
+    Name of the experiment.
+    """,
+    required=True,
+)
+parser.add_argument(
+    "--data_raw_s3_path",
+    type=str,
+    default="data/raw_data/applishare_solr_joined.parquet",
+    help="""
+    Path to the raw data.
+    Default to data/raw_data/applishare_solr_joined.parquet
+    """,
+    required=True,
+)
+parser.add_argument(
+    "--collection_name",
+    type=str,
+    default="insee_data",
+    help="""
+    Collection name.
+    Default to insee_data
+    """,
+    required=True,
+)
+parser.add_argument(
+    "--markdown_split",
+    default=True,
+    action=argparse.BooleanOptionalAction,
+    help="""
+    Should we use a markdown split ?
+    --markdown_split yields True and --no-markdown_split yields False
+    """,
+)
+parser.add_argument(
+    "--use_tokenizer_to_chunk",
+    default=True,
+    action=argparse.BooleanOptionalAction,
+    help="""
+    Should we use the tokenizer of the embedding model to chunk ?
+    --use_tokenizer_to_chunk yields True and --no-use_tokenizer_to_chunk yields False
+    """,
+)
+parser.add_argument(
+    "--separators",
+    type=str_to_list,
+    default=r"['\n\n', '\n', '.', ' ', '']",
+    help="List separators to split the text",
+)
+parser.add_argument(
+    "--embedding_model",
+    type=str,
+    default="OrdalieTech/Solon-embeddings-large-0.1",
     help="""
     Embedding model.
     Should be a huggingface model.
@@ -62,7 +101,15 @@ parser.add_argument(
     """,
 )
 parser.add_argument(
-    "--model",
+    "--max_pages",
+    type=int,
+    default=None,
+    help="""
+    Maximum number of pages to use for the vector database.
+    """,
+)
+parser.add_argument(
+    "--llm_model",
     type=str,
     default=os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2"),
     help="""
@@ -70,6 +117,7 @@ parser.add_argument(
     Should be a huggingface model.
     Defaults to mistralai/Mistral-7B-Instruct-v0.2
     """,
+    required=True,
 )
 parser.add_argument(
     "--quantization",
@@ -101,7 +149,7 @@ parser.add_argument(
 parser.add_argument(
     "--chunk_size",
     type=str,
-    default=CHUNK_SIZE,
+    default=None,
     help="""
     Chunk size
     """,
@@ -109,7 +157,7 @@ parser.add_argument(
 parser.add_argument(
     "--chunk_overlap",
     type=str,
-    default=CHUNK_OVERLAP,
+    default=None,
     help="""
     Chunk overlap
     """,
@@ -130,119 +178,99 @@ logging.info("At this time, chunk_overlap and chunk_size are ignored")
 args = parser.parse_args()
 
 
-# INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
+def run_build_database(
+    experiment_name: str,
+    data_raw_s3_path: str,
+    collection_name: str,
+    **kwargs,
+):
+    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+    mlflow.set_experiment(experiment_name)
+    with mlflow.start_run():
+        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
-bucket = "projet-llm-insee-open-data"
-path = "data/FAQ_site/faq.parquet"
-faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
-# Extract all URLs from the 'sources' column
-faq['urls'] = (
-    faq['sources']
-    .str.findall(r'https?://www\.insee\.fr[^\s]*')
-    .apply(lambda s: ", ".join(s))
-)
+        # ------------------------
+        # I - BUILD VECTOR DATABASE
 
-# PIPELINE ----------------------------------------------------
+        db, df_raw = build_vector_database(
+            data_path=data_raw_s3_path,
+            persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+            collection_name=collection_name,
+            filesystem=fs,
+            **kwargs,
+        )
 
-mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
-mlflow.set_experiment(EXPERIMENT_NAME)
+        # Log raw dataset built from web4g
+        mlflow_data_raw = mlflow.data.from_pandas(df_raw.head(10), source=f"s3://{S3_BUCKET}/{data_raw_s3_path}", name="web4g_data")
+        mlflow.log_input(mlflow_data_raw, context="pre-embedding")
+        mlflow.log_table(data=df_raw.head(10), artifact_file="web4g_data.json")
 
-# Build database
-with mlflow.start_run() as run:
+        # Log the vector database
+        mlflow.log_artifacts(Path(CHROMA_DB_LOCAL_DIRECTORY), artifact_path="chroma")
 
-    # ------------------------
-    # I - BUILD VECTOR DATABASE
+        # Log the first chunks of the vector database
+        db_docs = db.get()["documents"]
+        example_documents = pd.DataFrame(db_docs[:10], columns=["document"])
+        mlflow.log_table(data=example_documents, artifact_file="example_documents.json")
 
-    logging.info(f"Building vector database {80*'='}")
+        # Log a result of a similarity search
+        query = "Quels sont les chiffres du chômages en 2023 ?"
+        retrieved_docs = db.similarity_search(query, k=5)
 
-    db, data, chunk_infos = build_vector_database(
-        data_path="data/raw_data/applishare_solr_joined.parquet",
-        persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-        embedding_model=args.embedding,
-        collection_name=COLLECTION_NAME,
-        filesystem=fs,
-        max_pages=MAX_NUMBER_PAGES,
-    )
+        result_list = []
+        for doc in retrieved_docs:
+            row = {"page_content": doc.page_content}
+            row.update(doc.metadata)
+            result_list.append(row)
+        result = pd.DataFrame(result_list)
+        mlflow.log_table(data=result, artifact_file="retrieved_documents.json")
+        mlflow.log_param("question_asked", query)
 
-    # Log raw dataset built from web4g
-    df_raw = pd.read_parquet(
-        f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs
-    ).head(10)
-    mlflow_data_raw = mlflow.data.from_pandas(
-        df_raw,
-        source=f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet",
-        name="web4g_data",
-    )
-    mlflow.log_input(mlflow_data_raw, context="pre-embedding")
-    mlflow.log_table(data=df_raw, artifact_file="web4g_data.json")
+        # Log parameters and metrics
+        mlflow.log_metric("number_documents", len(db_docs))
 
-    # Log the vector database
-    mlflow.log_artifacts(Path(CHROMA_DB_LOCAL_DIRECTORY), artifact_path="chroma")
+        # Log environment necessary to reproduce the experiment
+        current_dir = Path(".")
+        FILES_TO_LOG = (
+            [PosixPath("src/build_database.py")] + list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
+        )
 
-    # Log the first chunks of the vector database
-    db_docs = db.get()["documents"]
-    example_documents = pd.DataFrame(db_docs[:10], columns=["document"])
-    mlflow.log_table(data=example_documents, artifact_file="example_documents.json")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_dir_path = Path(tmp_dir)
 
-    # Log a result of a similarity search
-    query = "Quels sont les chiffres du chômages en 2023 ?"
-    retrieved_docs = db.similarity_search(query, k=5)
-    result = chroma_topk_to_df(retrieved_docs)
-    mlflow.log_table(data=result, artifact_file="retrieved_documents_db_only.json")
-    mlflow.log_param("question_asked", query)
+            for file_path in FILES_TO_LOG:
+                relative_path = file_path.relative_to(current_dir)
+                destination_path = tmp_dir_path / relative_path.parent
+                destination_path.mkdir(parents=True, exist_ok=True)
+                shutil.copy(file_path, destination_path)
 
-    # Log parameters and metrics
-    mlflow.log_param("collection_name", COLLECTION_NAME)
-    mlflow.log_param("number_pages", MAX_NUMBER_PAGES)
-    mlflow.log_param("embedding_model_name", args.embedding)
-    mlflow.log_metric("number_documents", len(db_docs))
-    for key, value in chunk_infos.items():
-        mlflow.log_param(key, value)
+            # Generate requirements.txt using pipreqs
+            subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
 
-    # Log environment necessary to reproduce the experiment
-    current_dir = Path(".")
-    FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(
-        current_dir.glob("src/config/*.py")
-    )
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_dir_path = Path(tmp_dir)
-
-        for file_path in FILES_TO_LOG:
-            relative_path = file_path.relative_to(current_dir)
-            destination_path = tmp_dir_path / relative_path.parent
-            destination_path.mkdir(parents=True, exist_ok=True)
-            shutil.copy(file_path, destination_path)
-
-        requirements_path = tmp_dir_path / "requirements.txt"
-
-        # Generate requirements.txt using pipreqs
-        subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
-
-        # Log all Python files to MLflow artifact
-        mlflow.log_artifacts(tmp_dir, artifact_path="environment")
+            # Log all Python files to MLflow artifact
+            mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
     # ------------------------
     # II - CREATING RETRIEVER
 
     logging.info(f"Training retriever {80*'='}")
 
-    mlflow.log_param("llm_model_name", args.model)
-    mlflow.log_param("max_new_tokens", args.max_new_tokens)
-    mlflow.log_param("temperature", args.model_temperature)
+    # mlflow.log_param("llm_model_name", llm_model)
+    # mlflow.log_param("max_new_tokens", max_new_tokens)
+    # mlflow.log_param("temperature", model_temperature)
     mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
     llm, tokenizer = build_llm_model(
-        model_name=args.model,
-        quantization_config=args.quantization,
+        model_name=kwargs.get("llm_model"),
+        quantization_config=kwargs.get("quantization"),
         config=True,
         token=os.getenv("HF_TOKEN"),
         streaming=False,
         generation_args={
-            "max_new_tokens": args.max_new_tokens,
+            "max_new_tokens": kwargs.get("max_new_tokens"),
             "return_full_text": False,
             "do_sample": False,
-            "temperature": args.model_temperature,
+            "temperature": kwargs.get("model_temperature"),
         },
     )
 
@@ -253,7 +281,7 @@ with mlflow.start_run() as run:
     )
 
     retriever, vectorstore = load_retriever(
-        emb_model_name=args.embedding,
+        emb_model_name=kwargs.get("embedding_model"),
         vectorstore=db,
         persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
@@ -274,19 +302,15 @@ with mlflow.start_run() as run:
 
     validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
     validator_answers = evaluate_question_validator(validator=validator)
-    true_positive_validator = validator_answers.loc[
-        validator_answers["real"], "real"
-    ].mean()
-    true_negative_validator = 1 - (
-        validator_answers.loc[~validator_answers["real"], "real"].mean()
-    )
+    true_positive_validator = validator_answers.loc[validator_answers["real"], "real"].mean()
+    true_negative_validator = 1 - (validator_answers.loc[~validator_answers["real"], "real"].mean())
     mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
     mlflow.log_metric("validator_negative", 100 * true_negative_validator)
 
     # ------------------------
     # IV - RERANKER
 
-    reranking_method = args.reranking_method
+    reranking_method = kwargs.get("reranking_method")
 
     if reranking_method is not None:
         logging.info(f"Applying reranking {80*'='}")
@@ -294,8 +318,22 @@ with mlflow.start_run() as run:
     else:
         logging.info(f"Skipping reranking since value is None {80*'='}")
 
+    # TODO: introduire le reranker
 
-    # TODO: introduire le reranker 
+    # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
 
-    # ------------------------
-    # IV - RERANKER
+    bucket = "projet-llm-insee-open-data"
+    path = "data/FAQ_site/faq.parquet"
+    faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
+    # Extract all URLs from the 'sources' column
+    faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
+
+
+if __name__ == "__main__":
+    assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
+
+    args = parser.parse_args()
+
+    run_build_database(
+        **vars(args),
+    )

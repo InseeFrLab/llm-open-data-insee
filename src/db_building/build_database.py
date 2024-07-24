@@ -3,28 +3,21 @@ import logging
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-
-# from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
 from src.config import (
-    CHUNK_OVERLAP,
-    CHUNK_SIZE,
+    CHROMA_DB_LOCAL_DIRECTORY,
     COLLECTION_NAME,
-    DB_DIR_LOCAL,
     EMB_DEVICE,
     EMB_MODEL_NAME,
-    MARKDOWN_SEPARATORS,
     S3_BUCKET,
 )
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def parse_collection_name(collection_name: str):
@@ -39,9 +32,7 @@ def parse_collection_name(collection_name: str):
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
-            raise ValueError(
-                "String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'"
-            )
+            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
 
         # Extract and assign the parts
         model_name = parts[0]
@@ -65,33 +56,22 @@ def parse_collection_name(collection_name: str):
 def build_vector_database(
     data_path: str,
     persist_directory: str,
-    embedding_model: str,
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
-    max_pages: str = None,
-    config=None,
+    **kwargs,
 ) -> Chroma:
-
     logging.info(f"The database will temporarily be stored in {persist_directory}")
     logging.info("Start building the database")
 
     data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
 
-    if max_pages is not None:
-        data = data.head(max_pages)
-
-    if config is None:
-        config = {}
-
-    # Max batch size is 41666
-    max_batch_size = config.get("max_batch_size", 41000)
+    if kwargs.get("max_pages") is not None:
+        data = data.head(kwargs.get("max_pages"))
 
     # Parse the XML content
     parsed_pages = parse_xmls(data)
 
-    df = data.set_index("id").merge(
-        pd.DataFrame(parsed_pages), left_index=True, right_index=True
-    )
+    df = data.set_index("id").merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
     df = df[
         [
             "titre",
@@ -107,31 +87,23 @@ def build_vector_database(
 
     # Temporary solution to add the RMES data
     data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
-    data_rmes = pd.read_parquet(
-        f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem
-    )
+    data_rmes = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem)
     df = pd.concat([df, data_rmes])
 
     # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
     df = df.fillna(value="")
 
     # chucking of documents
-    all_splits, chunk_infos = chunk_documents(
-        data=df,
-        md_split=True,
-        hf_tokenizer_name=embedding_model,
-        chunk_size=config.get("chunk_size", CHUNK_SIZE),
-        chunk_overlap=config.get("chunk_overlap", CHUNK_OVERLAP),
-        separators=MARKDOWN_SEPARATORS,
-    )
+    all_splits = chunk_documents(data=df, **kwargs)
 
-    embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=embedding_model,
+    emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
+        model_name=kwargs.get("embedding_model"),
         model_kwargs={"device": EMB_DEVICE},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )
 
+    max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
 
     for split_docs_chunk in split_docs_chunked:
@@ -139,12 +111,12 @@ def build_vector_database(
             collection_name=collection_name,
             documents=split_docs_chunk,
             persist_directory=persist_directory,
-            embedding=embedding_model,
+            embedding=emb_model,
             client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
         )
 
     logging.info("The database has been built")
-    return db, data, chunk_infos
+    return db, df
 
 
 # RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
@@ -153,11 +125,10 @@ def build_vector_database(
 def reload_database_from_local_dir(
     embed_model_name: str = EMB_MODEL_NAME,
     collection_name: str = COLLECTION_NAME,
-    persist_directory: str = DB_DIR_LOCAL,
+    persist_directory: str = CHROMA_DB_LOCAL_DIRECTORY,
     embed_device: str = EMB_DEVICE,
 ) -> Chroma:
-
-    embedding_model = HuggingFaceEmbeddings(
+    emb_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
         multi_process=False,
         model_kwargs={"device": embed_device, "trust_remote_code": True},
@@ -167,13 +138,10 @@ def reload_database_from_local_dir(
     db = Chroma(
         collection_name=collection_name,
         persist_directory=persist_directory,
-        embedding_function=embedding_model,
+        embedding_function=emb_model,
     )
 
-    logging.info(
-        f"The database (collection {collection_name}) "
-        f"has been reloaded from directory {persist_directory}"
-    )
+    logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
     return db
 
 
@@ -203,7 +171,5 @@ def load_retriever(
     search_kwargs = retriever_params.get("search_kwargs", {"k": 20})
 
     # Set up a retriever
-    retriever = vectorstore.as_retriever(
-        search_type="similarity", search_kwargs=search_kwargs
-    )
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
     return retriever, vectorstore
