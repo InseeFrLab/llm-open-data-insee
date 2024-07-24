@@ -274,102 +274,102 @@ def run_build_database(
             # Log all Python files to MLflow artifact
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
-    # ------------------------
-    # II - CREATING RETRIEVER
+        # ------------------------
+        # II - CREATING RETRIEVER
 
-    logging.info(f"Training retriever {80*'='}")
+        logging.info(f"Training retriever {80*'='}")
 
-    # mlflow.log_param("llm_model_name", llm_model)
-    # mlflow.log_param("max_new_tokens", max_new_tokens)
-    # mlflow.log_param("temperature", model_temperature)
-    mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
+        # mlflow.log_param("llm_model_name", llm_model)
+        # mlflow.log_param("max_new_tokens", max_new_tokens)
+        # mlflow.log_param("temperature", model_temperature)
+        mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
-    llm, tokenizer = build_llm_model(
-        model_name=kwargs.get("llm_model"),
-        quantization_config=kwargs.get("quantization"),
-        config=True,
-        token=os.getenv("HF_TOKEN"),
-        streaming=False,
-        generation_args={
-            "max_new_tokens": kwargs.get("max_new_tokens"),
-            "return_full_text": False,
-            "do_sample": False,
-            "temperature": kwargs.get("model_temperature"),
-        },
-    )
+        llm, tokenizer = build_llm_model(
+            model_name=kwargs.get("llm_model"),
+            quantization_config=kwargs.get("quantization"),
+            config=True,
+            token=os.getenv("HF_TOKEN"),
+            streaming=False,
+            generation_args={
+                "max_new_tokens": kwargs.get("max_new_tokens"),
+                "return_full_text": False,
+                "do_sample": False,
+                "temperature": kwargs.get("model_temperature"),
+            },
+        )
 
-    logging.info("Logging an example of tokenized text")
-    mlflow.log_text(
-        f"{query} \n ---------> \n {', '.join(tokenizer.tokenize(query))}",
-        "example_tokenizer.json",
-    )
+        logging.info("Logging an example of tokenized text")
+        mlflow.log_text(
+            f"{query} \n ---------> \n {', '.join(tokenizer.tokenize(query))}",
+            "example_tokenizer.json",
+        )
 
-    retriever, vectorstore = load_retriever(
-        emb_model_name=kwargs.get("embedding_model"),
-        vectorstore=db,
-        persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-        retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
-    )
+        retriever, vectorstore = load_retriever(
+            emb_model_name=kwargs.get("embedding_model"),
+            vectorstore=db,
+            persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+            retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+        )
 
-    # Log retriever
-    retrieved_docs = retriever.invoke("Quels sont les chiffres du chômage en 2023 ?")
-    result_retriever_raw = chroma_topk_to_df(retrieved_docs)
-    mlflow.log_table(
-        data=result_retriever_raw,
-        artifact_file="retrieved_documents_retriever_raw.json",
-    )
+        # Log retriever
+        retrieved_docs = retriever.invoke("Quels sont les chiffres du chômage en 2023 ?")
+        result_retriever_raw = chroma_topk_to_df(retrieved_docs)
+        mlflow.log_table(
+            data=result_retriever_raw,
+            artifact_file="retrieved_documents_retriever_raw.json",
+        )
 
-    # ------------------------
-    # III - QUESTION VALIDATOR
+        # ------------------------
+        # III - QUESTION VALIDATOR
 
-    logging.info("Testing the questions that are accepted/refused by our agent")
+        logging.info("Testing the questions that are accepted/refused by our agent")
 
-    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
-    validator_answers = evaluate_question_validator(validator=validator)
-    true_positive_validator = validator_answers.loc[validator_answers["real"], "real"].mean()
-    true_negative_validator = 1 - (validator_answers.loc[~validator_answers["real"], "real"].mean())
-    mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
-    mlflow.log_metric("validator_negative", 100 * true_negative_validator)
+        validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
+        validator_answers = evaluate_question_validator(validator=validator)
+        true_positive_validator = validator_answers.loc[validator_answers["real"], "real"].mean()
+        true_negative_validator = 1 - (validator_answers.loc[~validator_answers["real"], "real"].mean())
+        mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
+        mlflow.log_metric("validator_negative", 100 * true_negative_validator)
 
-    # ------------------------
-    # IV - RERANKER
+        # ------------------------
+        # IV - RERANKER
 
-    reranking_method = kwargs.get("reranking_method")
+        reranking_method = kwargs.get("reranking_method")
 
-    if reranking_method is not None:
-        logging.info(f"Applying reranking {80*'='}")
-        logging.info(f"Selected method: {reranking_method}")
-    else:
-        logging.info(f"Skipping reranking since value is None {80*'='}")
+        if reranking_method is not None:
+            logging.info(f"Applying reranking {80*'='}")
+            logging.info(f"Selected method: {reranking_method}")
+        else:
+            logging.info(f"Skipping reranking since value is None {80*'='}")
 
-    # TODO: introduire le reranker
+        # TODO: introduire le reranker
 
-    # ------------------------
-    # V - EVALUATION
+        # ------------------------
+        # V - EVALUATION
 
-    logging.info(f"Evaluating model performance against expectations {80*'='}")
+        logging.info(f"Evaluating model performance against expectations {80*'='}")
 
-    answers_bot = answer_faq_by_bot(retriever, faq)
-    eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=kwargs.get("topk_stats"))
-    document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
-    document_is_top = answers_bot_topk["cumsum_url_expected"].min()
+        answers_bot = answer_faq_by_bot(retriever, faq)
+        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=kwargs.get("topk_stats"))
+        document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
+        document_is_top = answers_bot_topk["cumsum_url_expected"].min()
 
-    # Store FAQ
-    mlflow_faq_raw = mlflow.data.from_pandas(
-        faq,
-        source=f"s3://{bucket}/{path}",
-        name="FAQ_data",
-    )
-    mlflow.log_input(mlflow_faq_raw, context="faq-raw")
-    mlflow.log_table(data=faq, artifact_file="faq_data.json")
+        # Store FAQ
+        mlflow_faq_raw = mlflow.data.from_pandas(
+            faq,
+            source=f"s3://{bucket}/{path}",
+            name="FAQ_data",
+        )
+        mlflow.log_input(mlflow_faq_raw, context="faq-raw")
+        mlflow.log_table(data=faq, artifact_file="faq_data.json")
 
-    # Check if document expected is in topk answers =========================
-    mlflow.log_metric("document_is_first", 100 * document_is_top)
-    mlflow.log_metric("document_among_topk", 100 * document_among_topk)
-    mlflow.log_metrics(
-        {f'document_in_top_{int(row["document_position"])}': 100 * row["cumsum_url_expected"] for _, row in answers_bot_topk.iterrows()}
-    )
-    mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+        # Check if document expected is in topk answers =========================
+        mlflow.log_metric("document_is_first", 100 * document_is_top)
+        mlflow.log_metric("document_among_topk", 100 * document_among_topk)
+        mlflow.log_metrics(
+            {f'document_in_top_{int(row["document_position"])}': 100 * row["cumsum_url_expected"] for _, row in answers_bot_topk.iterrows()}
+        )
+        mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
 
 
 if __name__ == "__main__":
