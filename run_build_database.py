@@ -279,9 +279,9 @@ def run_build_database(
 
         logging.info(f"Training retriever {80*'='}")
 
-        # mlflow.log_param("llm_model_name", llm_model)
-        # mlflow.log_param("max_new_tokens", max_new_tokens)
-        # mlflow.log_param("temperature", model_temperature)
+        mlflow.log_param("llm_model_name", kwargs.get("llm_model"))
+        mlflow.log_param("max_new_tokens", kwargs.get("max_new_tokens"))
+        mlflow.log_param("temperature", kwargs.get("model_temperature"))
         mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
         llm, tokenizer = build_llm_model(
