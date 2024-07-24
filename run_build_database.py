@@ -211,6 +211,10 @@ def run_build_database(
     faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
     with mlflow.start_run():
+        # Log parameters
+        for key, value in kwargs.items():
+            mlflow.log_param(key, value)
+
         # ------------------------
         # I - BUILD VECTOR DATABASE
 
@@ -279,9 +283,6 @@ def run_build_database(
 
         logging.info(f"Training retriever {80*'='}")
 
-        mlflow.log_param("llm_model_name", kwargs.get("llm_model"))
-        mlflow.log_param("max_new_tokens", kwargs.get("max_new_tokens"))
-        mlflow.log_param("temperature", kwargs.get("model_temperature"))
         mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
         llm, tokenizer = build_llm_model(
