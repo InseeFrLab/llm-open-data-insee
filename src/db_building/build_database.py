@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-from config import COLLECTION_NAME, DB_DIR_LOCAL, EMB_DEVICE, EMB_MODEL_NAME, MARKDOWN_SEPARATORS, S3_BUCKET
+from config import COLLECTION_NAME, DB_DIR_LOCAL, EMB_DEVICE, EMB_MODEL_NAME, S3_BUCKET
 from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -20,16 +20,15 @@ def build_vector_database(
     embedding_model: str,
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
-    max_pages: str = None,
-    config: RetrievalConfiguration = None,
+    **kwargs,
 ) -> Chroma:
     logging.info(f"The database will temporarily be stored in {persist_directory}")
     logging.info("Start building the database")
 
     data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
 
-    if max_pages is not None:
-        data = data.head(max_pages)
+    if kwargs.get("max_pages") is not None:
+        data = data.head(kwargs.get("max_pages"))
 
     # Parse the XML content
     parsed_pages = parse_xmls(data)
@@ -46,7 +45,7 @@ def build_vector_database(
     df.fillna(value="", inplace=True)
 
     # chucking of documents
-    all_splits, chunk_infos = chunk_documents(data=df, md_split=True, hf_tokenizer_name=embedding_model, separators=MARKDOWN_SEPARATORS)
+    all_splits = chunk_documents(data=df, **kwargs)
 
     embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=embedding_model,
@@ -67,7 +66,7 @@ def build_vector_database(
         )
 
     logging.info("The database has been built")
-    return db, data, chunk_infos
+    return db, df
 
 
 def reload_database_from_local_dir(
