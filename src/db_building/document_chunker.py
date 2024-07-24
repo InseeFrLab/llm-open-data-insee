@@ -44,7 +44,9 @@ def chunk_documents(
     document_list = DataFrameLoader(data, page_content_column="content").load()
 
     if kwargs.get("markdown_split", False):
-        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False)
+        markdown_splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False
+        )
         document_list = make_md_splits(document_list, markdown_splitter)
 
     # Initialize token/char splitter
@@ -61,7 +63,9 @@ def chunk_documents(
             unique_texts.add(doc.page_content)
             docs_processed_unique.append(doc)
 
-    logging.info(f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database")
+    logging.info(
+        f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database"
+    )
 
     return docs_processed_unique
 
@@ -105,7 +109,9 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
     """
 
     if kwargs.get("use_tokenizer_to_chunk", False):
-        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(kwargs.get("embedding_model"))
+        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(
+            kwargs.get("embedding_model")
+        )
 
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
@@ -115,16 +121,22 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
         )
     else:
         if kwargs.get("chunk_size") is None or kwargs.get("chunk_overlap") is None:
-            raise ValueError("chunk_size and chunk_overlap must be specified if use_tokenizer_to_chunk is set to True")
+            raise ValueError(
+                "chunk_size and chunk_overlap must be specified if use_tokenizer_to_chunk is set to True"
+            )
 
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=kwargs.get("chunk_size"), chunk_overlap=kwargs.get("chunk_overlap"), separators=kwargs.get("separators")
+            chunk_size=kwargs.get("chunk_size"),
+            chunk_overlap=kwargs.get("chunk_overlap"),
+            separators=kwargs.get("separators"),
         )
 
     return text_splitter
 
 
-def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
+def make_md_splits(
+    document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter
+) -> list[Document]:
     """
     Splits the content of each document in the document list based on Markdown headers,
     and preserves the original metadata in each split section.

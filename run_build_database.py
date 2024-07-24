@@ -18,7 +18,11 @@ from src.config import (
     S3_BUCKET,
 )
 from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever
-from src.evaluation import answer_faq_by_bot, evaluate_question_validator, transform_answers_bot
+from src.evaluation import (
+    answer_faq_by_bot,
+    evaluate_question_validator,
+    transform_answers_bot,
+)
 from src.model_building import build_llm_model
 
 # Logging configuration
@@ -46,7 +50,7 @@ parser.add_argument(
     help="""
     Name of the experiment.
     """,
-    #required=True,
+    # required=True,
 )
 parser.add_argument(
     "--data_raw_s3_path",
@@ -56,7 +60,7 @@ parser.add_argument(
     Path to the raw data.
     Default to data/raw_data/applishare_solr_joined.parquet
     """,
-    #required=True,
+    # required=True,
 )
 parser.add_argument(
     "--collection_name",
@@ -66,7 +70,7 @@ parser.add_argument(
     Collection name.
     Default to insee_data
     """,
-    #required=True,
+    # required=True,
 )
 parser.add_argument(
     "--markdown_split",
@@ -119,7 +123,7 @@ parser.add_argument(
     Should be a huggingface model.
     Defaults to mistralai/Mistral-7B-Instruct-v0.2
     """,
-    #required=True,
+    # required=True,
 )
 parser.add_argument(
     "--quantization",
@@ -179,7 +183,7 @@ parser.add_argument(
     default=None,
     help="""
     Number of links considered to evaluate retriever quality.
-    """
+    """,
 )
 
 
@@ -197,16 +201,18 @@ def run_build_database(
     mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(experiment_name)
 
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+    fs = s3fs.S3FileSystem(
+        client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
+    )
 
     # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
     bucket = "projet-llm-insee-open-data"
     path = "data/FAQ_site/faq.parquet"
     faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
     # Extract all URLs from the 'sources' column
-    faq['urls'] = (
-        faq['sources']
-        .str.findall(r'https?://www\.insee\.fr[^\s]*')
+    faq["urls"] = (
+        faq["sources"]
+        .str.findall(r"https?://www\.insee\.fr[^\s]*")
         .apply(lambda s: ", ".join(s))
     )
 
@@ -224,7 +230,11 @@ def run_build_database(
         )
 
         # Log raw dataset built from web4g
-        mlflow_data_raw = mlflow.data.from_pandas(df_raw.head(10), source=f"s3://{S3_BUCKET}/{data_raw_s3_path}", name="web4g_data")
+        mlflow_data_raw = mlflow.data.from_pandas(
+            df_raw.head(10),
+            source=f"s3://{S3_BUCKET}/{data_raw_s3_path}",
+            name="web4g_data",
+        )
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=df_raw.head(10), artifact_file="web4g_data.json")
 
@@ -255,7 +265,9 @@ def run_build_database(
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
         FILES_TO_LOG = (
-            [PosixPath("src/build_database.py")] + list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
+            [PosixPath("src/build_database.py")]
+            + list(current_dir.glob("src/db_building/*.py"))
+            + list(current_dir.glob("src/config/*.py"))
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -325,8 +337,12 @@ def run_build_database(
 
     validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
     validator_answers = evaluate_question_validator(validator=validator)
-    true_positive_validator = validator_answers.loc[validator_answers["real"], "real"].mean()
-    true_negative_validator = 1 - (validator_answers.loc[~validator_answers["real"], "real"].mean())
+    true_positive_validator = validator_answers.loc[
+        validator_answers["real"], "real"
+    ].mean()
+    true_negative_validator = 1 - (
+        validator_answers.loc[~validator_answers["real"], "real"].mean()
+    )
     mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
     mlflow.log_metric("validator_negative", 100 * true_negative_validator)
 
@@ -350,11 +366,10 @@ def run_build_database(
 
     answers_bot = answer_faq_by_bot(retriever, faq)
     eval_reponses_bot, answers_bot_topk = transform_answers_bot(
-        answers_bot,
-        k=kwargs.get('topk_stats')
+        answers_bot, k=kwargs.get("topk_stats")
     )
-    document_among_topk = answers_bot_topk['cumsum_url_expected'].max()
-    document_is_top = answers_bot_topk['cumsum_url_expected'].min()
+    document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
+    document_is_top = answers_bot_topk["cumsum_url_expected"].min()
 
     # Store FAQ
     mlflow_faq_raw = mlflow.data.from_pandas(
@@ -366,20 +381,24 @@ def run_build_database(
     mlflow.log_table(data=faq, artifact_file="faq_data.json")
 
     # Check if document expected is in topk answers =========================
-    mlflow.log_metric("document_is_first", 100*document_is_top)
-    mlflow.log_metric("document_among_topk", 100*document_among_topk)    
+    mlflow.log_metric("document_is_first", 100 * document_is_top)
+    mlflow.log_metric("document_among_topk", 100 * document_among_topk)
     mlflow.log_metrics(
         {
-            f'document_in_top_{int(row["document_position"])}':
-            100*row["cumsum_url_expected"] for _, row in answers_bot_topk.iterrows()
+            f'document_in_top_{int(row["document_position"])}': 100
+            * row["cumsum_url_expected"]
+            for _, row in answers_bot_topk.iterrows()
         }
-    )    
-    mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
-
+    )
+    mlflow.log_table(
+        data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json"
+    )
 
 
 if __name__ == "__main__":
-    assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
+    assert (
+        "MLFLOW_TRACKING_URI" in os.environ
+    ), "Please set the MLFLOW_TRACKING_URI environment variable."
 
     args = parser.parse_args()
 

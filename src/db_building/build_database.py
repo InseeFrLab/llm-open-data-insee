@@ -17,7 +17,9 @@ from src.config import (
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def parse_collection_name(collection_name: str):
@@ -32,7 +34,9 @@ def parse_collection_name(collection_name: str):
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
-            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
+            raise ValueError(
+                "String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'"
+            )
 
         # Extract and assign the parts
         model_name = parts[0]
@@ -71,7 +75,9 @@ def build_vector_database(
     # Parse the XML content
     parsed_pages = parse_xmls(data)
 
-    df = data.set_index("id").merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
+    df = data.set_index("id").merge(
+        pd.DataFrame(parsed_pages), left_index=True, right_index=True
+    )
     df = df[
         [
             "titre",
@@ -87,7 +93,9 @@ def build_vector_database(
 
     # Temporary solution to add the RMES data
     data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
-    data_rmes = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem)
+    data_rmes = pd.read_parquet(
+        f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem
+    )
     df = pd.concat([df, data_rmes])
 
     # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
@@ -141,7 +149,10 @@ def reload_database_from_local_dir(
         embedding_function=emb_model,
     )
 
-    logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
+    logging.info(
+        f"The database (collection {collection_name}) "
+        f"has been reloaded from directory {persist_directory}"
+    )
     return db
 
 
@@ -171,5 +182,7 @@ def load_retriever(
     search_kwargs = retriever_params.get("search_kwargs", {"k": 20})
 
     # Set up a retriever
-    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
+    retriever = vectorstore.as_retriever(
+        search_type="similarity", search_kwargs=search_kwargs
+    )
     return retriever, vectorstore

@@ -13,5 +13,5 @@ __all__ = [
     "choosing_reranker_test",
     "evaluate_question_validator",
     "transform_answers_bot",
-    "answer_faq_by_bot"
+    "answer_faq_by_bot",
 ]
