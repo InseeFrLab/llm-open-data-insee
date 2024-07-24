@@ -180,8 +180,6 @@ def run_build_database(
     experiment_name: str,
     data_raw_s3_path: str,
     collection_name: str,
-    embedding_model: str,
-    llm_model: str,
     **kwargs,
 ):
     mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
@@ -195,7 +193,6 @@ def run_build_database(
         db, df_raw = build_vector_database(
             data_path=data_raw_s3_path,
             persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-            embedding_model=embedding_model,
             collection_name=collection_name,
             filesystem=fs,
             **kwargs,
@@ -262,7 +259,7 @@ def run_build_database(
     mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
     llm, tokenizer = build_llm_model(
-        model_name=llm_model,
+        model_name=kwargs.get("llm_model"),
         quantization_config=kwargs.get("quantization"),
         config=True,
         token=os.getenv("HF_TOKEN"),
@@ -282,7 +279,7 @@ def run_build_database(
     )
 
     retriever, vectorstore = load_retriever(
-        emb_model_name=embedding_model,
+        emb_model_name=kwargs.get("embedding_model"),
         vectorstore=db,
         persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},

@@ -56,7 +56,6 @@ def parse_collection_name(collection_name: str):
 def build_vector_database(
     data_path: str,
     persist_directory: str,
-    embedding_model: str,
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
     **kwargs,
@@ -97,8 +96,8 @@ def build_vector_database(
     # chucking of documents
     all_splits = chunk_documents(data=df, **kwargs)
 
-    embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=embedding_model,
+    emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
+        model_name=kwargs.get("embedding_model"),
         model_kwargs={"device": EMB_DEVICE},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
@@ -112,7 +111,7 @@ def build_vector_database(
             collection_name=collection_name,
             documents=split_docs_chunk,
             persist_directory=persist_directory,
-            embedding=embedding_model,
+            embedding=emb_model,
             client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
         )
 
@@ -129,7 +128,7 @@ def reload_database_from_local_dir(
     persist_directory: str = CHROMA_DB_LOCAL_DIRECTORY,
     embed_device: str = EMB_DEVICE,
 ) -> Chroma:
-    embedding_model = HuggingFaceEmbeddings(
+    emb_model = HuggingFaceEmbeddings(
         model_name=embed_model_name,
         multi_process=False,
         model_kwargs={"device": embed_device, "trust_remote_code": True},
@@ -139,7 +138,7 @@ def reload_database_from_local_dir(
     db = Chroma(
         collection_name=collection_name,
         persist_directory=persist_directory,
-        embedding_function=embedding_model,
+        embedding_function=emb_model,
     )
 
     logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")

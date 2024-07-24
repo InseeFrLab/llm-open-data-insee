@@ -95,7 +95,7 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
 
     Parameters:
     use_tokenizer_to_chunk (bool): Whether to use a Hugging Face tokenizer to chunk the text.
-    emb_model_name (str): The name of the Hugging Face tokenizer to use.
+    embedding_model (str): The name of the Hugging Face tokenizer to use.
     chunk_size (int): The size of each chunk.
     chunk_overlap (int): The overlap size between chunks.
     separators (list): List of separators to use for chunking.
@@ -105,7 +105,7 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
     """
 
     if kwargs.get("use_tokenizer_to_chunk", False):
-        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(kwargs.get("emb_model_name"))
+        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(kwargs.get("embedding_model"))
 
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
