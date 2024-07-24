@@ -175,6 +175,8 @@ parser.add_argument(
 
 logging.info("At this time, chunk_overlap and chunk_size are ignored")
 
+args = parser.parse_args()
+
 
 def run_build_database(
     experiment_name: str,
@@ -315,6 +317,16 @@ def run_build_database(
         logging.info(f"Selected method: {reranking_method}")
     else:
         logging.info(f"Skipping reranking since value is None {80*'='}")
+
+    # TODO: introduire le reranker
+
+    # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
+
+    bucket = "projet-llm-insee-open-data"
+    path = "data/FAQ_site/faq.parquet"
+    faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
+    # Extract all URLs from the 'sources' column
+    faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
 
 if __name__ == "__main__":
