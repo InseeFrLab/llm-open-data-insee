@@ -48,11 +48,11 @@ spec:
         imagePullPolicy: Always
         resources:
           requests:
-            memory: 64Gi
-            cpu: 40
+            memory: 16Gi
+            # cpu: 40
           limits:
-            memory: 128Gi
-            cpu: 50
+            memory: 64Gi
+            # cpu: 50
             nvidia.com/gpu: 1
         command: ["/bin/bash", -c]
         args:
@@ -82,6 +82,11 @@ spec:
               secretKeyRef:
                 name: s3-creds
                 key: secretKey
+          # - name: HF_TOKEN
+          #   valueFrom:
+          #     secretKeyRef:
+          #       name: hf-token
+          #       key: token
           - name: AWS_DEFAULT_REGION
             value: us-east-1
           - name: AWS_S3_ENDPOINT
@@ -90,5 +95,5 @@ spec:
             value: https://minio.lab.sspcloud.fr
           - name: MLFLOW_TRACKING_URI
             value: https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/
-          - name: MLFLOW_EXPERIMENT_NAME
-            value: BUILD_CHROMA_TEST
+          - name: S3_BUCKET
+            value: projet-llm-insee-open-data
