@@ -18,9 +18,8 @@ LOG_FILE_PATH = f"{RELATIVE_LOG_DIR}/conversation_logs.json"
 # VECTOR DATABASE ------------------------------------
 
 DB_DIR_S3 = "data/chroma_database/chroma_db/"
-DB_DIR_LOCAL = "data/chroma_db"
+CHROMA_DB_LOCAL_DIRECTORY = "data/chroma_db"
 COLLECTION_NAME = "insee_data"
-
 
 # MODELS USED   ---------------------------------------
 

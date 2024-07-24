@@ -11,23 +11,22 @@ HEADERS_TO_SPLIT_ON = [
     ("#", "Header 1"),
     ("##", "Header 2"),
     ("###", "Header 3"),
+    ("####", "Header 4"),
+    ("#####", "Header 5"),
+    ("######", "Header 6"),
 ]
 
 
 def chunk_documents(
     data: pd.DataFrame,
-    md_split: bool,
-    hf_tokenizer_name: str = None,
-    chunk_size: int = None,
-    chunk_overlap: int = None,
-    separators: list = None,
+    **kwargs,
 ) -> tuple[list[Document], dict]:
     """
     Chunks documents from a dataframe into smaller pieces using specified tokenizer settings or custom settings.
 
     Parameters:
     - data (pd.DataFrame): The dataframe containing documents to be chunked.
-    - md_split (bool): Whether to split markdown headers into separate chunks.
+    - markdown_split (bool): Whether to split markdown headers into separate chunks.
     - hf_tokenizer_name (str, optional): Name of the Hugging Face tokenizer to use.
     - chunk_size (int, optional): Size of each chunk if not using hf_tokenizer.
     - chunk_overlap (int, optional): Overlap size between chunks if not using hf_tokenizer.
@@ -44,16 +43,12 @@ def chunk_documents(
     # Every column except page_content_column contains metadata
     document_list = DataFrameLoader(data, page_content_column="content").load()
 
-    if md_split:
-        markdown_splitter = MarkdownHeaderTextSplitter(
-            headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False
-        )
+    if kwargs.get("markdown_split", False):
+        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False)
         document_list = make_md_splits(document_list, markdown_splitter)
 
     # Initialize token/char splitter
-    text_splitter, chunk_infos = get_text_splitter(
-        hf_tokenizer_name, chunk_size, chunk_overlap, separators
-    )
+    text_splitter = get_text_splitter(**kwargs)
 
     # Split documents into chunks
     docs_processed = text_splitter.split_documents(document_list)
@@ -66,11 +61,9 @@ def chunk_documents(
             unique_texts.add(doc.page_content)
             docs_processed_unique.append(doc)
 
-    logging.info(
-        f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database"
-    )
+    logging.info(f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database")
 
-    return docs_processed_unique, chunk_infos | {"md_split": md_split}
+    return docs_processed_unique
 
 
 def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
@@ -96,14 +89,13 @@ def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
     return autokenizer, chunk_size, chunk_overlap
 
 
-def get_text_splitter(
-    hf_tokenizer_name: str, chunk_size: int, chunk_overlap: int, separators: list
-) -> tuple[RecursiveCharacterTextSplitter, dict]:
+def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
     """
     Get a text splitter based on the specified parameters.
 
     Parameters:
-    hf_tokenizer_name (str): The name of the Hugging Face tokenizer to use.
+    use_tokenizer_to_chunk (bool): Whether to use a Hugging Face tokenizer to chunk the text.
+    embedding_model (str): The name of the Hugging Face tokenizer to use.
     chunk_size (int): The size of each chunk.
     chunk_overlap (int): The overlap size between chunks.
     separators (list): List of separators to use for chunking.
@@ -112,33 +104,27 @@ def get_text_splitter(
     RecursiveCharacterTextSplitter: A text splitter instance.
     """
 
-    if hf_tokenizer_name:
-        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(
-            hf_tokenizer_name
-        )
+    if kwargs.get("use_tokenizer_to_chunk", False):
+        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(kwargs.get("embedding_model"))
 
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            separators=separators,
+            separators=kwargs.get("separators"),
         )
     else:
-        if chunk_size is None or chunk_overlap is None:
-            raise ValueError(
-                "chunk_size and chunk_overlap must be specified if hf_tokenizer is not provided"
-            )
+        if kwargs.get("chunk_size") is None or kwargs.get("chunk_overlap") is None:
+            raise ValueError("chunk_size and chunk_overlap must be specified if use_tokenizer_to_chunk is set to True")
 
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size, chunk_overlap=chunk_overlap, separators=separators
+            chunk_size=kwargs.get("chunk_size"), chunk_overlap=kwargs.get("chunk_overlap"), separators=kwargs.get("separators")
         )
 
-    return text_splitter, {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
+    return text_splitter
 
 
-def make_md_splits(
-    document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter
-) -> list[Document]:
+def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
     """
     Splits the content of each document in the document list based on Markdown headers,
     and preserves the original metadata in each split section.
