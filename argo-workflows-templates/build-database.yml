@@ -82,11 +82,11 @@ spec:
               secretKeyRef:
                 name: s3-creds
                 key: secretKey
-          # - name: HF_TOKEN
-          #   valueFrom:
-          #     secretKeyRef:
-          #       name: hf-token
-          #       key: token
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
           - name: AWS_DEFAULT_REGION
             value: us-east-1
           - name: AWS_S3_ENDPOINT

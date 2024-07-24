@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path, PosixPath
+from pathlib import Path
 
 import mlflow
 import pandas as pd
@@ -201,23 +201,16 @@ def run_build_database(
     mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(experiment_name)
 
-    fs = s3fs.S3FileSystem(
-        client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
-    )
+    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
     # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
     bucket = "projet-llm-insee-open-data"
     path = "data/FAQ_site/faq.parquet"
     faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
     # Extract all URLs from the 'sources' column
-    faq["urls"] = (
-        faq["sources"]
-        .str.findall(r"https?://www\.insee\.fr[^\s]*")
-        .apply(lambda s: ", ".join(s))
-    )
+    faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
     with mlflow.start_run():
-
         # ------------------------
         # I - BUILD VECTOR DATABASE
 
@@ -264,10 +257,7 @@ def run_build_database(
 
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
-        FILES_TO_LOG = (
-            list(current_dir.glob("src/db_building/*.py"))
-            + list(current_dir.glob("src/config/*.py"))
-        )
+        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_dir_path = Path(tmp_dir)
@@ -336,12 +326,8 @@ def run_build_database(
 
     validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
     validator_answers = evaluate_question_validator(validator=validator)
-    true_positive_validator = validator_answers.loc[
-        validator_answers["real"], "real"
-    ].mean()
-    true_negative_validator = 1 - (
-        validator_answers.loc[~validator_answers["real"], "real"].mean()
-    )
+    true_positive_validator = validator_answers.loc[validator_answers["real"], "real"].mean()
+    true_negative_validator = 1 - (validator_answers.loc[~validator_answers["real"], "real"].mean())
     mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
     mlflow.log_metric("validator_negative", 100 * true_negative_validator)
 
@@ -364,9 +350,7 @@ def run_build_database(
     logging.info(f"Evaluating model performance against expectations {80*'='}")
 
     answers_bot = answer_faq_by_bot(retriever, faq)
-    eval_reponses_bot, answers_bot_topk = transform_answers_bot(
-        answers_bot, k=kwargs.get("topk_stats")
-    )
+    eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=kwargs.get("topk_stats"))
     document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
     document_is_top = answers_bot_topk["cumsum_url_expected"].min()
 
@@ -383,21 +367,15 @@ def run_build_database(
     mlflow.log_metric("document_is_first", 100 * document_is_top)
     mlflow.log_metric("document_among_topk", 100 * document_among_topk)
     mlflow.log_metrics(
-        {
-            f'document_in_top_{int(row["document_position"])}': 100
-            * row["cumsum_url_expected"]
-            for _, row in answers_bot_topk.iterrows()
-        }
+        {f'document_in_top_{int(row["document_position"])}': 100 * row["cumsum_url_expected"] for _, row in answers_bot_topk.iterrows()}
     )
-    mlflow.log_table(
-        data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json"
-    )
+    mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
 
 
 if __name__ == "__main__":
-    assert (
-        "MLFLOW_TRACKING_URI" in os.environ
-    ), "Please set the MLFLOW_TRACKING_URI environment variable."
+    assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
+
+    assert "HF_TOKEN" in os.environ, "Please set the HF_TOKEN environment variable."
 
     args = parser.parse_args()
 
