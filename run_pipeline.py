@@ -46,11 +46,10 @@ parser = argparse.ArgumentParser(description="LLM building parameters")
 parser.add_argument(
     "--experiment_name",
     type=str,
-    default="BUILD_CHROMA_TEST",
+    default="default",
     help="""
     Name of the experiment.
     """,
-    # required=True,
 )
 parser.add_argument(
     "--data_raw_s3_path",
@@ -60,7 +59,6 @@ parser.add_argument(
     Path to the raw data.
     Default to data/raw_data/applishare_solr_joined.parquet
     """,
-    # required=True,
 )
 parser.add_argument(
     "--collection_name",
@@ -70,7 +68,6 @@ parser.add_argument(
     Collection name.
     Default to insee_data
     """,
-    # required=True,
 )
 parser.add_argument(
     "--markdown_split",
@@ -123,7 +120,6 @@ parser.add_argument(
     Should be a huggingface model.
     Defaults to mistralai/Mistral-7B-Instruct-v0.2
     """,
-    # required=True,
 )
 parser.add_argument(
     "--quantization",
@@ -146,10 +142,32 @@ parser.add_argument(
 parser.add_argument(
     "--model_temperature",
     type=int,
-    default=1,
+    default=0.2,
     help="""
     The value used to modulate the next token probabilities.
     See https://huggingface.co/docs/transformers/main_classes/text_generation
+    """,
+)
+parser.add_argument(
+    "--return_full_text",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help="""
+    Should we return the full text ?
+    --return_full_text yields True and --no-return_full_text yields False
+    Default to True
+    """,
+)
+parser.add_argument(
+    "--do_sample",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+    help="""
+    if set to True , this parameter enables decoding strategies such as multinomial sampling, beam-search multinomial sampling, Top-K sampling
+    and Top-p sampling. All these strategies select the next token from the probability distribution over the entire vocabulary
+    with various strategy-specific adjustments.
+    --do_sample yields True and --no-do_sample yields False
+    Default to True
     """,
 )
 parser.add_argument(
@@ -291,12 +309,7 @@ def run_build_database(
             config=True,
             token=os.getenv("HF_TOKEN"),
             streaming=False,
-            generation_args={
-                "max_new_tokens": kwargs.get("max_new_tokens"),
-                "return_full_text": False,
-                "do_sample": False,
-                "temperature": kwargs.get("model_temperature"),
-            },
+            generation_args=kwargs,
         )
 
         logging.info("Logging an example of tokenized text")

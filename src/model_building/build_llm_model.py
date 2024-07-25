@@ -74,7 +74,7 @@ def build_llm_model(
         model=model,
         tokenizer=tokenizer,
         max_new_tokens=generation_args.get("max_new_tokens", 2000),
-        return_full_text=False,
+        return_full_text=generation_args.get("return_full_text", False),
         device_map="auto",
         do_sample=generation_args.get("do_sample", True),
         temperature=generation_args.get("temperature", 0.2),
