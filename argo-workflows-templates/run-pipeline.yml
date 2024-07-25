@@ -74,7 +74,7 @@ spec:
             cd llm-open-data-insee/ &&
             git checkout db-build-pipeline &&
             pip install -r requirements-dev.txt &&
-            python run_build_database.py --experiment_name {{inputs.parameters.EXPERIMENT}} \
+            python run_pipeline.py --experiment_name {{inputs.parameters.EXPERIMENT}} \
               --data_raw_s3_path {{inputs.parameters.DATA_PATH}} \
               --collection_name {{inputs.parameters.COLLECTION_NAME}} \
               --embedding_model {{inputs.parameters.EMBEDDING_MODEL}} \
