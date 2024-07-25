@@ -209,7 +209,14 @@ def run_build_database(
             yaml.dump(params, f, default_flow_style=False)
 
         # Move ChromaBD in a specific path in s3
-        fs.put(CHROMA_DB_LOCAL_DIRECTORY, f"{S3_BUCKET}/chroma_database/{kwargs.get("embedding_model")}/", recursive=True)
+        cmd = [
+            "mc",
+            "cp",
+            "-r",
+            CHROMA_DB_LOCAL_DIRECTORY,
+            f"s3/{S3_BUCKET}/chroma_database/{kwargs.get("embedding_model")}/",
+        ]
+        subprocess.run(cmd, check=True)
 
 
 if __name__ == "__main__":
