@@ -27,7 +27,7 @@ spec:
               "EMBEDDING_MODEL": "OrdalieTech/Solon-embeddings-large-0.1",
               "LLM_MODEL": "mistralai/Mistral-7B-Instruct-v0.2",
               "MD_SPLIT": "no-markdown_split"
-            },
+            }
             ]'
 
   templates:
