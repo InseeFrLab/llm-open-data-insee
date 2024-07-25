@@ -198,7 +198,7 @@ parser.add_argument(
 parser.add_argument(
     "--topk_stats",
     type=int,
-    default=None,
+    default=5,
     help="""
     Number of links considered to evaluate retriever quality.
     """,
