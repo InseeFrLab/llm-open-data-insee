@@ -86,7 +86,9 @@ def anonymize_insee_contact_message(message: str, message_ner: list[dict]) -> st
         if dictionary["entity_group"] == "PER":
             message = message.replace(dictionary["word"], "[PER]")
         elif dictionary["signature"]:
-            message = message.replace(dictionary["word"], f"[{dictionary['entity_group']}]")
+            message = message.replace(
+                dictionary["word"], f"[{dictionary['entity_group']}]"
+            )
 
     # Identification of email addresses
     email_regex = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
@@ -120,9 +122,15 @@ if __name__ == "__main__":
     df = df.fillna("")
 
     # Load NER data
-    with fs.open("projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json", "rb") as f:
+    with fs.open(
+        "projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange1_ner.json",
+        "rb",
+    ) as f:
         exchange1_ner = json.load(f)
-    with fs.open("projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json", "rb") as f:
+    with fs.open(
+        "projet-llm-insee-open-data/data/insee_contact/ner/data_2019_eval_exchange2_ner.json",
+        "rb",
+    ) as f:
         exchange2_ner = json.load(f)
 
     # Anonymize exchanges
@@ -140,7 +148,10 @@ if __name__ == "__main__":
             "anonymized": anonymized_exchange1,
         }
     )
-    with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange1.csv", "w") as f:
+    with fs.open(
+        "projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange1.csv",
+        "w",
+    ) as f:
         eval_df_exchange_1.to_csv(f, index=False)
     # Export anonymized answers along with original ones for evaluation
     eval_df_exchange_2 = pd.DataFrame(
@@ -149,5 +160,8 @@ if __name__ == "__main__":
             "anonymized": anonymized_exchange2,
         }
     )
-    with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange2.csv", "w") as f:
+    with fs.open(
+        "projet-llm-insee-open-data/data/insee_contact/data_2019_eval_exchange2.csv",
+        "w",
+    ) as f:
         eval_df_exchange_2.to_csv(f, index=False)

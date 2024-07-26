@@ -1,1 +1,0 @@
-RELATIVE_LOG_DIR = "logs"

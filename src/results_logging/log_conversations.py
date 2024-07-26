@@ -56,7 +56,9 @@ def log_qa_to_s3(
             json.dump(log_entry, file_out, indent=4)
 
 
-def log_feedback_to_s3(thread_id: str, message_id: str, feedback_value: int, feedback_comment: str):
+def log_feedback_to_s3(
+    thread_id: str, message_id: str, feedback_value: int, feedback_comment: str
+):
     today_date = datetime.now().strftime("%Y-%m-%d")
     target_path_s3 = os.path.join(DIR_LOGS_S3, today_date, f"{thread_id}.json")
 

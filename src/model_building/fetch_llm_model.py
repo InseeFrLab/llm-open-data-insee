@@ -5,7 +5,9 @@ import s3fs
 from transformers import AutoModel
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.INFO
+)
 
 
 def cache_model_from_hf_hub(
@@ -22,13 +24,17 @@ def cache_model_from_hf_hub(
         s3_cache_dir (str): Path of the cache directory on S3.
     """
     # Local cache config
-    LOCAL_HF_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+    LOCAL_HF_CACHE_DIR = os.path.join(
+        os.path.expanduser("~"), ".cache", "huggingface", "hub"
+    )
     model_name_hf_cache = "models--" + "--".join(model_name.split("/"))
     dir_model_local = os.path.join(LOCAL_HF_CACHE_DIR, model_name_hf_cache)
 
     # Remote cache config
     fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": s3_endpoint})
-    available_models_s3 = [os.path.basename(path) for path in fs.ls(os.path.join(s3_bucket, s3_cache_dir))]
+    available_models_s3 = [
+        os.path.basename(path) for path in fs.ls(os.path.join(s3_bucket, s3_cache_dir))
+    ]
     dir_model_s3 = os.path.join(s3_bucket, s3_cache_dir, model_name_hf_cache)
 
     if model_name_hf_cache not in os.listdir(LOCAL_HF_CACHE_DIR):

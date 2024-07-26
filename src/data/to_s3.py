@@ -38,7 +38,9 @@ def insee_contact_to_s3():
         anonymized_answers.append(anonymize_insee_contact_message(message, ner))
 
     # Json tasks creation
-    for idx, (question, answer) in enumerate(zip(anonymized_questions, anonymized_answers, strict=False)):
+    for idx, (question, answer) in enumerate(
+        zip(anonymized_questions, anonymized_answers, strict=False)
+    ):
         ls_task = create_ls_task(question, answer)
         with fs.open(LS_DATA_PATH + f"{idx}.json", "w") as f:
             json.dump(ls_task, f)
