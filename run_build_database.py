@@ -183,7 +183,7 @@ def run_build_database(
 
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
-        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
+        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + ["run_build_database.py"]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_dir_path = Path(tmp_dir)
@@ -214,7 +214,7 @@ def run_build_database(
             "cp",
             "-r",
             CHROMA_DB_LOCAL_DIRECTORY,
-            f"s3/{S3_BUCKET}/chroma_database/{kwargs.get("embedding_model")}/",
+            f"s3/{S3_BUCKET}/data/chroma_database/{kwargs.get("embedding_model")}/",
         ]
         subprocess.run(cmd, check=True)
 
