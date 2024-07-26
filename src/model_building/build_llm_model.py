@@ -31,6 +31,10 @@ def build_llm_model(
     """
     Create the llm model
     """
+
+    if generation_args is None:
+        generation_args = {}
+
     cache_model_from_hf_hub(
         model_name,
         s3_bucket=os.environ["S3_BUCKET"],
@@ -51,12 +55,16 @@ def build_llm_model(
             else None
         ),
         # Load LLM config
-        "config": (AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token) if config else None),
+        "config": (AutoConfig.from_pretrained(
+            model_name, trust_remote_code=True, token=token) if config else None
+            ),
         "token": token,
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, use_fast=True, device_map="auto", token=configs["token"]
+        )
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)

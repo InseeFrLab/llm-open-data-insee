@@ -10,19 +10,13 @@ from pathlib import Path
 import mlflow
 import pandas as pd
 import s3fs
+from langchain_core.prompts import PromptTemplate
 
 from src.chain_building import build_chain_validator
-from src.config import (
-    CHROMA_DB_LOCAL_DIRECTORY,
-    RAG_PROMPT_TEMPLATE,
-    S3_BUCKET,
-)
+from src.chain_building.build_chain import build_chain
+from src.config import CHATBOT_TEMPLATE, CHROMA_DB_LOCAL_DIRECTORY, RAG_PROMPT_TEMPLATE, S3_BUCKET
 from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever
-from src.evaluation import (
-    answer_faq_by_bot,
-    evaluate_question_validator,
-    transform_answers_bot,
-)
+from src.evaluation import answer_faq_by_bot, compare_performance_reranking, evaluate_question_validator, transform_answers_bot
 from src.model_building import build_llm_model
 
 # Logging configuration
@@ -356,17 +350,48 @@ def run_build_database(
         else:
             logging.info(f"Skipping reranking since value is None {80*'='}")
 
-        # TODO: introduire le reranker
+        if reranking_method is not None:
+            # Define a langchain prompt template
+            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(
+                        CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
+                    )
+            prompt = PromptTemplate(
+                input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER
+            )
+
+            mlflow.log_dict(CHATBOT_TEMPLATE, "chatbot_template.json")
+
+            chain = build_chain(
+                    retriever=retriever,
+                    prompt=prompt,
+                    llm=llm,
+                    bool_log=False,
+                    reranker=reranking_method,
+                )       
 
         # ------------------------
         # V - EVALUATION
 
         logging.info(f"Evaluating model performance against expectations {80*'='}")
 
-        answers_bot = answer_faq_by_bot(retriever, faq)
-        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=kwargs.get("topk_stats"))
+        if reranking_method is None:
+            answers_bot = answer_faq_by_bot(retriever, faq)
+            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=kwargs.get("topk_stats"))
+        else:
+            answers_bot_before_reranker = answer_faq_by_bot(retriever, faq)
+            eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(answers_bot_before_reranker, k=5)
+            answers_bot_after_reranker = answer_faq_by_bot(chain, faq)
+            eval_reponses_bot_after_reranker, answers_bot_topk_after_reranker = transform_answers_bot(answers_bot_after_reranker, k=5)
+            eval_reponses_bot = compare_performance_reranking(eval_reponses_bot_after_reranker, eval_reponses_bot_before_reranker)
+            answers_bot_topk = answers_bot_topk_after_reranker
+
+        # Compute model performance at the end of the pipeline
         document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
         document_is_top = answers_bot_topk["cumsum_url_expected"].min()
+        # Also compute model performance before reranking when relevant
+        if reranking_method is not None:
+            document_among_topk_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].max()
+            document_is_top_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].min()       
 
         # Store FAQ
         mlflow_faq_raw = mlflow.data.from_pandas(
@@ -384,6 +409,22 @@ def run_build_database(
             {f'document_in_top_{int(row["document_position"])}': 100 * row["cumsum_url_expected"] for _, row in answers_bot_topk.iterrows()}
         )
         mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+
+        # If we used reranking, we also store performance before reranking
+        if reranking_method is not None:
+            mlflow.log_metric(
+                "document_is_first_before_reranker", 100 * document_is_top_before_reranker
+            )
+            mlflow.log_metric(
+                "document_among_topk_before_reranker", 100 * document_among_topk_before_reranker
+            )
+            mlflow.log_metrics(
+                {
+                    f'document_in_top_{int(row["document_position"])}_before_reranker':
+                    100 * row["cumsum_url_expected"]
+                        for _, row in answers_bot_topk_before_reranker.iterrows()}
+            )
+
 
 
 if __name__ == "__main__":
