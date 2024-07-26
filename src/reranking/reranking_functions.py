@@ -1,6 +1,9 @@
 from collections.abc import Sequence
 from typing import Any
 
+import numpy as np
+import torch
+import torch.nn.functional as F
 from langchain.schema import Document
 from langchain_community.retrievers import BM25Retriever
 
@@ -13,60 +16,213 @@ def compress_documents_lambda(documents: Sequence[Document], query: str, k: int 
     retriever = BM25Retriever.from_documents(documents, k=k, **kwargs)
     return retriever.get_relevant_documents(query)
 
-RG_YN = """
-Pour la requête et le document suivants, jugez s'ils sont pertinents. Répondez par "Oui" ou "Non".
-Requête : {query}
-Document : {document}
-Réponse : """
+###### LLM Reraner functions ######
 
-RG_2L = """
-Pour la requête et le document suivants, jugez s'ils sont pertinents. Répondez par "Oui" ou "Non".
-Requête : {query}
-Document : {document}
-Réponse : """
+def expected_relevance_values(logits, grades_token_ids, list_grades):
+    next_token_logits = logits[:, -1, :]
+    next_token_logits = next_token_logits.cpu()[0]
+    probabilities = F.softmax(next_token_logits[grades_token_ids], dim=-1).numpy()
+    return np.dot(np.array(list_grades), probabilities)
 
-RG_3L = """
-Pour la requête et le document suivants, jugez s'ils sont "Très Pertinents", "Assez Pertinents" ou "Non Pertinents".
-Requête : {query}
-Document : {document}
-Réponse : """
+def peak_relevance_likelihood(logits, grades_token_ids, list_grades):
+    index_max_grade = np.array(list_grades).argmax()
+    next_token_logits = logits[:, -1, :]
+    probabilities = F.softmax(next_token_logits, dim=-1).cpu().numpy()[0]
+    return probabilities[grades_token_ids[index_max_grade]]
 
-RG_4L = """
-Pour la requête et le document suivants, jugez s'ils sont "Parfaitement Pertinents", "Très Pertinents", "Assez Pertinents" ou "Non Pertinents".
-Requête : {query}
-Document : {document}
-Réponse : """
+def compute_sequence_log_probs(tokenizer, model, sequence):
+    # Tokenize the input sequence
+    inputs = tokenizer(sequence, return_tensors='pt')
+    input_ids = inputs['input_ids']
 
-RG_S = """
-Sur une échelle de 0 à {k}, jugez la pertinence entre la requête et le document.
-Requête : {query}
-Document : {document}
-Réponse : """ 
+    # Move input tensors to the same device as the model
+    inputs = inputs.to(model.device)
 
-RELEVANCE_TEMPLATE = [
-    {
-        "role": "user",
-        "content": RG_S,
-    }
-]
+    # Get the logits from the model
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits
 
-def parse_generated_answer(answer: str) -> bool:
-    """
-    Parse the generated answer from the LLM to determine relevance.
-    Assumes the answer starts with "Yes" or "No".
-    """
-    ans = answer.lower().strip().split()
-    return "yes" in ans
+    # Calculate the probabilities
+    log_probs = F.log_softmax(logits, dim=-1)
+    
+    # Compute the probability of the sequence
+    sequence_probability = 0.0
+    for i in range(len(input_ids[0]) - 1):
+        token_id = input_ids[0][i + 1]
+        sequence_probability += log_probs[0, i, token_id].item()
 
-def rerank_LLM(pipe, tokenizer, documents: Sequence[Document], query: str, k: int = 5, **kwargs: dict[str, Any]) -> Sequence[Document]:
+    return sequence_probability
 
-    template = tokenizer.apply_chat_template(RELEVANCE_TEMPLATE, tokenize=False, add_generation_prompt=True)
-    batch_prompts = [ template.format(query=query, document=doc.page_content, k=4) for doc in documents]
-    generated_answers = pipe.invoke(batch_prompts)
-    bool_list = [parse_generated_answer(ans) for ans in generated_answers]
-    # Filter the documents based on the relevance boolean list
-    relevant_documents = [doc for doc, is_relevant in zip(documents, bool_list) if is_relevant]
-    top_relevant_documents = relevant_documents[:k]
-    return top_relevant_documents
+def RG_S(tokenizer, model, query, document, aggregating_method, k=5):
+
+    list_grades = list(range(k))
+    grades_token_ids = [tokenizer(str(grade))["input_ids"][1] for grade in list_grades]
+ 
+    RG_S_template = """
+    Sur une échelle de 0 à {k}, jugez la pertinence entre la requête et le document.
+    Requête : {query}
+    Document : {document}
+    Réponse : """ 
+
+    messages = [
+        {"role": "system", "content": "Tu es un assistant chatbot expert en Statistique Publique."},
+        {"role": "user", "content": RG_S_template.format(query=query, document=document, k=k)},
+    ]
+
+    input_text = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=False
+    )
+
+    inputs = tokenizer(input_text, return_tensors='pt').to(model.device)
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits
+
+    return aggregating_method(logits, grades_token_ids, list_grades)
 
 
+def RG_4L(tokenizer, model, query, document, args):
+    possible_judgements = [" Parfaitement Pertinent", " Très Pertinent", " Assez Pertinent", " Non Pertinent"]
+    list_grades = np.array([3, 2, 1, 0])
+    RG_4L_template = """
+    Evaluez la pertinence du document donné par rapport à la question posée.
+    Répondez uniquement parmi : Parfaitement Pertinent, Très Pertinent, Assez Pertinent ou Non Pertinent.
+    Requête : {query}
+    Document : {document}
+    Réponse : {judgement}"""
+
+    messages = [
+        {"role": "system", "content": "Tu es un assistant chatbot expert en Statistique Publique."},
+        {"role": "user", "content": RG_4L_template},
+    ]
+
+    log_probs = []
+    for judgement in possible_judgements:
+        input_text = tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=False,
+            tokenize=False
+        ).format(query=query, document=document, judgement=judgement)
+        log_probs.append(compute_sequence_log_probs(sequence=input_text))
+
+    probs = F.softmax(torch.tensor(log_probs), dim=-1).numpy()
+    return np.dot(probs, list_grades)
+
+def RG_3L(tokenizer, model, query, document, args):
+    possible_judgements = [" Très Pertinent", " Assez Pertinent", " Non Pertinent"]
+    list_grades = np.array([2, 1, 0])
+    RG_3L_template = """
+    Evaluez la pertinence du document donné par rapport à la question posée.
+    Répondez uniquement parmi : Très Pertinent, Assez Pertinent ou Non Pertinent.
+    Requête : {query}
+    Document : {document}
+    Réponse : {judgement}"""
+
+    messages = [
+        {"role": "system", "content": "Tu es un assistant chatbot expert en Statistique Publique."},
+        {"role": "user", "content": RG_3L_template},
+    ]
+
+    log_probs = []
+    for judgement in possible_judgements:
+        input_text = tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=False,
+            tokenize=False
+        ).format(query=query, document=document, judgement=judgement)
+        log_probs.append(compute_sequence_log_probs(sequence=input_text))
+
+    probs = F.softmax(torch.tensor(log_probs), dim=-1).numpy()
+    return np.dot(probs, list_grades)
+    
+def RG_YN(tokenizer, model, query, document, aggregating_method):
+    list_judgements = [" Oui", " Non"]
+    grades_token_ids = [tokenizer(j)["input_ids"][1] for j in list_judgements]
+    list_grades = [1, 0]
+
+    RG_YN_template = """
+    Pour la requête et le document suivants, jugez s'ils sont pertinents. Répondez UNIQUEMENT par Oui ou Non.
+    Requête : {query}
+    Document : {document}
+    Réponse : """
+
+    messages = [
+        {"role": "system", "content": "Tu es un assistant chatbot expert en Statistique Publique."},
+        {"role": "user", "content": RG_YN_template.format(query=query, document=document)},
+    ]
+
+    input_text = tokenizer.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=False
+    )
+
+    inputs = tokenizer(input_text, return_tensors='pt').to(model.device)
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits
+
+    return aggregating_method(logits, grades_token_ids, list_grades)
+
+def llm_reranking(tokenizer,model, query, retrieved_documents, assessing_method, aggregating_method):
+    docs_content = retrieved_documents.copy() # [doc.page_content for doc in retrieved_documents]
+
+    scores = []
+    for document in docs_content:
+        score = assessing_method(query, document, aggregating_method)
+        scores.append(score)
+
+    docs_with_scores = list(zip(retrieved_documents, scores, strict=False))
+    docs_with_scores.sort(key=lambda x: x[1], reverse=True)
+    sorted_documents = [doc for doc, score in docs_with_scores] #docs_with_scores 
+    return sorted_documents
+
+"""
+def compute_proba_judgement(sequence, judgement):
+    # Tokenize the input sequence and judgement
+    inputs = tokenizer(sequence, return_tensors='pt')
+    input_ids = inputs['input_ids']
+    judgement_ids = tokenizer(judgement, return_tensors='pt')['input_ids'][0][1:]
+    
+    # print("Input IDs:", input_ids)
+    # print("Judgement IDs:", judgement_ids)
+    
+    # Move input tensors to the same device as the model
+    input_ids = input_ids.to(model.device)
+    
+    # Get the logits from the model
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits
+
+    # Calculate the probabilities
+    log_probs = F.log_softmax(logits, dim=-1)
+    probs = F.softmax(logits, dim=-1)
+
+    # Convert input IDs tensor to list for indexing
+    input_ids_list = input_ids[0].tolist()[1:]
+    judgement_ids_list = judgement_ids.tolist()
+
+    start_index  = find_sublist_indices(main_list=input_ids_list, sublist=judgement_ids_list)
+    #print("Start index:", start_index, "End index:", end_index)
+
+    if start_index == -1 or end_index == -1:
+        raise ValueError("Judgement sublist not found in the input sequence")
+
+    # Compute the probability of the sequence
+    sequence_probability = 0.0
+    list_indexes  = list(range(0, start_index + len(judgement_ids_list), 1))
+    for i in list_indexes:
+        token_id = input_ids_list[i] 
+        token_log_prob = log_probs[0, i, token_id].item()
+        token_prob = probs[0, i, token_id].item()
+        print("     Token:", tokenizer.decode([token_id]),"/ Probability:", token_prob * 100, "%")
+        sequence_probability += token_log_prob
+
+    return sequence_probability/len(list_indexes)
+"""
