@@ -53,8 +53,9 @@ def transform_answers_bot(answers_bot: pd.DataFrame, k: int):
 
 
 def _answer_faq_by_bot(retriever, question, valid_urls):
-
     retrieved_docs = retriever.invoke(question)
+    if isinstance(retrieved_docs, dict):
+        retrieved_docs = retrieved_docs["context"]
     result_retriever_raw = chroma_topk_to_df(retrieved_docs)
     result_retriever_raw["url_expected"] = result_retriever_raw["url"].isin(valid_urls)
     result_retriever_raw["number_pages_expected"] = len(valid_urls)
