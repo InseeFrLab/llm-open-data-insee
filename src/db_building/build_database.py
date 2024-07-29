@@ -4,17 +4,11 @@ import os
 import pandas as pd
 from chromadb.config import Settings
 from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME
-from doc_building import build_documents_from_dataframe, compute_autokonenizer_chunk_size
 from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-from .utils_db import extract_paragraphs
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-
-alias_chunk_size = compute_autokonenizer_chunk_size
 
 
 def build_database_from_dataframe(
@@ -32,6 +26,8 @@ def build_database_from_dataframe(
     Returns:
         Chroma: vector database
     """
+    from doc_building import build_documents_from_dataframe
+
     logging.info(f"The database will be stored in {persist_directory}")
     # rename the column names:
     not_null_filtered_df = df.rename(
@@ -77,6 +73,9 @@ def build_database_from_csv(
     collection_name: str = COLLECTION_NAME,
     max_pages: str = None,
 ) -> Chroma:
+    from doc_building import build_documents_from_dataframe
+    from db_building.utils_db import extract_paragraphs
+
     logging.info(f"The database will be stored in {persist_directory}")
 
     if os.path.exists(path):

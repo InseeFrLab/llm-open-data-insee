@@ -6,7 +6,6 @@ import chromadb
 import numpy as np
 import pandas as pd
 from config import EMB_DEVICE, EMB_MODEL_NAME
-from db_building import build_database_from_dataframe, reload_database_from_local_dir
 from langchain_community.vectorstores.chroma import Chroma
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
@@ -22,6 +21,8 @@ def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chr
     """
     Building vector database based on a given embedding model
     """
+    from db_building import build_database_from_dataframe, reload_database_from_local_dir
+
     embedding_model_name = config.get("embedding_model_name", EMB_MODEL_NAME)
     persist_directory = "./data/chroma_db"
 
