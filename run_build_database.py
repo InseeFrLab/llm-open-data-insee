@@ -183,7 +183,7 @@ def run_build_database(
 
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
-        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("build_database.py")]
+        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("run_build_database.py")]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_dir_path = Path(tmp_dir)
