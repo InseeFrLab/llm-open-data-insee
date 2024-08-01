@@ -15,7 +15,7 @@ from langchain_core.prompts import PromptTemplate
 from src.chain_building import build_chain_validator
 from src.chain_building.build_chain import build_chain
 from src.config import CHATBOT_TEMPLATE, CHROMA_DB_LOCAL_DIRECTORY, RAG_PROMPT_TEMPLATE, S3_BUCKET
-from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever
+from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever, reload_database_from_local_dir
 from src.evaluation import answer_faq_by_bot, compare_performance_reranking, evaluate_question_validator, transform_answers_bot
 from src.model_building import build_llm_model
 
@@ -197,17 +197,21 @@ parser.add_argument(
     Number of links considered to evaluate retriever quality.
     """,
 )
+parser.add_argument(
+    "--database_run_id",
+    type=int,
+    default=5,
+    help="""
+    Mlflow run id of the database building.
+    """,
+)
 
-
-logging.info("At this time, chunk_overlap and chunk_size are ignored")
 
 args = parser.parse_args()
 
 
-def run_build_database(
+def run_evaluation(
     experiment_name: str,
-    data_raw_s3_path: str,
-    collection_name: str,
     **kwargs,
 ):
     mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
@@ -222,73 +226,27 @@ def run_build_database(
     # Extract all URLs from the 'sources' column
     faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
-    with mlflow.start_run():
-        # Log parameters
-        for key, value in kwargs.items():
-            mlflow.log_param(key, value)
+    # Log parameters
+    for arg_name, arg_value in locals().items():
+        if arg_name == "kwargs":
+            for key, value in arg_value.items():
+                mlflow.log_param(key, value)
+        else:
+            mlflow.log_param(arg_name, arg_value)
 
         # ------------------------
-        # I - BUILD VECTOR DATABASE
+        # I - LOAD VECTOR DATABASE
 
-        db, df_raw = build_vector_database(
-            data_path=data_raw_s3_path,
-            persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-            collection_name=collection_name,
-            filesystem=fs,
-            **kwargs,
-        )
-
-        # Log raw dataset built from web4g
-        mlflow_data_raw = mlflow.data.from_pandas(
-            df_raw.head(10),
-            source=f"s3://{S3_BUCKET}/{data_raw_s3_path}",
-            name="web4g_data",
-        )
-        mlflow.log_input(mlflow_data_raw, context="pre-embedding")
-        mlflow.log_table(data=df_raw.head(10), artifact_file="web4g_data.json")
-
-        # Log the vector database
-        mlflow.log_artifacts(Path(CHROMA_DB_LOCAL_DIRECTORY), artifact_path="chroma")
-
-        # Log the first chunks of the vector database
-        db_docs = db.get()["documents"]
-        example_documents = pd.DataFrame(db_docs[:10], columns=["document"])
-        mlflow.log_table(data=example_documents, artifact_file="example_documents.json")
-
-        # Log a result of a similarity search
-        query = "Quels sont les chiffres du chômages en 2023 ?"
-        retrieved_docs = db.similarity_search(query, k=5)
-
-        result_list = []
-        for doc in retrieved_docs:
-            row = {"page_content": doc.page_content}
-            row.update(doc.metadata)
-            result_list.append(row)
-        result = pd.DataFrame(result_list)
-        mlflow.log_table(data=result, artifact_file="retrieved_documents.json")
-        mlflow.log_param("question_asked", query)
-
-        # Log parameters and metrics
-        mlflow.log_metric("number_documents", len(db_docs))
-
-        # Log environment necessary to reproduce the experiment
-        current_dir = Path(".")
-        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_dir_path = Path(tmp_dir)
-
-            for file_path in FILES_TO_LOG:
-                relative_path = file_path.relative_to(current_dir)
-                destination_path = tmp_dir_path / relative_path.parent
-                destination_path.mkdir(parents=True, exist_ok=True)
-                shutil.copy(file_path, destination_path)
-
-            # Generate requirements.txt using pipreqs
-            subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
-
-            # Log all Python files to MLflow artifact
-            mlflow.log_artifacts(tmp_dir, artifact_path="environment")
+        if kwargs.get("database_run_id") is not None:
+            local_path = mlflow.artifacts.download_artifacts(run_id=kwargs.get("database_run_id"), artifact_path="chroma")
+            db = reload_database_from_local_dir(
+                embed_model_name=mlflow.get_run(kwargs.get("database_run_id")).data.params["embedding_model"],
+                collection_name=mlflow.get_run(kwargs.get("database_run_id")).data.params["collection_name"],
+                persist_directory=local_path,
+                embed_device=mlflow.get_run(kwargs.get("database_run_id")).data.params["embedding_device"],
+            )
+        else:
+            pass
 
         # ------------------------
         # II - CREATING RETRIEVER
@@ -307,6 +265,7 @@ def run_build_database(
         )
 
         logging.info("Logging an example of tokenized text")
+        query = "Quels sont les chiffres du chômages en 2023 ?"
         mlflow.log_text(
             f"{query} \n ---------> \n {', '.join(tokenizer.tokenize(query))}",
             "example_tokenizer.json",
@@ -425,7 +384,24 @@ def run_build_database(
                         for _, row in answers_bot_topk_before_reranker.iterrows()}
             )
 
+        # Log environment necessary to reproduce the experiment
+        current_dir = Path(".")
+        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
 
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_dir_path = Path(tmp_dir)
+
+            for file_path in FILES_TO_LOG:
+                relative_path = file_path.relative_to(current_dir)
+                destination_path = tmp_dir_path / relative_path.parent
+                destination_path.mkdir(parents=True, exist_ok=True)
+                shutil.copy(file_path, destination_path)
+
+            # Generate requirements.txt using pipreqs
+            subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
+
+            # Log all Python files to MLflow artifact
+            mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
 if __name__ == "__main__":
     assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
@@ -434,6 +410,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    run_build_database(
+    run_evaluation(
         **vars(args),
     )

@@ -1,0 +1,102 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: run-evaluation-
+spec:
+  serviceAccountName: workflow
+  volumes:
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 16Gi
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: run-evaluation-conf-list
+        value: '[
+            { "EXPERIMENT": "EVALUATION_TEST",
+              "LLM_MODEL": "mistralai/Mistral-7B-Instruct-v0.2",
+              "RUN_ID": "1d82be17751c4fa1bcf8c4ea73c4b78d",
+            }
+            ]'
+
+  templates:
+    # Entrypoint DAG template
+    - name: main
+      dag:
+        tasks:
+          - name: run-evaluation-with-params
+            template: run-evaluation-wt
+            arguments:
+              parameters:
+                - name: EXPERIMENT
+                  value: "{{item.EXPERIMENT}}"
+                - name: LLM_MODEL
+                  value: "{{item.LLM_MODEL}}"
+                - name: RUN_ID
+                  value: "{{item.RUN_ID}}"
+            # Pass the inputs to the task using "withParam"
+            withParam: "{{workflow.parameters.run-evaluation-conf-list}}"
+
+    # Now task container templates are defined
+    - name: run-evaluation-wt
+      inputs:
+        parameters:
+          - name: EXPERIMENT
+          - name: LLM_MODEL
+          - name: RUN_ID
+
+      nodeSelector:
+        nvidia.com/gpu.product: "NVIDIA-H100-PCIe"
+      container:
+        image: inseefrlab/onyxia-vscode-pytorch:py3.12.3-gpu
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: 16Gi
+            # cpu: 40
+          limits:
+            memory: 64Gi
+            # cpu: 50
+            nvidia.com/gpu: 1
+        command: ["/bin/bash", -c]
+        args:
+          - |
+            git clone https://github.com/InseeFrLab/llm-open-data-insee.git &&
+            cd llm-open-data-insee/ &&
+            git checkout db-build-pipeline &&
+            pip install -r requirements-dev.txt &&
+            python run_evaluation.py --experiment_name {{inputs.parameters.EXPERIMENT}} \
+              --llm_model {{inputs.parameters.LLM_MODEL}} \
+              --database_run_id {{inputs.parameters.RUN_ID}}
+
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+        env:
+          # env var for s3 connexion
+          - name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: s3-creds
+                key: accessKey
+          - name: AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: s3-creds
+                key: secretKey
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-token
+                key: token
+          - name: AWS_DEFAULT_REGION
+            value: us-east-1
+          - name: AWS_S3_ENDPOINT
+            value: minio.lab.sspcloud.fr
+          - name: MLFLOW_S3_ENDPOINT_URL
+            value: https://minio.lab.sspcloud.fr
+          - name: MLFLOW_TRACKING_URI
+            value: https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/
+          - name: S3_BUCKET
+            value: projet-llm-insee-open-data
