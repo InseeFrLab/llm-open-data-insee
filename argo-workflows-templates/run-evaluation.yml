@@ -16,7 +16,7 @@ spec:
         value: '[
             { "EXPERIMENT": "EVALUATION_TEST",
               "LLM_MODEL": "mistralai/Mistral-7B-Instruct-v0.2",
-              "RUN_ID": "1d82be17751c4fa1bcf8c4ea73c4b78d",
+              "RUN_ID": "1d82be17751c4fa1bcf8c4ea73c4b78d"
             }
             ]'
 

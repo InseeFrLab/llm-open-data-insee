@@ -199,8 +199,8 @@ parser.add_argument(
 )
 parser.add_argument(
     "--database_run_id",
-    type=int,
-    default=5,
+    type=str,
+    default=None,
     help="""
     Mlflow run id of the database building.
     """,
