@@ -140,12 +140,17 @@ def run_build_database(
     mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(experiment_name)
 
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
-
     with mlflow.start_run():
+
         # Log parameters
-        for key, value in kwargs.items():
-            mlflow.log_param(key, value)
+        for arg_name, arg_value in locals().items():
+            if arg_name == "kwargs":
+                for key, value in arg_value.items():
+                    mlflow.log_param(key, value)
+            else:
+                mlflow.log_param(arg_name, arg_value)
+
+        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
         db, df_raw = build_vector_database(
             data_path=data_raw_s3_path,
