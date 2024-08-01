@@ -106,7 +106,7 @@ def build_vector_database(
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=kwargs.get("embedding_model"),
-        model_kwargs={"device": EMB_DEVICE},
+        model_kwargs={"device": kwargs.get("embedding_device")},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )

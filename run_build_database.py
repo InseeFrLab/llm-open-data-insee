@@ -120,7 +120,14 @@ parser.add_argument(
     Chunk overlap
     """,
 )
-
+parser.add_argument(
+    "--embedding_device",
+    type=str,
+    default="cuda",
+    help="""
+    Embedding device
+    """,
+)
 args = parser.parse_args()
 
 
