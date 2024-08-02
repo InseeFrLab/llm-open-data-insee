@@ -26,7 +26,7 @@ def load_vector_database(filesystem: s3fs.S3FileSystem, **kwargs) -> Chroma:
     - db (object, optional): The loaded database object or None if an error occurred.
     """
     try:
-        if "database_run_id" in kwargs:
+        if kwargs.get("database_run_id") is not None:
             return _load_database_from_mlflow(kwargs["database_run_id"])
         else:
             return _load_database_from_s3(filesystem, kwargs)

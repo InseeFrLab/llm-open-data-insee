@@ -16,10 +16,7 @@ spec:
         value: '[
             { "EXPERIMENT": "EVALUATION_TEST",
               "LLM_MODEL": "mistralai/Mistral-7B-Instruct-v0.2",
-             "DATA_PATH": "data/raw_data/applishare_solr_joined.parquet",
-             "COLLECTION_NAME": "insee_data",
-             "EMBEDDING_MODEL": "OrdalieTech/Solon-embeddings-large-0.1",
-             "MD_SPLIT": "markdown_split"
+              "RUN_ID": "1d82be17751c4fa1bcf8c4ea73c4b78d"
             }
             ]'
 
@@ -36,14 +33,8 @@ spec:
                   value: "{{item.EXPERIMENT}}"
                 - name: LLM_MODEL
                   value: "{{item.LLM_MODEL}}"
-                - name: DATA_PATH
-                  value: "{{item.DATA_PATH}}"
-                - name: COLLECTION_NAME
-                  value: "{{item.COLLECTION_NAME}}"
-                - name: EMBEDDING_MODEL
-                  value: "{{item.EMBEDDING_MODEL}}"
-                - name: MD_SPLIT
-                  value: "{{item.MD_SPLIT}}"
+                - name: RUN_ID
+                  value: "{{item.RUN_ID}}"
             # Pass the inputs to the task using "withParam"
             withParam: "{{workflow.parameters.run-evaluation-conf-list}}"
 
@@ -53,10 +44,7 @@ spec:
         parameters:
           - name: EXPERIMENT
           - name: LLM_MODEL
-          - name: DATA_PATH
-          - name: COLLECTION_NAME
-          - name: EMBEDDING_MODEL
-          - name: MD_SPLIT
+          - name: RUN_ID
 
       nodeSelector:
         nvidia.com/gpu.product: "NVIDIA-H100-PCIe"
@@ -80,10 +68,7 @@ spec:
             pip install -r requirements-dev.txt &&
             python run_evaluation.py --experiment_name {{inputs.parameters.EXPERIMENT}} \
               --llm_model {{inputs.parameters.LLM_MODEL}} \
-              --collection_name {{inputs.parameters.COLLECTION_NAME}} \
-              --embedding_model {{inputs.parameters.EMBEDDING_MODEL}} \
-              --{{inputs.parameters.MD_SPLIT}} \
-              --max_pages 25
+              --database_run_id {{inputs.parameters.RUN_ID}}
 
         volumeMounts:
           - mountPath: /dev/shm
