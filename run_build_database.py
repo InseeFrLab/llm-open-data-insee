@@ -141,7 +141,6 @@ def run_build_database(
     mlflow.set_experiment(experiment_name)
 
     with mlflow.start_run():
-
         # Log parameters
         for arg_name, arg_value in locals().items():
             if arg_name == "kwargs":
@@ -195,7 +194,9 @@ def run_build_database(
 
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
-        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("run_build_database.py")]
+        FILES_TO_LOG = (
+            list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("run_build_database.py")]
+        )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_dir_path = Path(tmp_dir)
@@ -213,14 +214,15 @@ def run_build_database(
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
         # Log the parameters in a yaml file
-        with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/parameters.yaml", "w") as f:
+        hash_chroma = os.listdir(CHROMA_DB_LOCAL_DIRECTORY)[0]
+        with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/{hash_chroma}/parameters.yaml", "w") as f:
             params = {
                 "data_raw_s3_path": data_raw_s3_path,
                 "collection_name": collection_name,
             } | kwargs
             yaml.dump(params, f, default_flow_style=False)
 
-        # Move ChromaBD in a specific path in s3
+        # Move ChromaDB in a specific path in s3
         cmd = [
             "mc",
             "cp",
