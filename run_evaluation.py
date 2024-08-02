@@ -14,8 +14,8 @@ from langchain_core.prompts import PromptTemplate
 
 from src.chain_building import build_chain_validator
 from src.chain_building.build_chain import build_chain
-from src.config import CHATBOT_TEMPLATE, CHROMA_DB_LOCAL_DIRECTORY, RAG_PROMPT_TEMPLATE, S3_BUCKET
-from src.db_building import build_vector_database, chroma_topk_to_df, load_retriever, reload_database_from_local_dir
+from src.config import CHATBOT_TEMPLATE, CHROMA_DB_LOCAL_DIRECTORY, RAG_PROMPT_TEMPLATE
+from src.db_building import chroma_topk_to_df, load_retriever, load_vector_database
 from src.evaluation import answer_faq_by_bot, compare_performance_reranking, evaluate_question_validator, transform_answers_bot
 from src.model_building import build_llm_model
 
@@ -45,27 +45,24 @@ parser.add_argument(
     Name of the experiment.
     """,
 )
+
+## Optional database arguments ----
 parser.add_argument(
     "--data_raw_s3_path",
     type=str,
-    default="data/raw_data/applishare_solr_joined.parquet",
     help="""
     Path to the raw data.
-    Default to data/raw_data/applishare_solr_joined.parquet
     """,
 )
 parser.add_argument(
     "--collection_name",
     type=str,
-    default="insee_data",
     help="""
     Collection name.
-    Default to insee_data
     """,
 )
 parser.add_argument(
     "--markdown_split",
-    default=True,
     action=argparse.BooleanOptionalAction,
     help="""
     Should we use a markdown split ?
@@ -74,7 +71,6 @@ parser.add_argument(
 )
 parser.add_argument(
     "--use_tokenizer_to_chunk",
-    default=True,
     action=argparse.BooleanOptionalAction,
     help="""
     Should we use the tokenizer of the embedding model to chunk ?
@@ -84,27 +80,41 @@ parser.add_argument(
 parser.add_argument(
     "--separators",
     type=str_to_list,
-    default=r"['\n\n', '\n', '.', ' ', '']",
     help="List separators to split the text",
 )
 parser.add_argument(
     "--embedding_model",
     type=str,
-    default="OrdalieTech/Solon-embeddings-large-0.1",
     help="""
     Embedding model.
     Should be a huggingface model.
-    Defaults to OrdalieTech/Solon-embeddings-large-0.1
     """,
 )
 parser.add_argument(
-    "--max_pages",
-    type=int,
-    default=None,
+    "--chunk_size",
+    type=str,
     help="""
-    Maximum number of pages to use for the vector database.
+    Chunk size
     """,
 )
+parser.add_argument(
+    "--chunk_overlap",
+    type=str,
+    help="""
+    Chunk overlap
+    """,
+)
+# Either we define arguments or we give mlflow run id
+parser.add_argument(
+    "--database_run_id",
+    type=str,
+    default=None,
+    help="""
+    Mlflow run id of the database building.
+    """,
+)
+
+## LLM specific arguments ----
 parser.add_argument(
     "--llm_model",
     type=str,
@@ -164,22 +174,7 @@ parser.add_argument(
     Default to True
     """,
 )
-parser.add_argument(
-    "--chunk_size",
-    type=str,
-    default=None,
-    help="""
-    Chunk size
-    """,
-)
-parser.add_argument(
-    "--chunk_overlap",
-    type=str,
-    default=None,
-    help="""
-    Chunk overlap
-    """,
-)
+
 parser.add_argument(
     "--reranking_method",
     type=str,
@@ -195,14 +190,6 @@ parser.add_argument(
     default=5,
     help="""
     Number of links considered to evaluate retriever quality.
-    """,
-)
-parser.add_argument(
-    "--database_run_id",
-    type=str,
-    default=None,
-    help="""
-    Mlflow run id of the database building.
     """,
 )
 
@@ -237,16 +224,7 @@ def run_evaluation(
         # ------------------------
         # I - LOAD VECTOR DATABASE
 
-        if kwargs.get("database_run_id") is not None:
-            local_path = mlflow.artifacts.download_artifacts(run_id=kwargs.get("database_run_id"), artifact_path="chroma")
-            db = reload_database_from_local_dir(
-                embed_model_name=mlflow.get_run(kwargs.get("database_run_id")).data.params["embedding_model"],
-                collection_name=mlflow.get_run(kwargs.get("database_run_id")).data.params["collection_name"],
-                persist_directory=local_path,
-                embed_device=mlflow.get_run(kwargs.get("database_run_id")).data.params["embedding_device"],
-            )
-        else:
-            pass
+        db = load_vector_database(filesystem=fs, **kwargs)
 
         # ------------------------
         # II - CREATING RETRIEVER
@@ -311,22 +289,18 @@ def run_evaluation(
 
         if reranking_method is not None:
             # Define a langchain prompt template
-            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(
-                        CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
-                    )
-            prompt = PromptTemplate(
-                input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER
-            )
+            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True)
+            prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER)
 
             mlflow.log_dict(CHATBOT_TEMPLATE, "chatbot_template.json")
 
             chain = build_chain(
-                    retriever=retriever,
-                    prompt=prompt,
-                    llm=llm,
-                    bool_log=False,
-                    reranker=reranking_method,
-                )       
+                retriever=retriever,
+                prompt=prompt,
+                llm=llm,
+                bool_log=False,
+                reranker=reranking_method,
+            )
 
         # ------------------------
         # V - EVALUATION
@@ -350,7 +324,7 @@ def run_evaluation(
         # Also compute model performance before reranking when relevant
         if reranking_method is not None:
             document_among_topk_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].max()
-            document_is_top_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].min()       
+            document_is_top_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].min()
 
         # Store FAQ
         mlflow_faq_raw = mlflow.data.from_pandas(
@@ -371,17 +345,13 @@ def run_evaluation(
 
         # If we used reranking, we also store performance before reranking
         if reranking_method is not None:
-            mlflow.log_metric(
-                "document_is_first_before_reranker", 100 * document_is_top_before_reranker
-            )
-            mlflow.log_metric(
-                "document_among_topk_before_reranker", 100 * document_among_topk_before_reranker
-            )
+            mlflow.log_metric("document_is_first_before_reranker", 100 * document_is_top_before_reranker)
+            mlflow.log_metric("document_among_topk_before_reranker", 100 * document_among_topk_before_reranker)
             mlflow.log_metrics(
                 {
-                    f'document_in_top_{int(row["document_position"])}_before_reranker':
-                    100 * row["cumsum_url_expected"]
-                        for _, row in answers_bot_topk_before_reranker.iterrows()}
+                    f'document_in_top_{int(row["document_position"])}_before_reranker': 100 * row["cumsum_url_expected"]
+                    for _, row in answers_bot_topk_before_reranker.iterrows()
+                }
             )
 
         # Log environment necessary to reproduce the experiment
@@ -402,6 +372,7 @@ def run_evaluation(
 
             # Log all Python files to MLflow artifact
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
+
 
 if __name__ == "__main__":
     assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."

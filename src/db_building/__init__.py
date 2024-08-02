@@ -3,6 +3,7 @@ from .build_database import (
     load_retriever,
     reload_database_from_local_dir,
 )
+from .loading import load_vector_database
 from .utils_db import chroma_topk_to_df
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "reload_database_from_local_dir",
     "load_retriever",
     "chroma_topk_to_df",
+    "load_vector_database",
 ]
