@@ -214,8 +214,7 @@ def run_build_database(
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
         # Log the parameters in a yaml file
-        hash_chroma = os.listdir(CHROMA_DB_LOCAL_DIRECTORY)[0]
-        with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/{hash_chroma}/parameters.yaml", "w") as f:
+        with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/parameters.yaml", "w") as f:
             params = {
                 "data_raw_s3_path": data_raw_s3_path,
                 "collection_name": collection_name,
@@ -223,12 +222,13 @@ def run_build_database(
             yaml.dump(params, f, default_flow_style=False)
 
         # Move ChromaDB in a specific path in s3
+        hash_chroma = os.listdir(CHROMA_DB_LOCAL_DIRECTORY)[0]
         cmd = [
             "mc",
             "cp",
             "-r",
-            CHROMA_DB_LOCAL_DIRECTORY,
-            f"s3/{S3_BUCKET}/data/chroma_database/{kwargs.get("embedding_model")}/",
+            f"{CHROMA_DB_LOCAL_DIRECTORY}/",
+            f"s3/{S3_BUCKET}/data/chroma_database/{kwargs.get("embedding_model")}/{hash_chroma}/",
         ]
         subprocess.run(cmd, check=True)
 
