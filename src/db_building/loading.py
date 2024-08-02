@@ -62,11 +62,12 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, kwargs: dict[str, str]
     ]
 
     missing_keys = [key for key in required_keys if key not in kwargs]
+    kwargs_subset = {key: kwargs[key] for key in required_keys if key in kwargs}
 
     if missing_keys:
         warnings.warn(f"Missing possibly required arguments: {', '.join(missing_keys)}", stacklevel=2)
 
-    logging.info(f"Searching for database with the following parameters: {kwargs}")
+    logging.info(f"Searching for database with the following parameters: {kwargs_subset}")
 
     db_path_prefix = f"{S3_BUCKET}/data/chroma_database/{kwargs.get('embedding_model')}"
 

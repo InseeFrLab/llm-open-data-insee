@@ -114,6 +114,14 @@ parser.add_argument(
     Chunk overlap
     """,
 )
+parser.add_argument(
+    "--embedding_device",
+    type=str,
+    default="cuda",
+    help="""
+    Embedding device
+    """,
+)
 # Either we define arguments or we give mlflow run id
 parser.add_argument(
     "--database_run_id",
