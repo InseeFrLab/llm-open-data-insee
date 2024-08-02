@@ -222,7 +222,7 @@ def run_build_database(
             yaml.dump(params, f, default_flow_style=False)
 
         # Move ChromaDB in a specific path in s3
-        hash_chroma = os.listdir(CHROMA_DB_LOCAL_DIRECTORY)[0]
+        hash_chroma = next(entry for entry in os.listdir(CHROMA_DB_LOCAL_DIRECTORY) if os.path.isdir(os.path.join(CHROMA_DB_LOCAL_DIRECTORY, entry)))
         cmd = [
             "mc",
             "cp",
