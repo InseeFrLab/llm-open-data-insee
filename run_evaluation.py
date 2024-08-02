@@ -50,19 +50,24 @@ parser.add_argument(
 parser.add_argument(
     "--data_raw_s3_path",
     type=str,
+    default="data/raw_data/applishare_solr_joined.parquet",
     help="""
     Path to the raw data.
+    Default to data/raw_data/applishare_solr_joined.parquet
     """,
 )
 parser.add_argument(
     "--collection_name",
     type=str,
+    default="insee_data",
     help="""
     Collection name.
+    Default to insee_data
     """,
 )
 parser.add_argument(
     "--markdown_split",
+    default=True,
     action=argparse.BooleanOptionalAction,
     help="""
     Should we use a markdown split ?
@@ -71,6 +76,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--use_tokenizer_to_chunk",
+    default=True,
     action=argparse.BooleanOptionalAction,
     help="""
     Should we use the tokenizer of the embedding model to chunk ?
@@ -80,19 +86,22 @@ parser.add_argument(
 parser.add_argument(
     "--separators",
     type=str_to_list,
+    default=r"['\n\n', '\n', '.', ' ', '']",
     help="List separators to split the text",
 )
 parser.add_argument(
     "--embedding_model",
     type=str,
+    default="OrdalieTech/Solon-embeddings-large-0.1",
     help="""
     Embedding model.
     Should be a huggingface model.
-    """,
+    Defaults to OrdalieTech/Solon-embeddings-large-0.1""",
 )
 parser.add_argument(
     "--chunk_size",
     type=str,
+    default=None,
     help="""
     Chunk size
     """,
@@ -100,6 +109,7 @@ parser.add_argument(
 parser.add_argument(
     "--chunk_overlap",
     type=str,
+    default=None,
     help="""
     Chunk overlap
     """,
