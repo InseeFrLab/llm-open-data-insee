@@ -94,7 +94,7 @@ def weighted_reciprocal_rank(
 
 
 """
-def use_sbert_retrieval_evaluator(df: pd.DataFrame, model: SentenceTransformer) -> Dict:
+def use_sbert_retrieval_evaluator(df: pd.DataFrame, model: SentenceTransformer) -> dict:
 
     Usage:
        df = pd.read_csv("retrieval_evaluation_Phi-3-mini-128k-instruct.csv")
@@ -184,7 +184,7 @@ def compress_metadata_lambda(
 def choosing_reranker_test(config: dict):
     """
     Return a langchain compatible augmented retriever.
-    Should take as input List[Document]
+    Should take as input list[Document]
     """
     reranker_type, reranker_name, rerank_k = (
         config.get("reranker_type"),
@@ -283,3 +283,124 @@ def build_chain_reranker_test(config=RetrievalConfiguration):
         )
 
     return retrieval_agent
+
+
+
+
+def plot_results(eval_configs: list[RetrievalConfiguration], results: dict[str, dict[str, dict[int, float]]], 
+                    ir_metrics: list[str] = None , focus: str = None, 
+                    title: str = "", k: int = 15, cmap_name: str = "tab20"):
+    """
+    Plots IR metrics for different retrieval configurations.
+    
+    Parameters:
+    - eval_configs: list of RetrievalConfiguration objects.
+    - results: dictionary of results where the keys are configuration names and values are dictionaries 
+               of metrics.
+    - ir_metrics: list of metrics to plot (default is ['recall', 'precision', 'mrr', 'ndcg']).
+    - focus: The name of the config parameter to highlight in the legend.
+    - title: The title of the plot.
+    - k: The maximum value of k to plot.
+    """  
+    import math
+
+    import matplotlib.pyplot as plt
+
+    # dynamic plotting  
+    num_metrics = len(ir_metrics)
+    num_cols = math.ceil(math.sqrt(num_metrics))
+    num_rows = math.ceil(num_metrics / num_cols)
+
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(14, 10))
+    axes = axes.flatten() if num_metrics > 1 else [axes]
+
+    cmap = plt.get_cmap(cmap_name)
+    colors = cmap(range(len(eval_configs)))
+    
+    for i, metric in enumerate(ir_metrics):
+        ax = axes[i]
+
+        for j, config in enumerate(eval_configs):
+            config_results = results.get(config.name, {})
+            metric_values = config_results.get(metric, {})
+            
+            k_values = [key for key in config.k_values if key <= k]
+            values = [metric_values.get(ki, None) for ki in k_values]
+
+            label = config.get(focus) 
+
+            if label is None:
+                label = config.name
+            ax.plot(k_values, values, marker='o', label=label.split("/")[-1], color=colors[j])
+        
+        ax.set_xlabel('k')
+        ax.set_ylabel(metric.capitalize())
+        ax.set_title(f'{metric.upper()} vs k')
+        ax.set_xticks(k_values)
+        ax.grid(True)
+        ax.legend()
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.suptitle(title, fontsize=16, y=1.02)
+    plt.show()
+
+def hist_results(eval_configs: list[RetrievalConfiguration], results: dict[str, dict[str, dict[int, float]]], 
+                 ir_metrics: list[str] = None, focus: str = None, 
+                 title: str = "", k: int = 15, cmap_name : str = 'tab20', x_min=0.6):
+    """
+    Plots histograms of IR metrics for different retrieval configurations at a given k.
+    
+    Parameters:
+    - eval_configs: list of RetrievalConfiguration objects.
+    - results: dictionary of results where the keys are configuration names and values are dictionaries 
+               of metrics.
+    - ir_metrics: list of metrics to plot (default is ['recall', 'precision', 'mrr', 'ndcg']).
+    - focus: The name of the config parameter to highlight in the legend.
+    - title: The title of the plot.
+    - k: The value of k to plot the histograms for.
+    """
+    import math
+
+    import matplotlib.pyplot as plt
+
+    num_metrics = len(ir_metrics)
+    num_cols = math.ceil(math.sqrt(num_metrics))
+    num_rows = math.ceil(num_metrics / num_cols)
+
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(14, 10))
+    axes = axes.flatten() if num_metrics > 1 else [axes]
+
+    cmap = plt.get_cmap(cmap_name)
+    colors = cmap(range(len(eval_configs)))
+
+    for i, metric in enumerate(ir_metrics):
+        ax = axes[i]
+        values = []
+        labels = []
+        
+        for j, config in enumerate(eval_configs):
+            config_results = results.get(config.name, {})
+            metric_values = config_results.get(metric, {})
+            value = metric_values.get(k) if isinstance(metric_values, dict) else metric_values
+            
+            if value is not None:
+                values.append(value)
+                label = config.get(focus) 
+                if label is None:
+                    label = config.name
+                labels.append(label.split("/")[-1])
+                ax.barh(labels[-1], values[-1], color=colors[j])
+        
+        ax.set_xlabel('Value')
+        ax.set_ylabel('Configuration')
+        ax.set_xlim(left=x_min)
+        ax.set_title(f'{metric.upper()} at k={k}')
+        ax.grid(True)
+    
+    # Hide any unused subplots
+    for j in range(i + 1, num_rows * num_cols):
+        fig.delaxes(axes[j])
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.suptitle(title, fontsize=16, y=1.02)
+    plt.show()
