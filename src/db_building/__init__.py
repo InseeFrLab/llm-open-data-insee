@@ -4,13 +4,12 @@ from .build_database import (
     reload_database_from_local_dir,
 )
 from .loading import load_vector_database
-from .utils_db import chroma_topk_to_df, extract_paragraphs
+from .utils_db import chroma_topk_to_df
 
 __all__ = [
     "build_vector_database",
     "reload_database_from_local_dir",
     "load_retriever",
     "chroma_topk_to_df",
-    "load_vector_database",
-    "extract_paragraphs"
+    "load_vector_database"
 ]
