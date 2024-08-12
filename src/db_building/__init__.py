@@ -11,5 +11,5 @@ __all__ = [
     "reload_database_from_local_dir",
     "load_retriever",
     "chroma_topk_to_df",
-    "load_vector_database"
+    "load_vector_database",
 ]

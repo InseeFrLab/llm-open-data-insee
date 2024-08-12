@@ -37,7 +37,9 @@ def load_vector_database(filesystem: s3fs.S3FileSystem, **kwargs) -> Chroma:
 
 def _load_database_from_mlflow(run_id: str) -> Chroma:
     """Helper function to load database from MLflow artifacts."""
-    local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path="chroma")
+    local_path = mlflow.artifacts.download_artifacts(
+        run_id=run_id, artifact_path="chroma"
+    )
     run_params = mlflow.get_run(run_id).data.params
     db = reload_database_from_local_dir(
         embed_model_name=run_params["embedding_model"],
@@ -48,7 +50,9 @@ def _load_database_from_mlflow(run_id: str) -> Chroma:
     return db
 
 
-def _load_database_from_s3(filesystem: s3fs.S3FileSystem, kwargs: dict[str, str]) -> Chroma:
+def _load_database_from_s3(
+    filesystem: s3fs.S3FileSystem, kwargs: dict[str, str]
+) -> Chroma:
     """Helper function to load database from S3 based on provided parameters."""
     required_keys = [
         "data_raw_s3_path",
@@ -65,14 +69,21 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, kwargs: dict[str, str]
     kwargs_subset = {key: kwargs[key] for key in required_keys if key in kwargs}
 
     if missing_keys:
-        warnings.warn(f"Missing possibly required arguments: {', '.join(missing_keys)}", stacklevel=2)
+        warnings.warn(
+            f"Missing possibly required arguments: {', '.join(missing_keys)}",
+            stacklevel=2,
+        )
 
-    logging.info(f"Searching for database with the following parameters: {kwargs_subset}")
+    logging.info(
+        f"Searching for database with the following parameters: {kwargs_subset}"
+    )
 
     db_path_prefix = f"{S3_BUCKET}/data/chroma_database/{kwargs.get('embedding_model')}"
 
     if not filesystem.exists(db_path_prefix):
-        raise FileNotFoundError(f"Database with model '{kwargs.get('embedding_model')}' not found")
+        raise FileNotFoundError(
+            f"Database with model '{kwargs.get('embedding_model')}' not found"
+        )
 
     for db_path in filesystem.ls(db_path_prefix):
         with filesystem.open(f"{db_path}/parameters.yaml") as f:
@@ -85,7 +96,9 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, kwargs: dict[str, str]
     raise FileNotFoundError(f"Database with parameters {kwargs} not found")
 
 
-def _reload_database_from_s3(filesystem: s3fs.S3FileSystem, db_path: str, kwargs: dict[str, str]) -> Chroma:
+def _reload_database_from_s3(
+    filesystem: s3fs.S3FileSystem, db_path: str, kwargs: dict[str, str]
+) -> Chroma:
     """Helper function to reload database from S3 to a local temporary directory."""
     with tempfile.TemporaryDirectory() as temp_dir:
         filesystem.get(f"{db_path}", temp_dir, recursive=True)

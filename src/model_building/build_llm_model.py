@@ -55,16 +55,18 @@ def build_llm_model(
             else None
         ),
         # Load LLM config
-        "config": (AutoConfig.from_pretrained(
-            model_name, trust_remote_code=True, token=token) if config else None
-            ),
+        "config": (
+            AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token)
+            if config
+            else None
+        ),
         "token": token,
     }
 
     # Load LLM tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         model_name, use_fast=True, device_map="auto", token=configs["token"]
-        )
+    )
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)
