@@ -1,7 +1,7 @@
 # retrieval_evaluation_measures.py
+
 import numpy as np
-from abc import ABC
-from dataclasses import dataclass, field
+
 
 class RetrievalEvaluationMeasure:
     ## Measures #############

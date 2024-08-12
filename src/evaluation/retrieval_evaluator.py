@@ -10,7 +10,7 @@ from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
 from src.config import EMB_DEVICE, EMB_MODEL_NAME
-from src.db_building import build_vector_database, reload_database_from_local_dir
+from src.db_building import build_vector_database
 
 from .eval_configuration import RetrievalConfiguration
 from .retrieval_evaluation_measures import RetrievalEvaluationMeasure
@@ -26,7 +26,7 @@ def _build_vector_database(path_data: str, config: RetrievalConfiguration) -> Ch
     """
     Building vector database based on a given embedding model
     """
-    from db_building import build_database_from_dataframe, reload_database_from_local_dir
+    from db_building import reload_database_from_local_dir
 
     embedding_model_name = config.get("embedding_model_name", EMB_MODEL_NAME)
     persist_directory = "./data/chroma_db"
