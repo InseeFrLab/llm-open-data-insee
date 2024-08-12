@@ -12,7 +12,8 @@ __all__ = [
     "build_chain_reranker_test",
     "choosing_reranker_test",
     "hist_results",
-    "plot_results"
+    "plot_results",
+    "use_sbert_retrieval_evaluator",
     "evaluate_question_validator",
     "transform_answers_bot",
     "answer_faq_by_bot",
