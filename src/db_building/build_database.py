@@ -1,165 +1,25 @@
 import logging
-import os
 
 import pandas as pd
+import s3fs
 from chromadb.config import Settings
-from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME
-from evaluation import RetrievalConfiguration
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+from src.config import (
+    CHROMA_DB_LOCAL_DIRECTORY,
+    COLLECTION_NAME,
+    EMB_DEVICE,
+    EMB_MODEL_NAME,
+    S3_BUCKET,
+)
 
+from .document_chunker import chunk_documents
+from .utils_db import parse_xmls, split_list
 
-def build_database_from_dataframe(
-    df: pd.DataFrame,
-    persist_directory: str = str(DB_DIR_S3),
-    embedding_model: str = str(EMB_MODEL_NAME),
-    collection_name: str = COLLECTION_NAME,
-    max_pages: str = None,
-    config: RetrievalConfiguration = None,
-) -> Chroma:
-    """
-    Args:
-        df (pd.DataFrame)
-
-    Returns:
-        Chroma: vector database
-    """
-    from doc_building import build_documents_from_dataframe
-
-    logging.info(f"The database will be stored in {persist_directory}")
-    # rename the column names:
-    not_null_filtered_df = df.rename(
-        columns={
-            "paragraphs": "content",
-            "url_source": "source",
-            "titles_para": "title",
-            "dateDiffusion": "date_diffusion",
-            "id_origin": "insee_id",
-        },
-        errors="ignore",
-        inplace=False,
-    )
-
-    # chucking of documents
-    all_splits = build_documents_from_dataframe(not_null_filtered_df, embedding_model_name=embedding_model, config=config)
-    logging.info("Storing the Document objects")
-
-    embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=embedding_model,
-        model_kwargs={"device": EMB_DEVICE, "trust_remote_code": True},
-        encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
-        show_progress=False,
-    )
-
-    # collection_name = "insee_data_" + str(EMB_MODEL_NAME.split("/")[-1])
-    collection_name = COLLECTION_NAME
-    db = Chroma.from_documents(
-        collection_name=collection_name,
-        documents=all_splits,
-        persist_directory=persist_directory,
-        embedding=embedding_model,
-    )
-    logging.info("The database has been built")
-
-    return db
-
-
-def build_database_from_csv(
-    path: str,
-    persist_directory: str = str(DB_DIR_S3),
-    embedding_model: str = str(EMB_MODEL_NAME),
-    collection_name: str = COLLECTION_NAME,
-    max_pages: str = None,
-) -> Chroma:
-    from doc_building import build_documents_from_dataframe
-    from db_building.utils_db import extract_paragraphs
-
-    logging.info(f"The database will be stored in {persist_directory}")
-
-    if os.path.exists(path):
-        logging.info(f"The path '{path}' exists.")
-        logging.info("Start building the database")
-
-        data = pd.read_csv(path, low_memory=False)
-        if max_pages is not None:
-            data = data.head(max_pages)
-
-        logging.info("Extracting paragraphs and metadata")
-        df = extract_paragraphs(data)  # dataframe
-
-        # rename the column names:
-        df.rename(
-            columns={
-                "paragraphs": "content",
-                "url_source": "source",
-                "dateDiffusion": "date_diffusion",
-                "id_origin": "insee_id",
-            },
-            inplace=True,
-        )
-
-        # remove NaN value to empty strings
-        logging.info("Remove NaN values by empty strings")
-        df.fillna(value="", inplace=True)
-
-        # chucking of documents
-        all_splits = build_documents_from_dataframe(df)
-        logging.info("Storing the Document objects")
-
-        embedding_model = HuggingFaceEmbeddings(  # load from sentence transformers
-            model_name=embedding_model,
-            multi_process=False,
-            model_kwargs={"device": EMB_DEVICE, "trust_remote_code": True},
-            encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
-            show_progress=False,
-        )
-
-        db = Chroma.from_documents(
-            collection_name=collection_name,
-            documents=all_splits,
-            persist_directory=persist_directory,
-            embedding=embedding_model,
-            client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
-        )
-        logging.info("The database has been built")
-        db.persist()
-        return db
-    else:
-        logging.info("Error Database : database File not found")
-        logging.info(f"The path '{path}' does not exist.")
-        return None
-
-
-def reload_database_from_local_dir(
-    embed_model_name: str = EMB_MODEL_NAME,
-    collection_name: str = COLLECTION_NAME,
-    persist_directory: str = DB_DIR_LOCAL,
-    embed_device: str = EMB_DEVICE,
-    config: RetrievalConfiguration = None,
-) -> Chroma:
-    if config is not None:
-        info = parse_collection_name(collection_name)
-        if info is not None:
-            config.chunk_size = info.get("chunk_size")
-            config.overlap_size = info.get("overlap_size")
-
-    embedding_model = HuggingFaceEmbeddings(
-        model_name=embed_model_name,
-        multi_process=False,
-        model_kwargs={"device": embed_device, "trust_remote_code": True},
-        encode_kwargs={"normalize_embeddings": True},
-        show_progress=True,
-    )
-    db = Chroma(
-        collection_name=collection_name,
-        persist_directory=persist_directory,
-        embedding_function=embedding_model,
-    )
-
-    logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
-    return db
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def parse_collection_name(collection_name: str):
@@ -174,7 +34,9 @@ def parse_collection_name(collection_name: str):
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
-            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
+            raise ValueError(
+                "String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'"
+            )
 
         # Extract and assign the parts
         model_name = parts[0]
@@ -182,7 +44,145 @@ def parse_collection_name(collection_name: str):
         overlap_size = int(parts[2])
 
         # Return the parsed values in a dictionary
-        return {"model_name": model_name, "chunk_size": chunk_size, "overlap_size": overlap_size}
+        return {
+            "model_name": model_name,
+            "chunk_size": chunk_size,
+            "overlap_size": overlap_size,
+        }
     except Exception as e:
         print(f"Error parsing string: {e}")
         return None
+
+
+# BUILD VECTOR DATABASE FROM COLLECTION -------------------------
+
+
+def build_vector_database(
+    data_path: str,
+    persist_directory: str,
+    collection_name: str,
+    filesystem: s3fs.S3FileSystem,
+    **kwargs,
+) -> Chroma:
+    logging.info(f"The database will temporarily be stored in {persist_directory}")
+    logging.info("Start building the database")
+
+    data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
+
+    if kwargs.get("max_pages") is not None:
+        data = data.head(kwargs.get("max_pages"))
+
+    # Parse the XML content
+    parsed_pages = parse_xmls(data)
+
+    df = data.set_index("id").merge(
+        pd.DataFrame(parsed_pages), left_index=True, right_index=True
+    )
+    df = df[
+        [
+            "titre",
+            "categorie",
+            "url",
+            "dateDiffusion",
+            "theme",
+            "collection",
+            "libelleAffichageGeo",
+            "content",
+        ]
+    ]
+
+    # Temporary solution to add the RMES data
+    data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
+    data_rmes = pd.read_parquet(
+        f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem
+    )
+    df = pd.concat([df, data_rmes])
+
+    # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
+    df = df.fillna(value="")
+
+    # chucking of documents
+    all_splits = chunk_documents(data=df, **kwargs)
+
+    emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
+        model_name=kwargs.get("embedding_model"),
+        model_kwargs={"device": kwargs.get("embedding_device")},
+        encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
+        show_progress=False,
+    )
+
+    max_batch_size = 41600
+    split_docs_chunked = split_list(all_splits, max_batch_size)
+
+    for split_docs_chunk in split_docs_chunked:
+        db = Chroma.from_documents(
+            collection_name=collection_name,
+            documents=split_docs_chunk,
+            persist_directory=persist_directory,
+            embedding=emb_model,
+            client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
+        )
+
+    logging.info("The database has been built")
+    return db, df
+
+
+# RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
+
+
+def reload_database_from_local_dir(
+    embed_model_name: str = EMB_MODEL_NAME,
+    collection_name: str = COLLECTION_NAME,
+    persist_directory: str = CHROMA_DB_LOCAL_DIRECTORY,
+    embed_device: str = EMB_DEVICE,
+) -> Chroma:
+    emb_model = HuggingFaceEmbeddings(
+        model_name=embed_model_name,
+        multi_process=False,
+        model_kwargs={"device": embed_device, "trust_remote_code": True},
+        encode_kwargs={"normalize_embeddings": True},
+        show_progress=True,
+    )
+    db = Chroma(
+        collection_name=collection_name,
+        persist_directory=persist_directory,
+        embedding_function=emb_model,
+    )
+
+    logging.info(
+        f"The database (collection {collection_name}) "
+        f"has been reloaded from directory {persist_directory}"
+    )
+    return db
+
+
+def load_retriever(
+    emb_model_name,
+    vectorstore=None,
+    persist_directory="data/chroma_db",
+    device="cuda",
+    collection_name: str = "insee_data",
+    retriever_params: dict = None,
+):
+    # Load vector database
+    if vectorstore is None:
+        logging.info("Reloading database in session")
+        vectorstore = reload_database_from_local_dir(
+            embed_model_name=emb_model_name,
+            collection_name=collection_name,
+            persist_directory=persist_directory,
+            embed_device=device,
+        )
+    else:
+        logging.info("vectorstore being provided, skipping the reloading")
+
+    if retriever_params is None:
+        retriever_params = {"search_type": "similarity", "search_kwargs": {"k": 30}}
+
+    search_kwargs = retriever_params.get("search_kwargs", {"k": 20})
+
+    # Set up a retriever
+    retriever = vectorstore.as_retriever(
+        search_type="similarity", search_kwargs=search_kwargs
+    )
+    return retriever, vectorstore

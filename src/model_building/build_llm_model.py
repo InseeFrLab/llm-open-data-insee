@@ -31,30 +31,42 @@ def build_llm_model(
     """
     Create the llm model
     """
+
+    if generation_args is None:
+        generation_args = {}
+
     cache_model_from_hf_hub(
         model_name,
-        s3_bucket="projet-llm-insee-open-data",
+        s3_bucket=os.environ["S3_BUCKET"],
         s3_cache_dir="models/hf_hub",
         s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
     )
 
     configs = {
         # Load quantization config
-        "quantization_config": BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype="float16",
-            bnb_4bit_use_double_quant=False,
-        )
-        if quantization_config
-        else None,
+        "quantization_config": (
+            BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype="float16",
+                bnb_4bit_use_double_quant=False,
+            )
+            if quantization_config
+            else None
+        ),
         # Load LLM config
-        "config": AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token) if config else None,
+        "config": (
+            AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token)
+            if config
+            else None
+        ),
         "token": token,
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, use_fast=True, device_map="auto", token=configs["token"]
+    )
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)
@@ -72,7 +84,7 @@ def build_llm_model(
         model=model,
         tokenizer=tokenizer,
         max_new_tokens=generation_args.get("max_new_tokens", 2000),
-        return_full_text=False,
+        return_full_text=generation_args.get("return_full_text", False),
         device_map="auto",
         do_sample=generation_args.get("do_sample", True),
         temperature=generation_args.get("temperature", 0.2),
