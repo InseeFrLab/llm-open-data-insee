@@ -24,7 +24,7 @@ def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chr
     from db_building import build_database_from_dataframe, reload_database_from_local_dir
 
     embedding_model_name = config.get("embedding_model_name", EMB_MODEL_NAME)
-    persist_directory = "./data/chroma_db"
+    persist_directory = "../data/chroma_db"
 
     # Ensure the persist directory exists
     if not os.path.exists(persist_directory):

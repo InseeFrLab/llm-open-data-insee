@@ -18,9 +18,25 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_core.runnables import (
     RunnableLambda,
 )
+# HuggingFace package 
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig
+)
+
 
 # reranking
 from ragatouille import RAGPretrainedModel
+from reranking import (compress_documents_lambda,
+                    RG_YN_batch,
+                    RG_3L_batch,
+                    RG_S_batch,
+                    RG_4L_batch,
+                    llm_reranking_batch
+
+)
 
 # evaluation
 from evaluation import RetrievalConfiguration
@@ -179,19 +195,61 @@ def choosing_reranker_test(config: dict):
     elif reranker_type == "BM25":
         # need to format {"documents" : ..., "query" : ...}
         retrieval_agent = RunnableLambda(lambda r: compress_BM25_lambda(documents=r["documents"], query=r["query"], k=rerank_k))
+
     elif reranker_type == "Cross-encoder":
         # need to format {"documents" : ..., "query" : ...}
         model = HuggingFaceCrossEncoder(model_name=reranker_name, model_kwargs={"device": "cuda"})
         compressor = CrossEncoderReranker(model=model, top_n=rerank_k)
         retrieval_agent = RunnableLambda(func=lambda inputs: compressor.compress_documents(documents=inputs["documents"], query=inputs["query"]))
+
     elif reranker_type == "ColBERT":
         # need to format {"documents" : ..., "query" : ...}
         colBERT = RAGPretrainedModel.from_pretrained(reranker_name)
         compressor = colBERT.as_langchain_document_compressor(k=rerank_k)
         retrieval_agent = RunnableLambda(func=lambda r: compressor.compress_documents(documents=r["documents"], query=r["query"], top_n=rerank_k))
+
     elif reranker_type == "Metadata":
         # need to format {"documents" : ..., "query" : ...}
         retrieval_agent = RunnableLambda(func=lambda r: compress_metadata_lambda(documents=r["documents"], query=r["query"], config=config))
+
+    elif reranker_type == "LLM":
+        # llm_reranking(tokenizer, model, query, retrieved_documents, assessing_method, aggregating_method):
+        
+        method = config.get("name")
+        if "RG_S" in method:
+            method = RG_S_batch
+        elif "RG_YN" in method:
+            method = RG_YN_batch
+        elif "RG_3L" in method:
+            method = RG_3L_batch
+        elif "RG_4L" in method:
+            method = RG_4L_batch
+        else:
+            print("LLM pointwise reranking method does not exist")
+
+        # quantization config 
+        quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype="float16",
+                    bnb_4bit_use_double_quant=False,
+        )
+
+        config = AutoConfig.from_pretrained(reranker_name, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(reranker_name)
+
+        # Check if tokenizer has a pad_token; if not, set it to eos_token
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        model = AutoModelForCausalLM.from_pretrained(
+                    reranker_name,
+                    device_map="auto",
+                    quantization_config=quantization_config,
+                    config=config
+        )
+        retrieval_agent = RunnableLambda(func=lambda r: llm_reranking_batch(tokenizer, model, query=r["query"], retrieved_documents=r["documents"], assessing_method=method, k=rerank_k))
+    
     return retrieval_agent
 
 
@@ -201,7 +259,7 @@ def build_chain_reranker_test(config=RetrievalConfiguration):
     Customizable Implementation for testing different retrieving strategy.
 
     Ex :
-        config = {"reranker_type" : ...,
+        config = {  "reranker_type" : ...,
                     "reranker_name": ...,
                     "rerank_k" : ... ,
                     "param_ensemble" : [{"reranker_type" : ..., "reranker_name" : ..., "reranker_weight": ...}, ...],
@@ -213,7 +271,7 @@ def build_chain_reranker_test(config=RetrievalConfiguration):
 
     reranker_type = config.get("reranker_type")
 
-    if reranker_type in [None, "BM25", "Cross-encoder", "ColBERT", "Metadata"]:
+    if reranker_type in [None, "BM25", "Cross-encoder", "ColBERT", "Metadata","LLM"]:
         retrieval_agent = choosing_reranker_test(config=config)
     elif reranker_type == "Ensemble":
         weights = []
@@ -243,9 +301,6 @@ def build_chain_reranker_test(config=RetrievalConfiguration):
         )
 
     return retrieval_agent
-
-
-
 
 def plot_results(eval_configs: list[RetrievalConfiguration], results: dict[str, dict[str, dict[int, float]]], 
                     ir_metrics: list[str] = None , focus: str = None, 
@@ -289,7 +344,7 @@ def plot_results(eval_configs: list[RetrievalConfiguration], results: dict[str, 
 
             label = config.get(focus) 
 
-            if label is None:
+            if label is None or "LLM":
                 label = config.name
             ax.plot(k_values, values, marker='o', label=label.split("/")[-1], color=colors[j])
         
