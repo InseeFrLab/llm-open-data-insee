@@ -8,7 +8,8 @@ TBD
 
 We use `MLFlow` to centralize all training performance. 
 To reproduce our examples in your MLFlow store, use the 
-following instructions
+following instructions:
+
 
 1. Build the database (remove `--max_pages 20` if you want to build the whole database)
 
