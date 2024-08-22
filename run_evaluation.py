@@ -99,6 +99,15 @@ parser.add_argument(
     Defaults to OrdalieTech/Solon-embeddings-large-0.1""",
 )
 parser.add_argument(
+    "--max_pages",
+    type=int,
+    default=None,
+    help="""
+    Maximum number of pages that has been used by the vector database.
+    This parameter is useful when experimenting. 
+    """,
+)
+parser.add_argument(
     "--chunk_size",
     type=str,
     default=None,

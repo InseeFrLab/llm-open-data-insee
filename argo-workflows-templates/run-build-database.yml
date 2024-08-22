@@ -79,8 +79,8 @@ spec:
               --data_raw_s3_path {{inputs.parameters.DATA_PATH}} \
               --collection_name {{inputs.parameters.COLLECTION_NAME}} \
               --embedding_model {{inputs.parameters.EMBEDDING_MODEL}} \
-              --{{inputs.parameters.MD_SPLIT}} \
-              --max_pages 25
+              --{{inputs.parameters.MD_SPLIT}} #\
+              #--max_pages 25
 
         volumeMounts:
           - mountPath: /dev/shm
