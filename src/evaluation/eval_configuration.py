@@ -51,3 +51,5 @@ class RetrievalConfiguration(EvalConfiguration):
 
     # Parsing metadata
     markdown_separator: list[str] = field(default_factory=lambda: ["\n\n", "\n", ".", " ", ""])
+
+    seed: int = field(default=42)

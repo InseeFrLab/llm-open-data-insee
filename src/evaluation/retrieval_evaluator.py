@@ -5,14 +5,17 @@ import time
 import chromadb
 import numpy as np
 import pandas as pd
-from config import EMB_DEVICE, EMB_MODEL_NAME
 from langchain_community.vectorstores.chroma import Chroma
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
+from config import EMB_DEVICE, EMB_MODEL_NAME
 from evaluation.eval_configuration import RetrievalConfiguration
 from evaluation.retrieval_evaluation_measures import RetrievalEvaluationMeasure
 from evaluation.utils import build_chain_reranker_test
+
+
+
 
 ## Utility function ##
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -186,3 +189,127 @@ class RetrievalEvaluator:
             )
         )
         return X, id_to_val, val_to_id, source_val_to_local_id
+
+
+    @staticmethod
+    def run_llm_as_a_judge(eval_configurations: list[RetrievalConfiguration], eval_dict: dict[str, pd.DataFrame]):
+        """
+        Goal : Evaluate the retrieval performance of a series of configurations.
+        eval_dict : dictionary containing a DataFrame with at least a question and source columns.
+        """
+
+        from evaluation.context_recall import (
+            TEMPLATE_CONTEXT_RECALL, 
+            clean_results, 
+            extract_json, 
+            load_judge,
+            compute_context_recall_score
+        )
+
+        import torch
+        from langchain_core.output_parsers.json import JsonOutputParser
+        from transformers import set_seed
+
+        results = {}
+
+        # load llm judge 
+        llm_judge = load_judge(llm_judge_name="microsoft/Phi-3-mini-128k-instruct")
+        # define generation arguments 
+        generation_args = {
+            "max_new_tokens": 500,
+            "return_full_text": False,
+            "do_sample": True,
+            "batch_size" : 8
+        }
+
+        for df_name, df in eval_dict.items():
+            results[df_name] = {}
+            for configuration in eval_configurations:
+                config_name = configuration.name
+                logging.info(f"Start of evaluation run for dataset: {df_name} and configuration: {config_name}")
+                results[df_name][config_name] = {}
+
+                # Load ref Corpus
+                vector_db = build_vector_database(path_data=configuration.database_path, config=configuration)
+
+                # retrieve queries and answers
+                queries = [q for q in list(df["question"])]
+                gt_answers = [ans for ans in list(df["answer"])]
+
+                # choose reranker based on configuration
+                reranker = build_chain_reranker_test(configuration)
+                logging.info("Retriever sucessfully built")
+                # embed queries
+                embedded_queries = vector_db.embeddings.embed_documents(queries)
+                logging.info("Queries have been embedded")
+
+                # building full prompt for batch inference
+                full_final_prompt = []
+                for i, _row in tqdm(df.iterrows()):
+                    # based retriever
+                    retrieved_docs = vector_db.similarity_search_by_vector(
+                        embedding=embedded_queries[i],
+                        k=max(configuration.k_values)
+                    )
+                    # reranker
+                    retrieved_docs = reranker.invoke(
+                        {"documents": retrieved_docs, "query": queries[i]}
+                    )
+
+                    # build the prompts with retrieved documents
+                    context = ["".join([f"\nDocument {str(i + 1)}:\n" + doc.page_content for i, doc in enumerate(retrieved_docs)])]  # Build context
+                    # add retrieved documents to the prompt
+                    input_prompt = TEMPLATE_CONTEXT_RECALL.format(
+                        expected_output=gt_answers[i], 
+                        retrieval_context=context
+                    )
+
+                    full_final_prompt.append(input_prompt)
+                
+                #### start evaluation
+                parser = JsonOutputParser()
+                # Storing results
+                results_dict = {"question": [], "ground_truth_answer": [], "verdicts": [], "seed": []}
+
+                seed = configuration.seed
+                # Set the seed for transformers
+                set_seed(seed)
+                # Set seeds for other libraries if needed
+                torch.manual_seed(seed)
+                np.random.seed(seed)
+
+                # Generates context recall judgement
+                generated_answers = llm_judge(full_final_prompt, **generation_args)
+
+                # Parsing generated answers 
+                for i, generated_answer in enumerate(generated_answers):
+                    answer = generated_answer[0]["generated_text"]
+                    try:
+                        # langchain automatic json parsing
+                        verdict = parser.parse(text=answer)
+                    except Exception:
+                        try:
+                            # custom json parsing
+                            verdict = extract_json(answer)
+                        except Exception:
+                            verdict = {}
+
+                    results_dict["verdicts"].append(verdict)
+                    results_dict["ground_truth_answer"].append(gt_answers[i])
+                    results_dict["question"].append(queries[i])
+                    results_dict["seed"].append(seed)
+
+                logging.info(f"End of Experiment Seed {seed}")
+                logging.info(f"Cleaning Results")
+                # cleaning parsed outputs : replace Nan values, keep listed outputs
+                cleaned_results = clean_results(results=results_dict)
+                logging.info(f"Compute Context Recall Score")
+                compute_context_recall_score(cleaned_results)
+
+                df_results = pd.DataFrame.from_dict(cleaned_results)
+                # save results 
+                df_results.to_csv(f"Context_Recall_{config_name}_seed_{seed}.csv", index=False)
+
+                results[df_name][config_name] = df_results
+
+        return results
