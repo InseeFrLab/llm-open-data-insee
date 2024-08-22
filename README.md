@@ -17,11 +17,13 @@ following instructions:
 python run_build_database.py --max_pages 20 --experiment_name "BUILD_CHROMA_TEST"
 ```
 
-2. Evaluate model performance
+2. Evaluate model performance. If MLFlow has been used in previous example and you know the run id (see below for cases where you don't know it), you can use the following
 
 ```python
-python run_evaluation.py --experiment_name BUILD_CHROMA_TEST
+python run_evaluation.py --experiment_name BUILD_CHROMA_TEST --database_run_id ${your_run_id_here}
 ```
+
+
 
 ## Build complete INSEE dataset based on parquet files stored in S3 bucket (Need S3 credential and SSP Cloud Access)
 
