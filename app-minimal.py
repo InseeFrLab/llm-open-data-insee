@@ -69,36 +69,19 @@ async def on_chat_start():
             ).send()
     cl.user_session.set("IS_LOGGING_ON", IS_LOGGING_ON)
 
-    # Set Validator chain in chainlit session
-    llm, tokenizer = build_llm_model(
-        model_name=model,
-        quantization_config=quantization,
-        config=True,
-        token=os.getenv("HF_TOKEN"),
-        streaming=False,
-        generation_args={
-            "max_new_tokens": max_new_tokens,
-            "return_full_text": False,
-            "do_sample": False,
-            "temperature": model_temperature,
-        },
-    )
-    # Set Validator chain in chainlit session
-    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
-    cl.user_session.set("validator", validator)
-    logging.info("------validator loaded")
 
     # Build chat model
     RETRIEVER_ONLY = str_to_bool(os.getenv("RETRIEVER_ONLY", "false"))
     cl.user_session.set("RETRIEVER_ONLY", RETRIEVER_ONLY)
     logging.info("------ chatbot mode : RAG")
 
-    db = load_vector_database(
+
+    db = await cl.make_async(load_vector_database)(
         filesystem=fs,
         database_run_id="32d4150a14fa40d49b9512e1f3ff9e8c"
     )
 
-    llm, tokenizer = build_llm_model(
+    llm, tokenizer = await cl.make_async(build_llm_model)(
         model_name=model,
         quantization_config=quantization,
         config=True,
@@ -113,6 +96,11 @@ async def on_chat_start():
     )
     logging.info("------llm loaded")
 
+    # Set Validator chain in chainlit session
+    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
+    cl.user_session.set("validator", validator)
+    logging.info("------validator loaded")
+
     RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
         CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
     )
@@ -120,7 +108,7 @@ async def on_chat_start():
         input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE
     )
     logging.info("------prompt loaded")
-    retriever, vectorstore = load_retriever(
+    retriever, vectorstore = await cl.make_async(load_retriever)(
                 emb_model_name="OrdalieTech/Solon-embeddings-large-0.1",
                 vectorstore=db, 
                 persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
