@@ -1,6 +1,6 @@
 import logging
 import os
-import argparse
+import s3fs
 
 import chainlit as cl
 import chainlit.data as cl_data
@@ -10,7 +10,10 @@ from langchain_core.prompts import PromptTemplate
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
 from src.config import CHATBOT_TEMPLATE, EMB_MODEL_NAME
-from src.db_building import load_retriever
+from src.db_building import (
+    load_retriever,
+    load_vector_database
+)
 from src.model_building import build_llm_model
 from src.results_logging.log_conversations import log_feedback_to_s3, log_qa_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
@@ -46,7 +49,15 @@ def retrieve_model_and_tokenizer(
     experiment_name: str#,
     #**kwargs
 ):
-  
+
+    os.environ['MLFLOW_TRACKING_URI'] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+
+    db = load_vector_database(
+        filesystem=fs,
+        database_run_id="6ba253f5c6594aaf8b33f82baa98fc38"
+    )
+
     llm, tokenizer = build_llm_model(
             model_name=LLM_MODEL,
             quantization_config=QUANTIZATION,
