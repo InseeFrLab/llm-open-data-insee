@@ -141,7 +141,7 @@ async def on_chat_start():
     # Set Validator chain in chainlit session
     llm = None
     prompt = None
-    retriever, vectorstore = load_retriever(
+    retriever, vectorstore = await cl.make_async(load_retriever)(
                 emb_model_name=embedding,
                 persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
                 retriever_params={
@@ -152,7 +152,7 @@ async def on_chat_start():
     logging.info("Retriever loaded !")
 
     if RETRIEVER_ONLY is False:
-        llm, tokenizer, db = retrieve_model_tokenizer_and_db(
+        llm, tokenizer, db = await cl.make_async(retrieve_model_tokenizer_and_db)(
             filesystem=fs,
             with_db=True  # **vars(args)
         )
@@ -170,7 +170,7 @@ async def on_chat_start():
 
 
     # Set Validator chain in chainlit session
-    validator = build_chain_validator(
+    validator = await build_chain_validator(
         evaluator_llm=llm, tokenizer=tokenizer
     )
     cl.user_session.set("validator", validator)
