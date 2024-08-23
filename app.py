@@ -32,89 +32,28 @@ DEFAULT_MAX_NEW_TOKENS = 10
 DEFAULT_MODEL_TEMPERATURE = 1
 embedding = os.getenv("EMB_MODEL_NAME", EMB_MODEL_NAME)
 
+LLM_MODEL = os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2")
+QUANTIZATION = os.getenv("QUANTIZATION", True)
+MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", DEFAULT_MAX_NEW_TOKENS))
+MODEL_TEMPERATURE = int(os.getenv("MODEL_TEMPERATURE", DEFAULT_MODEL_TEMPERATURE))
+RETURN_FULL_TEXT = os.getenv("RETURN_FULL_TEXT", True)
+DO_SAMPLE = os.getenv("DO_SAMPLE", True)
 
 # APPLICATION -----------------------------------------
 
-parser = argparse.ArgumentParser(
-    description="Parameters to retrieve the correct LLM and DB from pretrained data"
-)
-
-## LLM specific arguments ----
-parser.add_argument(
-    "--llm_model",
-    type=str,
-    default=os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2"),
-    help="""
-    LLM used to generate chat.
-    Should be a huggingface model.
-    Defaults to mistralai/Mistral-7B-Instruct-v0.2
-    """,
-)
-parser.add_argument(
-    "--quantization",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="""
-    Should we use a quantized version of "model" argument ?
-    --quantization yields True and --no-quantization yields False
-    """,
-)
-parser.add_argument(
-    "--max_new_tokens",
-    type=int,
-    default=DEFAULT_MAX_NEW_TOKENS,
-    help="""
-    The maximum numbers of tokens to generate, ignoring the number of tokens in the prompt.
-    See https://huggingface.co/docs/transformers/main_classes/text_generation
-    """,
-)
-parser.add_argument(
-    "--model_temperature",
-    type=int,
-    default=DEFAULT_MODEL_TEMPERATURE,
-    help="""
-    The value used to modulate the next token probabilities.
-    See https://huggingface.co/docs/transformers/main_classes/text_generation
-    """,
-)
-parser.add_argument(
-    "--return_full_text",
-    action=argparse.BooleanOptionalAction,
-    default=True,
-    help="""
-    Should we return the full text ?
-    --return_full_text yields True and --no-return_full_text yields False
-    Default to False
-    """,
-)
-parser.add_argument(
-    "--do_sample",
-    action=argparse.BooleanOptionalAction,
-    default=False,
-    help="""
-    if set to True , this parameter enables decoding strategies such as multinomial sampling, beam-search multinomial sampling, Top-K sampling
-    and Top-p sampling. All these strategies select the next token from the probability distribution over the entire vocabulary
-    with various strategy-specific adjustments.
-    --do_sample yields True and --no-do_sample yields False
-    Default to False
-    """,
-)
-
-
-args = parser.parse_args()
 
 def retrieve_model_and_tokenizer(
-    experiment_name: str,
-    **kwargs
+    experiment_name: str#,
+    #**kwargs
 ):
   
     llm, tokenizer = build_llm_model(
-            model_name=kwargs.get("llm_model"),
-            quantization_config=kwargs.get("quantization"),
+            model_name=LLM_MODEL,
+            quantization_config=QUANTIZATION,
             config=True,
             token=os.getenv("HF_TOKEN"),
-            streaming=False,
-            generation_args=kwargs,
+            streaming=False#,
+            #generation_args=kwargs,
 )
     return llm, tokenizer
 
@@ -123,7 +62,7 @@ def retrieve_model_and_tokenizer(
 async def on_chat_start():
     # Initial message
     init_msg = cl.Message(
-        content="Bienvenue sur le ChatBot de l'INSEE!", disable_feedback=True
+        content="Bienvenue sur le ChatBot de l'INSEE!"#, disable_feedback=True
     )
     await init_msg.send()
 
@@ -151,7 +90,7 @@ async def on_chat_start():
 
     # Set Validator chain in chainlit session
     llm, tokenizer = retrieve_model_and_tokenizer(
-        **vars(args)
+        "insee_data" #**vars(args)
     )
     # Set Validator chain in chainlit session
     validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
@@ -165,7 +104,7 @@ async def on_chat_start():
         logging.info("------ chatbot mode : retriever only")
         llm = None
         prompt = None
-        retriever = load_retriever(
+        retriever, vectorstore = load_retriever(
             emb_model_name=embedding,
             persist_directory="./data/chroma_db",
             retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
@@ -176,7 +115,7 @@ async def on_chat_start():
         logging.info("------ chatbot mode : RAG")
 
         llm, tokenizer = retrieve_model_and_tokenizer(
-            **vars(args)
+            "insee_data" #**vars(args)
         )
         logging.info("------llm loaded")
 
@@ -187,7 +126,7 @@ async def on_chat_start():
             input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE
         )
         logging.info("------prompt loaded")
-        retriever = load_retriever(
+        retriever, vectorstore = load_retriever(
             emb_model_name=os.getenv("EMB_MODEL_NAME"),
             persist_directory="./data/chroma_db",
             retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
@@ -225,7 +164,7 @@ async def on_message(message: cl.Message):
         chain = cl.user_session.get("chain")
 
         # Initialize ChatBot's answer
-        answer_msg = cl.Message(content="", disable_feedback=True)
+        answer_msg = cl.Message(content="")#, disable_feedback=True)
         sources = list()
         titles = list()
 
@@ -251,8 +190,8 @@ async def on_message(message: cl.Message):
 
         # Add sources to answer
         sources_msg = cl.Message(
-            content=add_sources_to_messages(message="", sources=sources, titles=titles),
-            disable_feedback=False,
+            content=add_sources_to_messages(message="", sources=sources, titles=titles)#,
+            #disable_feedback=False,
         )
         await sources_msg.send()
 
