@@ -26,10 +26,15 @@ logging.basicConfig(
     level=logging.DEBUG,
 )
 
+# Remote file configuration
+os.environ['MLFLOW_TRACKING_URI'] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
 # PARAMETERS --------------------------------------
 
 model = os.getenv("LLM_MODEL_NAME")
+CHROMA_DB_LOCAL_DIRECTORY = "./data/chroma_db"
+CLI_MESSAGE_SEPARATOR = f"{80*'-'} \n"
 quantization = True
 DEFAULT_MAX_NEW_TOKENS = 10
 DEFAULT_MODEL_TEMPERATURE = 1
@@ -45,28 +50,41 @@ DO_SAMPLE = os.getenv("DO_SAMPLE", True)
 # APPLICATION -----------------------------------------
 
 
-def retrieve_model_and_tokenizer(
-    experiment_name: str#,
+def retrieve_model_tokenizer_and_db(
+    filesystem=fs,
+    with_db=True
     #**kwargs
 ):
 
-    os.environ['MLFLOW_TRACKING_URI'] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+    # ------------------------
+    # I - LOAD VECTOR DATABASE
 
-    db = load_vector_database(
-        filesystem=fs,
-        database_run_id="6ba253f5c6594aaf8b33f82baa98fc38"
-    )
-
+    # Load LLM in session
     llm, tokenizer = build_llm_model(
             model_name=LLM_MODEL,
             quantization_config=QUANTIZATION,
             config=True,
             token=os.getenv("HF_TOKEN"),
-            streaming=False#,
-            #generation_args=kwargs,
-)
-    return llm, tokenizer
+            streaming=False,
+            generation_args={
+                "max_new_tokens": MAX_NEW_TOKENS,
+                "return_full_text": RETURN_FULL_TEXT,
+                "do_sample": DO_SAMPLE,
+                "temperature": MODEL_TEMPERATURE
+            },
+    )
+
+    if with_db is False:
+        return llm, tokenizer, None
+
+    # Ensure production database is used
+    db = load_vector_database(
+        filesystem=fs,
+        database_run_id="32d4150a14fa40d49b9512e1f3ff9e8c"
+        # hard coded pour le moment
+    )
+
+    return llm, tokenizer, db
 
 
 @cl.on_chat_start
@@ -79,7 +97,9 @@ async def on_chat_start():
 
     # Logging configuration
     IS_LOGGING_ON = True
-    ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
+    ASK_USER_BEFORE_LOGGING = str_to_bool(
+        os.getenv("ASK_USER_BEFORE_LOGGING", "false")
+    )
     if ASK_USER_BEFORE_LOGGING:
         res = await cl.AskActionMessage(
             content="Autorisez-vous le partage de vos interactions avec le ChatBot!",
@@ -99,36 +119,48 @@ async def on_chat_start():
             ).send()
     cl.user_session.set("IS_LOGGING_ON", IS_LOGGING_ON)
 
-    # Set Validator chain in chainlit session
-    llm, tokenizer = retrieve_model_and_tokenizer(
-        "insee_data" #**vars(args)
-    )
-    # Set Validator chain in chainlit session
-    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
-    cl.user_session.set("validator", validator)
-    logging.info("------validator loaded")
+    # -------------------------------------------------
+    # I - CREATING RETRIEVER AND IMPORTING DATABASE
 
     # Build chat model
     RETRIEVER_ONLY = str_to_bool(os.getenv("RETRIEVER_ONLY", "false"))
     cl.user_session.set("RETRIEVER_ONLY", RETRIEVER_ONLY)
+
+    # Log on CLI to follow the configuration
     if RETRIEVER_ONLY:
-        logging.info("------ chatbot mode : retriever only")
-        llm = None
-        prompt = None
-        retriever, vectorstore = load_retriever(
-            emb_model_name=embedding,
-            persist_directory="./data/chroma_db",
-            retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+        logging.info(
+            f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : retriever only \n"
         )
-        logging.info("------retriever loaded")
-
     else:
-        logging.info("------ chatbot mode : RAG")
-
-        llm, tokenizer = retrieve_model_and_tokenizer(
-            "insee_data" #**vars(args)
+        logging.info(
+            f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : RAG \n"
         )
-        logging.info("------llm loaded")
+
+    # Set Validator chain in chainlit session
+    llm = None
+    prompt = None
+    retriever, vectorstore = load_retriever(
+                emb_model_name=embedding,
+                persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+                retriever_params={
+                    "search_type": "similarity",
+                    "search_kwargs": {"k": 30}
+                },
+            )
+    logging.info("Retriever loaded !")
+
+    if RETRIEVER_ONLY is False:
+        llm, tokenizer, db = retrieve_model_tokenizer_and_db(
+            filesystem=fs,
+            with_db=True  # **vars(args)
+        )
+        db_docs = db.get()["documents"]
+        ndocs = f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents"
+        logging.info(ndocs)
+        ndocs_message = cl.Message(
+            content=ndocs
+        )
+        await ndocs_message.send()
 
         RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
             CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
@@ -137,12 +169,15 @@ async def on_chat_start():
             input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE
         )
         logging.info("------prompt loaded")
-        retriever, vectorstore = load_retriever(
-            emb_model_name=os.getenv("EMB_MODEL_NAME"),
-            persist_directory="./data/chroma_db",
-            retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
-        )
-        logging.info("------retriever loaded")
+
+
+    # Set Validator chain in chainlit session
+    validator = build_chain_validator(
+        evaluator_llm=llm, tokenizer=tokenizer
+    )
+    cl.user_session.set("validator", validator)
+    logging.info("------validator loaded")
+
 
     # Build chain
     RERANKING_METHOD = os.getenv("RERANKING_METHOD")

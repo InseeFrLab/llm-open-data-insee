@@ -251,6 +251,7 @@ def run_evaluation(
         # ------------------------
         # I - LOAD VECTOR DATABASE
 
+        # Ensure correct database is used
         db = load_vector_database(filesystem=fs, **kwargs)
 
         # ------------------------
@@ -260,6 +261,7 @@ def run_evaluation(
 
         mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
+        # Load LLM in session
         llm, tokenizer = build_llm_model(
             model_name=kwargs.get("llm_model"),
             quantization_config=kwargs.get("quantization"),
