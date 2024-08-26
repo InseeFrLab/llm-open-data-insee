@@ -230,7 +230,7 @@ def compute_batch_sequence_log_probs(tokenizer, model, sequences):
         batch_sequence_probabilities.append(sequence_probability)
     return batch_sequence_probabilities
 
-def RG_S_batch(tokenizer, model, query, documents, k=5):
+def RG_S_batch(tokenizer, model, query, documents, k=3):
     list_grades = list(range(k))
     grades_token_ids = [tokenizer(str(grade))["input_ids"][1] for grade in list_grades]
 

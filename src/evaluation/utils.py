@@ -246,7 +246,8 @@ def choosing_reranker_test(config: dict):
                     reranker_name,
                     device_map="auto",
                     quantization_config=quantization_config,
-                    config=config
+                    config=config,
+                    trust_remote_code=True
         )
         retrieval_agent = RunnableLambda(func=lambda r: llm_reranking_batch(tokenizer, model, query=r["query"], retrieved_documents=r["documents"], assessing_method=method, k=rerank_k))
     

@@ -219,7 +219,7 @@ class RetrievalEvaluator:
             "max_new_tokens": 500,
             "return_full_text": False,
             "do_sample": True,
-            "batch_size" : 8
+            "batch_size" : 6
         }
 
         for df_name, df in eval_dict.items():
