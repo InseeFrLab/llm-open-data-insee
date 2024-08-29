@@ -39,7 +39,7 @@ spec:
             - name: EMB_MODEL_NAME
               value: OrdalieTech/Solon-embeddings-large-0.1
             - name: LLM_MODEL_NAME
-              value: mistralai/Mistral-7B-Instruct-v0.2
+              value: meta-llama/Meta-Llama-3.1-8B-Instruct  # mistralai/Mistral-7B-Instruct-v0.2
             - name: ASK_USER_BEFORE_LOGGING
               value: 'false'
             - name: RETRIEVER_ONLY
@@ -47,7 +47,7 @@ spec:
             - name: RERANKING_METHOD
               # Possibles values : ['BM25', 'Cross-encoder', 'Ensemble']
               # If left empty, defauts to None
-              value: ''
+              value: 'Cross-encoder'
           resources:
             requests:
               memory: "2Gi"

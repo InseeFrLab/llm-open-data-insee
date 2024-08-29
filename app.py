@@ -48,7 +48,7 @@ CHATBOT_TEMPLATE = [
 @cl.on_chat_start
 async def on_chat_start():
     # Initial message
-    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!", disable_feedback=True)
+    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
     await init_msg.send()
 
     # Logging configuration
@@ -135,6 +135,10 @@ async def on_chat_start():
 
     logging.info(f"Thread ID : {init_msg.thread_id}")
 
+    # Initial message
+    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
+    await init_msg.send()
+
 
 @cl.on_message
 async def on_message(message: cl.Message):
@@ -148,7 +152,7 @@ async def on_message(message: cl.Message):
         chain = cl.user_session.get("chain")
 
         # Initialize ChatBot's answer
-        answer_msg = cl.Message(content="", disable_feedback=True)
+        answer_msg = cl.Message(content="")
         sources = list()
         titles = list()
 
@@ -170,7 +174,7 @@ async def on_message(message: cl.Message):
         await cl.sleep(1)
 
         # Add sources to answer
-        sources_msg = cl.Message(content=add_sources_to_messages(message="", sources=sources, titles=titles), disable_feedback=False)
+        sources_msg = cl.Message(content=add_sources_to_messages(message="", sources=sources, titles=titles))
         await sources_msg.send()
 
         # Log Q/A

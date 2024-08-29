@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnableP
 from src.reranking import compress_documents_lambda
 from src.utils import format_docs
 
-RERANKER_CROSS_ENCODER = "BAAI/bge-reranker-base"
+RERANKER_CROSS_ENCODER = "BAAI/bge-reranker-v2-m3"
 # RERANKER_COLBERT = "bclavie/FraColBERTv2"
 
 
