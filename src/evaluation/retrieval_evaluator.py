@@ -117,7 +117,7 @@ class RetrievalEvaluator:
 
                     golden_source = row.get("source_doc")
 
-                    # based retriever
+                    # base retriever
                     retrieved_docs = vector_db.similarity_search_by_vector(embedding=embedded_queries[i], k=max(configuration.k_values))
 
                     # reranker
