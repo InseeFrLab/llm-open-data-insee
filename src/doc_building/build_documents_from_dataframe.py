@@ -32,31 +32,36 @@ def build_documents_from_dataframe(df: pd.DataFrame, embedding_model_name=EMB_MO
 
     HF_TOKENIZER = True
 
+    # Defining the text splitter 
     if HF_TOKENIZER:
-        autokenizer, chunk_size, chunk_overlap = compute_autokonenizer_chunk_size(EMB_MODEL_NAME)
-
-        logging.info("chunk size : ", chunk_size)
-        logging.info("chunk overlap size : ", chunk_overlap)
+        autokenizer, chunk_size, overlap_size = compute_autokonenizer_chunk_size(EMB_MODEL_NAME)
 
         if config is not None:
-            config.chunk_size = CHUNK_SIZE
-            config.overlap_size = CHUNK_OVERLAP
-            config.collection = config.embedding_model_name.split("/")[-1] + "_" + str(config.chunk_size) + "_" + str(config.overlap_size)
+            # Not in evaluation mode 
+            chunk_size = config.chunk_size
+            overlap_size = config.overlap_size
+            config.collection = config.embedding_model_name.split("/")[-1] + "_" + str(chunk_size) + "_" + str(overlap_size)
             logging.info(f"The associated collection name : {config.collection}")
 
+        logging.info("chunk size : ", chunk_size)
+        logging.info("chunk overlap size : ", overlap_size)
+
+        # define the splitter 
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
             chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
+            chunk_overlap=overlap_size,
             separators=MARKDOWN_SEPARATORS,
         )
-
     else:
-        # do not take into account the  Tokenizer's specs from embeddnig model
+        # do not take into account the  Tokenizer's specs from embedding model
         logging.info("chunk size : ", CHUNK_SIZE)
         logging.info("chunk overlap size : ", CHUNK_OVERLAP)
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP, separators=MARKDOWN_SEPARATORS)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, 
+                                                        chunk_overlap=CHUNK_OVERLAP, 
+                                                        separators=MARKDOWN_SEPARATORS
+                                                    )
 
     docs_processed = text_splitter.split_documents(document_list)
 

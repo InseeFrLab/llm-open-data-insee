@@ -57,7 +57,7 @@ def build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chr
         vector_db = build_database_from_dataframe(
             df=raw_ref_database,
             persist_directory=persist_directory,
-            embedding_model_name=embedding_model_name,
+            embedding_model=embedding_model_name,
             collection_name=collection_name,
             config=config,
         )

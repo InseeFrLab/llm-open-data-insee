@@ -54,7 +54,7 @@ def build_database_from_dataframe(
     )
 
     # collection_name = "insee_data_" + str(EMB_MODEL_NAME.split("/")[-1])
-    collection_name = COLLECTION_NAME
+    collection_name = COLLECTION_NAME if config is None else config.collection
     db = Chroma.from_documents(
         collection_name=collection_name,
         documents=all_splits,
@@ -124,7 +124,6 @@ def build_database_from_csv(
             client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
         )
         logging.info("The database has been built")
-        db.persist()
         return db
     else:
         logging.info("Error Database : database File not found")
