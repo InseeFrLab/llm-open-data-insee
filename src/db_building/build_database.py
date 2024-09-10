@@ -5,9 +5,8 @@ import pandas as pd
 from chromadb.config import Settings
 from config import COLLECTION_NAME, DB_DIR_LOCAL, DB_DIR_S3, EMB_DEVICE, EMB_MODEL_NAME
 from evaluation import RetrievalConfiguration
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
-
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 

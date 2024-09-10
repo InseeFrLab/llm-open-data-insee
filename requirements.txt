@@ -4,6 +4,7 @@ chainlit
 chromadb
 langchain
 langchain-community
+langchain_chroma
 langchain-core
 langchain-huggingface
 pandas

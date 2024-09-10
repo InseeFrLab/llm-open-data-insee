@@ -5,7 +5,7 @@ import time
 import chromadb
 import numpy as np
 import pandas as pd
-from langchain_community.vectorstores.chroma import Chroma
+from langchain_chroma import Chroma
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 
