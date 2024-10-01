@@ -45,7 +45,6 @@ def build_chain(
     retriever,
     prompt: str,
     llm=None,
-    bool_log: bool = False,
     reranker: str = None,
     number_candidates_reranking: int = 10,
 ):
