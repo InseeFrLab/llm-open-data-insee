@@ -48,6 +48,8 @@ MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", DEFAULT_MAX_NEW_TOKENS))
 MODEL_TEMPERATURE = int(os.getenv("MODEL_TEMPERATURE", DEFAULT_MODEL_TEMPERATURE))
 RETURN_FULL_TEXT = os.getenv("RETURN_FULL_TEXT", True)
 DO_SAMPLE = os.getenv("DO_SAMPLE", True)
+DATABASE_RUN_ID = "32d4150a14fa40d49b9512e1f3ff9e8c"
+
 
 # APPLICATION -----------------------------------------
 
@@ -82,7 +84,7 @@ def retrieve_model_tokenizer_and_db(
     # Ensure production database is used
     db = load_vector_database(
         filesystem=fs,
-        database_run_id="32d4150a14fa40d49b9512e1f3ff9e8c"
+        database_run_id=DATABASE_RUN_ID
         # hard coded pour le moment
     )
 
@@ -140,9 +142,15 @@ async def on_chat_start():
 
     llm = None
     prompt = None
+    db = load_vector_database(
+            filesystem=fs,
+            database_run_id=DATABASE_RUN_ID
+            # hard coded pour le moment
+    ) 
     retriever, vectorstore = await cl.make_async(load_retriever)(
                 emb_model_name=embedding,
                 persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+                vectorstore=db,
                 retriever_params={
                     "search_type": "similarity",
                     "search_kwargs": {"k": 30}
@@ -181,7 +189,7 @@ async def on_chat_start():
     if RERANKING_METHOD == "":
         RERANKING_METHOD = None
     chain = build_chain(
-        retriever=retriever[0],
+        retriever=retriever,
         prompt=prompt,
         llm=llm,
         reranker=RERANKING_METHOD,
