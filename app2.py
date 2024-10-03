@@ -206,9 +206,10 @@ async def on_message(message: cl.Message):
     Handle incoming messages and process the response using the RAG chain.
     """
     validator = cl.user_session.get("validator")
-    test_relevancy = await check_query_relevance(
-        validator=validator, query=message.content
-    )
+    #test_relevancy = await check_query_relevance(
+    #    validator=validator, query=message.content
+    #)
+    test_relevancy = True
     if test_relevancy:
         # Retrieve the chain from the user session
         chain = cl.user_session.get("chain")
@@ -232,8 +233,8 @@ async def on_message(message: cl.Message):
             if "context" in chunk:
                 docs = chunk["context"]
                 for doc in docs:
-                    sources.append(doc.metadata.get("source"))
-                    titles.append(doc.metadata.get("title"))
+                    sources.append(doc.metadata.get("url"))
+                    titles.append(doc.metadata.get("Header 1"))
 
         await answer_msg.send()
         await cl.sleep(1)
@@ -269,11 +270,11 @@ async def on_message(message: cl.Message):
         ).send()
 
 
-async def check_query_relevance(validator, query):
-    result = await validator.ainvoke(
-        query, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler()])
-    )
-    return result
+# async def check_query_relevance(validator, query):
+#     result = await validator.ainvoke(
+#         query, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler()])
+#     )
+#     return result
 
 
 # class CustomDataLayer(cl_data.BaseDataLayer):

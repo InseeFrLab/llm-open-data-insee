@@ -1,8 +1,6 @@
 -r requirements.txt
 beautifulsoup4
-bokeh
 collection
-datashader
 fastparquet
 holoviews
 ipykernel
