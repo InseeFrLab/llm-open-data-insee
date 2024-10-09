@@ -171,12 +171,16 @@ async def on_chat_start():
         | StrOutputParser()
     )
 
+    cl.user_session.set("rag_chain", rag_chain)
+
     logging.info("------ rag_chain initialized, ready for use")
+    logging.info(f"Thread ID : {init_msg.thread_id}")
 
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    cl.user_session.set("rag_chain", rag_chain)
+    
+    rag_chain = cl.user_session.get("rag_chain")
 
     response = await rag_chain.invoke(message.content)
 
