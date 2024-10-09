@@ -1,22 +1,19 @@
-import logging
+from transformers import AutoTokenizer
 import os
 import s3fs
+import logging
 
-import chainlit as cl
-import chainlit.data as cl_data
-from langchain.schema.runnable.config import RunnableConfig
+from src.model_building.fetch_llm_model import cache_model_from_hf_hub
+from src.db_building import load_retriever, load_vector_database
+
 from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from langchain_community.llms import VLLM
+import chainlit as cl
 
-from src.chain_building.build_chain import build_chain
-from src.chain_building.build_chain_validator import build_chain_validator
+
 from src.config import CHATBOT_TEMPLATE, EMB_MODEL_NAME
-from src.db_building import (
-    load_retriever,
-    load_vector_database
-)
-from src.model_building import build_llm_model
-from src.results_logging.log_conversations import log_feedback_to_s3, log_qa_to_s3
-from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -27,12 +24,16 @@ logging.basicConfig(
 )
 
 # Remote file configuration
-os.environ['MLFLOW_TRACKING_URI'] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
-fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+os.environ["MLFLOW_TRACKING_URI"] = (
+    "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+)
+fs = s3fs.S3FileSystem(
+    client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
+)
 
 # PARAMETERS --------------------------------------
 
-os.environ['UVICORN_TIMEOUT_KEEP_ALIVE'] = "0"
+os.environ["UVICORN_TIMEOUT_KEEP_ALIVE"] = "0"
 
 model = os.getenv("LLM_MODEL_NAME")
 CHROMA_DB_LOCAL_DIRECTORY = "./data/chroma_db"
@@ -42,163 +43,141 @@ DEFAULT_MAX_NEW_TOKENS = 10
 DEFAULT_MODEL_TEMPERATURE = 1
 embedding = os.getenv("EMB_MODEL_NAME", EMB_MODEL_NAME)
 
-LLM_MODEL = os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2")
+model_id = "meta-llama/Llama-3.2-3B-Instruct"
+LLM_MODEL = os.getenv("LLM_MODEL_NAME", "meta-llama/Llama-3.2-3B-Instruct")
+LLM_MODEL = "microsoft/Phi-3.5-mini-instruct"
 QUANTIZATION = os.getenv("QUANTIZATION", True)
 MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", DEFAULT_MAX_NEW_TOKENS))
 MODEL_TEMPERATURE = int(os.getenv("MODEL_TEMPERATURE", DEFAULT_MODEL_TEMPERATURE))
 RETURN_FULL_TEXT = os.getenv("RETURN_FULL_TEXT", True)
 DO_SAMPLE = os.getenv("DO_SAMPLE", True)
-
 DATABASE_RUN_ID = "32d4150a14fa40d49b9512e1f3ff9e8c"
 
+LLM_MODEL = "meta-llama/Llama-3.2-3B-Instruct"
+MAX_NEW_TOKEN = 8192
+TEMPERATURE = 0.2
+REP_PENALTY = 1.1
+TOP_P = 0.8
 
-def retrieve_model_tokenizer_and_db(
-    filesystem=fs,
-    with_db=True
-    #**kwargs
-):
 
-    # ------------------------
-    # I - LOAD VECTOR DATABASE
+# FUNCTIONS ----------------------------------
 
-    # Load LLM in session
-    llm, tokenizer = build_llm_model(
-            model_name=LLM_MODEL,
-            quantization_config=QUANTIZATION,
-            config=True,
-            token=os.getenv("HF_TOKEN"),
-            streaming=False,
-            generation_args={
-                "max_new_tokens": MAX_NEW_TOKENS,
-                "return_full_text": RETURN_FULL_TEXT,
-                "do_sample": DO_SAMPLE,
-                "temperature": MODEL_TEMPERATURE
-            },
+
+def format_docs(docs: list):
+    return "\n\n".join(
+        [
+            f"""
+            Doc {i + 1}:\nTitle: {doc.metadata.get("Header 1")}\n
+            Source: {doc.metadata.get("url")}\n
+            Content:\n{doc.page_content}
+            """
+            for i, doc in enumerate(docs)
+        ]
     )
 
-    if with_db is False:
-        return llm, tokenizer, None
 
-    # Ensure production database is used
-    db = load_vector_database(
-        filesystem=fs,
-        database_run_id="32d4150a14fa40d49b9512e1f3ff9e8c"
-        # hard coded pour le moment
-    )
-
-    return llm, tokenizer, db
+# PROMPT -------------------------------------
 
 
-# APPLICATION -----------------------------------------
+system_instructions = """
+Tu es un assistant spécialisé dans la statistique publique. Tu réponds à des questions concernant les données de l'Insee, l'institut national statistique Français.
+
+Réponds en FRANCAIS UNIQUEMENT. Utilise une mise en forme au format markdown.
+
+En utilisant UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
+
+La réponse doit être développée et citer ses sources (titre et url de la publication) qui sont référencées à la fin. Cite notamment l'url d'origine de la publication, dans un format markdown.
+
+Cite 5 sources maximum.
+
+Tu n'es pas obligé d'utiliser les sources les moins pertinentes. 
+
+Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
+
+Voici le contexte sur lequel tu dois baser ta réponse :
+Contexte: {context}
+"""
+
+question_instructions = """
+Voici la question à laquelle tu dois répondre :
+Question: {question}
+
+Réponse:
+"""
+
+template = f"""
+{system_instructions}
+
+{question_instructions}
+"""
+
+custom_rag_prompt = PromptTemplate.from_template(template)
+
+
+# CHAT START -------------------------------
 
 
 @cl.on_chat_start
 async def on_chat_start():
 
     # Initial message
-    init_msg = cl.Message(
-        content="Bienvenue sur le ChatBot de l'INSEE!"#, disable_feedback=True
-    )
+    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
     await init_msg.send()
 
-    logging.info("Retriever only mode !")
-
-    llm, tokenizer = build_llm_model(
-                model_name=LLM_MODEL,
-                quantization_config=QUANTIZATION,
-                config=True,
-                token=os.getenv("HF_TOKEN"),
-                streaming=False,
-                generation_args={
-                    "max_new_tokens": MAX_NEW_TOKENS,
-                    "return_full_text": RETURN_FULL_TEXT,
-                    "do_sample": DO_SAMPLE,
-                    "temperature": MODEL_TEMPERATURE
-                },
+    cache_model_from_hf_hub(
+        model_id,
+        s3_bucket=os.environ["S3_BUCKET"],
+        s3_cache_dir="models/hf_hub",
+        s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
     )
+
+    logging.info(f"------ downloading {model_id} or using from cache")
+
+    # tokenizer = AutoTokenizer.from_pretrained(
+    # model_id, use_fast=True, device_map="auto"
+    # )
 
     db = load_vector_database(
-            filesystem=fs,
-            database_run_id=DATABASE_RUN_ID
-            # hard coded pour le moment
+        filesystem=fs,
+        database_run_id=DATABASE_RUN_ID,
+        # hard coded pour le moment
     )
 
-    retriever, vectorstore = await cl.make_async(load_retriever)(
-                emb_model_name=embedding,
-                persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-                vectorstore=db,
-                retriever_params={
-                    "search_type": "similarity",
-                    "search_kwargs": {"k": 30}
-                },
-            )
-    logging.info("Retriever loaded !")
+    logging.info("------ database loaded")
 
-    db_docs = db.get()["documents"]
-    ndocs = f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents"
-    logging.info(ndocs)
-
-    logging.info("Retriever loaded !")
-
-
-    RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
-                CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
-            )
-    prompt = PromptTemplate(
-            input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE
-    )    
-
-
-    chain = build_chain(
-            retriever=retriever,
-            prompt=prompt,
-            llm=llm,
-            reranker="BM25",
+    retriever, vectorstore = load_retriever(
+        emb_model_name=embedding,
+        persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+        vectorstore=db,
+        retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
     )
-    
-    cl.user_session.set("chain", chain)
-    logging.info("------chain built")
 
-    logging.info(f"Thread ID : {init_msg.thread_id}")
+    logging.info("------ retriever ready for use")
+
+    llm = VLLM(
+        model=LLM_MODEL,
+        max_new_tokens=MAX_NEW_TOKEN,
+        top_p=TOP_P,
+        temperature=TEMPERATURE,
+        rep_penalty=REP_PENALTY,
+    )
+
+    logging.info("------ VLLM object ready")
+
+    rag_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        | custom_rag_prompt
+        | llm
+        | StrOutputParser()
+    )
+
+    logging.info("------ rag_chain initialized, ready for use")
 
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """
-    Handle incoming messages and process the response using the RAG chain.
-    """
-    chain = cl.user_session.get("chain")
+    cl.user_session.set("rag_chain", rag_chain)
 
-    # Initialize ChatBot's answer
-    answer_msg = cl.Message(content="")#, disable_feedback=True)
-    sources = list()
-    titles = list()
+    response = await rag_chain.invoke(message.content)
 
-    # Generate ChatBot's answer
-    async for chunk in chain.astream_log(
-        message.content,
-        config=RunnableConfig(
-            callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]
-        ),
-    ):
-        if "answer" in chunk:
-            await answer_msg.stream_token(chunk["answer"])
-            generated_answer = chunk["answer"]
-            logging.info(f"------answer: {generated_answer}")
-
-        if "context" in chunk:
-            docs = chunk["context"]
-            for doc in docs:
-                sources.append(doc.metadata.get("url"))
-                titles.append(doc.metadata.get("Header 1"))
-
-    await answer_msg.send()
-    await cl.sleep(1)
-
-    # Add sources to answer
-    sources_msg = cl.Message(
-        content=add_sources_to_messages(message="", sources=sources, titles=titles)#,
-        #disable_feedback=False,
-    )
-    await sources_msg.send()
-
+    await cl.Message(content=response).send()
