@@ -152,4 +152,7 @@ async def on_message(message: cl.Message):
     rag_chain = cl.user_session.get("rag_chain")
     response = rag_chain.invoke(message.content)
 
+    # TODO: ajouter un callback
+    # https://docs.chainlit.io/api-reference/integrations/langchain#final-answer-streaming
+
     await cl.Message(content=response).send()
