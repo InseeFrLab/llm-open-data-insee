@@ -1,3 +1,4 @@
+import os
 import logging
 import tempfile
 import warnings
@@ -35,19 +36,59 @@ def load_vector_database(filesystem: s3fs.S3FileSystem, **kwargs) -> Chroma:
     return None
 
 
-def _load_database_from_mlflow(run_id: str) -> Chroma:
+# LOADING FROM MLFLOW ----------------------------------------
+
+
+def _load_database_from_mlflow(
+    run_id: str, dst_path: str = None, force: bool = False
+) -> Chroma:
     """Helper function to load database from MLflow artifacts."""
-    local_path = mlflow.artifacts.download_artifacts(
-        run_id=run_id, artifact_path="chroma"
+
+    local_path = _download_mlflow_artifacts_if_exists(
+        run_id=run_id, dst_path=dst_path, force=force
     )
+
     run_params = mlflow.get_run(run_id).data.params
+
     db = reload_database_from_local_dir(
         embed_model_name=run_params["embedding_model"],
         collection_name=run_params["collection_name"],
         persist_directory=local_path,
         embed_device=run_params["embedding_device"],
     )
+
     return db
+
+
+def _download_mlflow_artifacts_if_exists(run_id, dst_path=None, force=False):
+
+    # Construct the destination path
+    if dst_path is None:
+        tmpdir = tempfile.gettempdir()
+        dst_path = os.path.join(tmpdir, "mlflow", run_id, "chroma")
+
+    # Check if dst_path exists and force is False
+    if os.path.exists(dst_path) and not force:
+        logging.info(
+            f"Destination path {dst_path} exists. Skipping download because force is set to False."
+        )
+        local_path = f"{dst_path}/chroma"
+    else:
+        # If dst_path doesn't exist or force is True,
+        # ensure the directory exists and download artifacts
+        os.makedirs(dst_path, exist_ok=True)
+
+        # Download artifacts to the specific dst_path
+        local_path = mlflow.artifacts.download_artifacts(
+            run_id=run_id, artifact_path="chroma", dst_path=dst_path
+        )
+
+        logging.info(f"Artifacts downloaded to: {local_path}")
+
+    return local_path
+
+
+# LOADING FROM S3 ----------------------------------------
 
 
 def _load_database_from_s3(
