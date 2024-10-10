@@ -104,7 +104,7 @@ async def on_chat_start():
 
     logging.info(f"------ downloading {LLM_MODEL} or using from cache")
 
-    retrieve_llm_from_cache(model_id=LLM_MODEL)
+    # retrieve_llm_from_cache(model_id=LLM_MODEL)
 
     logging.info("------ database loaded")
 
@@ -149,8 +149,7 @@ async def on_chat_start():
 @cl.on_message
 async def on_message(message: cl.Message):
     
-    #rag_chain = cl.user_session.get("rag_chain")
-    #response = rag_chain.invoke(message.content)
-    response = f"Hello, you just sent: {message.content}!"
+    rag_chain = cl.user_session.get("rag_chain")
+    response = rag_chain.invoke(message.content)
 
     await cl.Message(content=response).send()
