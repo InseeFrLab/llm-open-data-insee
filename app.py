@@ -5,6 +5,7 @@ import logging
 
 from src.db_building import load_retriever, load_vector_database
 
+from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.llms import VLLM
@@ -148,11 +149,21 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    
+
     rag_chain = cl.user_session.get("rag_chain")
-    response = rag_chain.invoke(message.content)
+
+    answer_msg = cl.Message(content="")
+
+    async for chunk in rag_chain.astream(
+        message.content,
+        config=RunnableConfig(
+                callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]
+        )
+    ):
+        await answer_msg.send()
+        await cl.sleep(1)
 
     # TODO: ajouter un callback
     # https://docs.chainlit.io/api-reference/integrations/langchain#final-answer-streaming
 
-    await cl.Message(content=response).send()
+    # await cl.Message(content=response).send()
