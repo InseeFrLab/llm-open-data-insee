@@ -3,8 +3,9 @@ import logging
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+
 
 from src.config import (
     CHROMA_DB_LOCAL_DIRECTORY,
@@ -103,6 +104,8 @@ def build_vector_database(
 
     # chucking of documents
     all_splits = chunk_documents(data=df, **kwargs)
+
+    logging.info(f"Building embedding model: {kwargs.get('embedding_model')}")
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=kwargs.get("embedding_model"),

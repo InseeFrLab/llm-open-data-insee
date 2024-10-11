@@ -22,3 +22,4 @@ rank_bm25
 accelerate>=0.26.0
 bitsandbytes
 vllm
+lxml

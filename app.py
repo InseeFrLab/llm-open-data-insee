@@ -9,8 +9,12 @@ from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.llms import VLLM
+from langchain_core.runnables import (
+    RunnableLambda,
+    RunnableParallel,
+    RunnablePassthrough,
+)
 import chainlit as cl
-
 
 from src.config import CHATBOT_TEMPLATE, EMB_MODEL_NAME
 from utils import (
@@ -95,6 +99,17 @@ prompt = create_prompt_from_instructions(
 
 # CHAT START -------------------------------
 
+def format_docs2(docs: list):
+    return "\n\n".join(
+        [
+            f"""
+            Doc {i + 1}:\nTitle: {doc.metadata.get("Header 1")}\n
+            Source: {doc.metadata.get("url")}\n
+            Content:\n{doc.page_content}
+            """
+            for i, doc in enumerate(docs)
+        ]
+    )
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -116,11 +131,15 @@ async def on_chat_start():
 
     logging.info("------ database loaded")
 
-    retriever, vectorstore = load_retriever(
+    retriever, vectorstore = await cl.make_async(load_retriever)(
         emb_model_name=embedding,
         vectorstore=db,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 10}},
     )
+
+    db_docs = db.get()["documents"]
+    ndocs = f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents"
+    logging.info(ndocs)
 
     logging.info("------ retriever ready for use")
 
