@@ -73,7 +73,7 @@ spec:
             git clone https://github.com/InseeFrLab/llm-open-data-insee.git &&
             export MC_HOST_s3=https://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}:@${AWS_S3_ENDPOINT} &&
             cd llm-open-data-insee/ &&
-            pip install -r requirements-dev.txt &&
+            pip install -r requirements.txt &&
             git checkout update-app &&
             python run_build_database.py --experiment_name {{inputs.parameters.EXPERIMENT}} \
               --data_raw_s3_path {{inputs.parameters.DATA_PATH}} \
