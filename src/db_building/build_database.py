@@ -74,7 +74,7 @@ def build_vector_database(
     logging.info("Start building the database")
 
     # Call the process_data function to handle data loading, parsing, and splitting
-    df, all_splits = process_data(
+    df, all_splits = process_store_data(
         filesystem=filesystem,
         s3_bucket=s3_bucket,
         location_dataset=location_dataset,

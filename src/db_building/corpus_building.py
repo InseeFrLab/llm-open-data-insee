@@ -1,4 +1,5 @@
 import logging
+from typing import Tuple
 import pandas as pd
 import s3fs
 
@@ -38,7 +39,60 @@ DEFAULT_LOCATIONS = {
 # CHUNKING ALL DATASET ---------------------------------------------------
 
 
-def process_data(
+def preprocess_and_store_data(
+    filesystem: s3fs.S3FileSystem,
+    s3_bucket: str,
+    location_dataset: dict = DEFAULT_LOCATIONS,
+    **kwargs
+) -> Tuple[pd.DataFrame, t.Iterable[Document]]:
+    """
+    Process data from S3, chunk the documents, and store them in an intermediate location.
+    
+    Parameters:
+    - filesystem: s3fs.S3FileSystem object for interacting with S3.
+    - s3_bucket: str, the name of the S3 bucket.
+    - location_dataset: dict, paths to the main data files in the S3 bucket.
+    - kwargs: Optional keyword arguments for data processing and chunking (e.g., 'max_pages', 'chunk_overlap', 'chunk_size').
+    
+    Returns:
+    - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
+    """
+    
+    # Handle data loading, parsing, and splitting
+    df, all_splits = _preprocess_data(
+        filesystem=filesystem,
+        s3_bucket=s3_bucket,
+        location_dataset=location_dataset,
+        **kwargs
+    )
+
+    logging.info("Saving chunked documents in an intermediate location")
+
+    # Extract parameters from kwargs
+    chunk_overlap = kwargs.get('chunk_overlap', None)
+    chunk_size = kwargs.get('chunk_size', None)
+    max_pages = kwargs.get('max_pages', None)
+
+    # Create the storage path for intermediate data
+    data_intermediate_storage = _s3_path_intermediate_collection(
+        s3_bucket=s3_bucket,
+        chunk_overlap=chunk_overlap,
+        chunk_size=chunk_size,
+        max_pages=max_pages
+    )
+
+    # Save chunked documents to JSONL using S3 and s3fs
+    save_docs_to_jsonl(all_splits, data_intermediate_storage, filesystem)
+
+    # Save the DataFrame as a Parquet file in the same directory
+    parquet_file_path = data_intermediate_storage.replace("docs.jsonl", "corpus.parquet")
+    df.to_parquet(parquet_file_path, filesystem=filesystem)
+    logging.info(f"DataFrame saved to {parquet_file_path}")
+
+    return df, all_splits
+
+
+def _preprocess_data(
     filesystem: s3fs.S3FileSystem,
     s3_bucket: str = S3_BUCKET,
     location_dataset: dict = DEFAULT_LOCATIONS,
@@ -106,6 +160,103 @@ def process_data(
 
     return df, all_splits
 
+
+# RECHUNKING OR LOADING FROM DATA STORE --------------------------
+
+def build_or_use_from_cache(
+    filesystem: s3fs.S3FileSystem,
+    s3_bucket: str,
+    location_dataset: dict = DEFAULT_LOCATIONS,
+    force_rebuild: bool = False,
+    **kwargs
+) -> Tuple[pd.DataFrame, t.Iterable[Document]]:
+    """
+    Either load the chunked documents and DataFrame from cache or process and store the data.
+    
+    Parameters:
+    - filesystem: s3fs.S3FileSystem object for interacting with S3.
+    - s3_bucket: str, the name of the S3 bucket.
+    - location_dataset: dict, paths to the main data files in the S3 bucket.
+    - force_rebuild: bool, if True, will force data processing and storage even if cache exists.
+    - kwargs: Optional keyword arguments for data processing and chunking (e.g., 'max_pages', 'chunk_overlap', 'chunk_size').
+
+    Returns:
+    - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
+    """
+
+    # Extract parameters from kwargs
+    chunk_overlap = kwargs.get('chunk_overlap', None)
+    chunk_size = kwargs.get('chunk_size', None)
+    max_pages = kwargs.get('max_pages', None)
+
+    # Create the storage path for intermediate data
+    data_intermediate_storage = _s3_path_intermediate_collection(
+        s3_bucket=s3_bucket,
+        chunk_overlap=chunk_overlap,
+        chunk_size=chunk_size,
+        max_pages=max_pages
+    )
+
+    # Create the Parquet file path (corpus.parquet)
+    parquet_file_path = data_intermediate_storage.replace("docs.jsonl", "corpus.parquet")
+
+    # Check if we should use the cached data
+    if not force_rebuild:
+        try:
+            # Attempt to load the cached documents from S3
+            logging.info(f"Attempting to load chunked documents from {data_intermediate_storage}")
+            all_splits = load_docs_from_jsonl(data_intermediate_storage, filesystem)
+            logging.info("Loaded chunked documents from cache")
+            
+            # Attempt to load the cached DataFrame from S3
+            logging.info(f"Attempting to load DataFrame from {parquet_file_path}")
+            df = pd.read_parquet(parquet_file_path, filesystem=filesystem)
+            logging.info("Loaded DataFrame from cache")
+
+            return df, all_splits
+
+        except FileNotFoundError:
+            logging.warning("No cached data found, rebuilding data...")
+
+    # If force_rebuild is True or cache is not found, process and store the data
+    logging.info("Processing data and storing chunked documents and DataFrame")
+    df, all_splits = preprocess_and_store_data(
+        filesystem=filesystem,
+        s3_bucket=s3_bucket,
+        location_dataset=location_dataset,
+        **kwargs
+    )
+
+    return df, all_splits
+
+
+
+# PATH BUILDER FOR S3 STORAGE ------------------------------------
+
+
+def _s3_path_intermediate_collection(
+    s3_bucket: str = S3_BUCKET,
+    chunk_overlap: int = None,
+    chunk_size: int = None,
+    max_pages: int = None
+) -> str:
+    """
+    Build the intermediate storage path for chunked documents on S3.
+    
+    Parameters:
+    - s3_bucket: str, the name of the S3 bucket.
+    - chunk_overlap: int, the chunk overlap value (can be None).
+    - chunk_size: int, the chunk size (can be None).
+    - max_pages: int, the maximum number of pages (can be None).
+    
+    Returns:
+    - str: The constructed S3 path for saving the chunked documents.
+    """
+    return (
+        f"s3://{s3_bucket}/data/chunked_documents/"
+        f"chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}/"
+        "docs.jsonl"
+    )
 
 # SAVE AND LOAD DOCUMENTS AS JSON ---------------------------------
 
