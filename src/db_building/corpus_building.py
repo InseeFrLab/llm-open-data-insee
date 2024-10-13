@@ -100,4 +100,4 @@ def process_data(
     # Chunk the documents (using tokenizer if specified in kwargs)
     all_splits = chunk_documents(data=df, **kwargs)
 
-    return all_splits
+    return df, all_splits

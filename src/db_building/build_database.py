@@ -17,6 +17,7 @@ from src.config import (
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
+from .corpus_building import process_data, DEFAULT_LOCATIONS
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -59,67 +60,45 @@ def parse_collection_name(collection_name: str):
 
 
 def build_vector_database(
-    data_path: str,
     persist_directory: str,
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
+    s3_bucket: str = S3_BUCKET,
+    location_dataset: dict = DEFAULT_LOCATIONS,
     **kwargs,
 ) -> Chroma:
     logging.info(f"The database will temporarily be stored in {persist_directory}")
     logging.info("Start building the database")
 
-    data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
-
-    if kwargs.get("max_pages") is not None:
-        data = data.head(kwargs.get("max_pages"))
-
-    # Parse the XML content
-    parsed_pages = parse_xmls(data)
-
-    df = data.set_index("id").merge(
-        pd.DataFrame(parsed_pages), left_index=True, right_index=True
+    # Call the process_data function to handle data loading, parsing, and splitting
+    df, all_splits = process_data(
+        filesystem=filesystem,
+        s3_bucket=s3_bucket,
+        location_dataset=location_dataset,
+        **kwargs
     )
-    df = df[
-        [
-            "titre",
-            "categorie",
-            "url",
-            "dateDiffusion",
-            "theme",
-            "collection",
-            "libelleAffichageGeo",
-            "content",
-        ]
-    ]
-
-    # Temporary solution to add the RMES data
-    data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
-    data_rmes = pd.read_parquet(
-        f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem
-    )
-    df = pd.concat([df, data_rmes])
-
-    # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
-    df = df.fillna(value="")
-
-    # chucking of documents
-    all_splits = chunk_documents(data=df, **kwargs)
 
     logging.info("Document chunking is over, starting to embed them")
 
-    logging.info(f"Building embedding model: {kwargs.get('embedding_model')}")
+    # Building embedding model using parameters from kwargs
+    embedding_model = kwargs.get("embedding_model")
+    embedding_device = kwargs.get("embedding_device")
+
+    logging.info("Loading embedding model")
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=kwargs.get("embedding_model"),
-        model_kwargs={"device": kwargs.get("embedding_device")},
+        model_name=embedding_model,
+        model_kwargs={"device": embedding_device},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
-        
     )
+
+    logging.info(f"Building embedding model: {embedding_model} on {embedding_device}")
 
     max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
 
+    # Loop through the chunks and build the Chroma database
     for split_docs_chunk in split_docs_chunked:
         db = Chroma.from_documents(
             collection_name=collection_name,
