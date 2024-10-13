@@ -2,6 +2,10 @@ import logging
 import pandas as pd
 import s3fs
 
+import typing as t
+import jsonlines
+from langchain.schema import Document
+
 from src.config import (
     CHROMA_DB_LOCAL_DIRECTORY,
     COLLECTION_NAME,
@@ -101,3 +105,36 @@ def process_data(
     all_splits = chunk_documents(data=df, **kwargs)
 
     return df, all_splits
+
+
+# SAVE AND LOAD DOCUMENTS AS JSON ---------------------------------
+
+
+def save_docs_to_jsonl(documents: t.Iterable[Document], file_path: str, fs: s3fs.S3FileSystem) -> None:
+    """
+    Save a list of Document objects to a JSONL file on S3 using s3fs.
+
+    :param documents: Iterable of Document objects to be saved.
+    :param file_path: The S3 path where the JSONL file will be saved (e.g., "s3://bucket-name/path/to/file.jsonl").
+    :param fs: s3fs.S3FileSystem object for handling S3 file operations.
+    """
+    with fs.open(file_path, mode="w") as f:
+        with jsonlines.Writer(f) as writer:
+            for doc in documents:
+                writer.write(doc.dict())  # Assuming Document has a .dict() method
+
+
+def load_docs_from_jsonl(file_path: str, fs: s3fs.S3FileSystem) -> t.Iterable[Document]:
+    """
+    Load Document objects from a JSONL file on S3 using s3fs.
+
+    :param file_path: The S3 path where the JSONL file is stored (e.g., "s3://bucket-name/path/to/file.jsonl").
+    :param fs: s3fs.S3FileSystem object for handling S3 file operations.
+    :return: Iterable of Document objects loaded from the JSONL file.
+    """
+    documents = []
+    with fs.open(file_path, mode="r") as f:
+        with jsonlines.Reader(f) as reader:
+            for doc in reader:
+                documents.append(Document(**doc))  # Assuming Document can be instantiated from a dict
+    return documents

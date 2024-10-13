@@ -17,7 +17,10 @@ from src.config import (
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls, split_list
-from .corpus_building import process_data, DEFAULT_LOCATIONS
+from .corpus_building import (
+    process_data, DEFAULT_LOCATIONS,
+    save_docs_to_jsonl, load_docs_from_jsonl
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -77,6 +80,19 @@ def build_vector_database(
         location_dataset=location_dataset,
         **kwargs
     )
+
+    logging.info("Saving chunked documents in an intermediate location")
+
+    chunk_overlap = kwargs.get('chunk_overlap', None)
+    chunk_size = kwargs.get('chunk_size', None)
+    max_pages = kwargs.get('max_pages', None)
+    data_intermediate_storage = (
+        f"{S3_BUCKET}/data/chunked_documents/"
+        f"{chunk_overlap=}/{chunk_size=}/{max_pages=}/"
+        "docs.json"
+    )
+
+    save_docs_to_jsonl(all_splits, data_intermediate_storage, filesystem)
 
     logging.info("Document chunking is over, starting to embed them")
 

@@ -11,6 +11,7 @@ from langchain_community.vectorstores import Chroma
 from src.config import S3_BUCKET
 
 from .build_database import reload_database_from_local_dir
+from .corpus_building import save_docs_to_jsonl, load_docs_from_jsonl
 
 
 def load_vector_database(filesystem: s3fs.S3FileSystem, **kwargs) -> Chroma:
