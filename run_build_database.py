@@ -141,7 +141,9 @@ def run_build_database(
     mlflow.set_experiment(experiment_name)
 
     with mlflow.start_run():
-        # Log parameters
+
+        # Log parameters -------------------------------
+
         for arg_name, arg_value in locals().items():
             if arg_name == "kwargs":
                 for key, value in arg_value.items():
@@ -155,6 +157,8 @@ def run_build_database(
             }
         )
 
+        # Build database ------------------------------
+
         db, df_raw = build_vector_database(
             data_path=data_raw_s3_path,
             persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
@@ -162,6 +166,33 @@ def run_build_database(
             filesystem=fs,
             **kwargs,
         )
+
+        # Log the parameters in a yaml file
+        with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/parameters.yaml", "w") as f:
+            params = {
+                "data_raw_s3_path": data_raw_s3_path,
+                "collection_name": collection_name,
+            } | kwargs
+            yaml.dump(params, f, default_flow_style=False)
+
+        # Move ChromaDB in a specific path in s3 -----------------------------
+
+        hash_chroma = next(
+            entry
+            for entry in os.listdir(CHROMA_DB_LOCAL_DIRECTORY)
+            if os.path.isdir(os.path.join(CHROMA_DB_LOCAL_DIRECTORY, entry))
+        )
+        path_chroma_stored_s3 = f"s3/{S3_BUCKET}/data/chroma_database/{kwargs.get("embedding_model")}/{hash_chroma}/"
+        cmd = [
+            "mc",
+            "cp",
+            "-r",
+            f"{CHROMA_DB_LOCAL_DIRECTORY}/",
+            path_chroma_stored_s3,
+        ]
+        subprocess.run(cmd, check=True)
+
+        # Build database ------------------------------
 
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
@@ -219,30 +250,6 @@ def run_build_database(
             # Log all Python files to MLflow artifact
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
-        # Log the parameters in a yaml file
-        with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/parameters.yaml", "w") as f:
-            params = {
-                "data_raw_s3_path": data_raw_s3_path,
-                "collection_name": collection_name,
-            } | kwargs
-            yaml.dump(params, f, default_flow_style=False)
-
-        # Move ChromaDB in a specific path in s3 -----------------------------
-
-        hash_chroma = next(
-            entry
-            for entry in os.listdir(CHROMA_DB_LOCAL_DIRECTORY)
-            if os.path.isdir(os.path.join(CHROMA_DB_LOCAL_DIRECTORY, entry))
-        )
-        path_chroma_stored_s3 = f"s3/{S3_BUCKET}/data/chroma_database/{kwargs.get("embedding_model")}/{hash_chroma}/"
-        cmd = [
-            "mc",
-            "cp",
-            "-r",
-            f"{CHROMA_DB_LOCAL_DIRECTORY}/",
-            path_chroma_stored_s3,
-        ]
-        subprocess.run(cmd, check=True)
         mlflow.log_param("chroma_path_s3_storage", path_chroma_stored_s3)
         logger.info(f'Program ended with success, ChromaDB stored at location {path_chroma_stored_s3}')
 

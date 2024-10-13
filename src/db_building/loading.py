@@ -120,6 +120,8 @@ def _load_database_from_s3(
     )
 
     db_path_prefix = f"{S3_BUCKET}/data/chroma_database/{kwargs.get('embedding_model')}"
+    
+    logging.info(f"Checking if a database has been stored at location '{db_path_prefix}'")
 
     if not filesystem.exists(db_path_prefix):
         raise FileNotFoundError(
@@ -130,6 +132,7 @@ def _load_database_from_s3(
         with filesystem.open(f"{db_path}/parameters.yaml") as f:
             params = yaml.safe_load(f)
             different_params = compare_params(kwargs, params)
+            print(params)
 
         if not different_params:
             return _reload_database_from_s3(filesystem, db_path, kwargs)

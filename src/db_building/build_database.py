@@ -105,6 +105,8 @@ def build_vector_database(
     # chucking of documents
     all_splits = chunk_documents(data=df, **kwargs)
 
+    logging.info("Document chunking is over, starting to embed them")
+
     logging.info(f"Building embedding model: {kwargs.get('embedding_model')}")
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
@@ -112,6 +114,7 @@ def build_vector_database(
         model_kwargs={"device": kwargs.get("embedding_device")},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
+        
     )
 
     max_batch_size = 41600
@@ -158,6 +161,8 @@ def reload_database_from_local_dir(
     )
     return db
 
+
+# LOAD RETRIEVER -------------------------------
 
 def load_retriever(
     emb_model_name,
