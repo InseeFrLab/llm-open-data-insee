@@ -15,12 +15,11 @@ from src.config import (
     S3_BUCKET,
 )
 
-from .document_chunker import chunk_documents
-from .utils_db import parse_xmls, split_list
+
 from .corpus_building import (
-    process_data, DEFAULT_LOCATIONS,
-    save_docs_to_jsonl, load_docs_from_jsonl
+    build_or_use_from_cache, DEFAULT_LOCATIONS,
 )
+from .utils_db import split_list
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -70,29 +69,18 @@ def build_vector_database(
     location_dataset: dict = DEFAULT_LOCATIONS,
     **kwargs,
 ) -> Chroma:
+
     logging.info(f"The database will temporarily be stored in {persist_directory}")
+
     logging.info("Start building the database")
 
     # Call the process_data function to handle data loading, parsing, and splitting
-    df, all_splits = process_store_data(
+    df, all_splits = build_or_use_from_cache(
         filesystem=filesystem,
         s3_bucket=s3_bucket,
         location_dataset=location_dataset,
         **kwargs
     )
-
-    logging.info("Saving chunked documents in an intermediate location")
-
-    chunk_overlap = kwargs.get('chunk_overlap', None)
-    chunk_size = kwargs.get('chunk_size', None)
-    max_pages = kwargs.get('max_pages', None)
-    data_intermediate_storage = (
-        f"{S3_BUCKET}/data/chunked_documents/"
-        f"{chunk_overlap=}/{chunk_size=}/{max_pages=}/"
-        "docs.json"
-    )
-
-    save_docs_to_jsonl(all_splits, data_intermediate_storage, filesystem)
 
     logging.info("Document chunking is over, starting to embed them")
 

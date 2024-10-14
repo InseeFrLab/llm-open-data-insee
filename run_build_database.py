@@ -131,6 +131,10 @@ parser.add_argument(
 args = parser.parse_args()
 
 
+os.environ["MLFLOW_TRACKING_URI"] = (
+    "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+)
+
 def run_build_database(
     experiment_name: str,
     data_raw_s3_path: str,
