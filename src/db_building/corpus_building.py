@@ -81,12 +81,16 @@ def preprocess_and_store_data(
         max_pages=max_pages
     )
 
+
     # Save chunked documents to JSONL using S3 and s3fs
     save_docs_to_jsonl(all_splits, data_intermediate_storage, filesystem)
 
     # Save the DataFrame as a Parquet file in the same directory
     parquet_file_path = data_intermediate_storage.replace("docs.jsonl", "corpus.parquet")
-    df.to_parquet(parquet_file_path, filesystem=filesystem)
+    df.loc[:, ~df.columns.isin(["dateDiffusion"])] = (
+        df.loc[:, ~df.columns.isin(["dateDiffusion"])].astype(str)
+    )    
+    df.to_parquet(parquet_file_path, filesystem=filesystem, index=False)
     logging.info(f"DataFrame saved to {parquet_file_path}")
 
     return df, all_splits
