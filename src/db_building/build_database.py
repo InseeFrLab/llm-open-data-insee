@@ -62,7 +62,6 @@ def parse_collection_name(collection_name: str):
 
 
 def build_vector_database(
-    model_id: str,
     persist_directory: str,
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
@@ -74,6 +73,8 @@ def build_vector_database(
     logging.info(f"The database will temporarily be stored in {persist_directory}")
 
     logging.info("Start building the database")
+
+    model_id = kwargs.get("embedding_model")
 
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = build_or_use_from_cache(
