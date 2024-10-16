@@ -43,6 +43,7 @@ def preprocess_and_store_data(
     filesystem: s3fs.S3FileSystem,
     s3_bucket: str,
     location_dataset: dict = DEFAULT_LOCATIONS,
+    model_id: str = "OrdalieTech/Solon-embeddings-large-0.1",
     **kwargs
 ) -> Tuple[pd.DataFrame, t.Iterable[Document]]:
     """
@@ -60,6 +61,7 @@ def preprocess_and_store_data(
     
     # Handle data loading, parsing, and splitting
     df, all_splits = _preprocess_data(
+        model_id=model_id,
         filesystem=filesystem,
         s3_bucket=s3_bucket,
         location_dataset=location_dataset,
@@ -76,6 +78,7 @@ def preprocess_and_store_data(
     # Create the storage path for intermediate data
     data_intermediate_storage = _s3_path_intermediate_collection(
         s3_bucket=s3_bucket,
+        model_id=model_id,
         chunk_overlap=chunk_overlap,
         chunk_size=chunk_size,
         max_pages=max_pages
@@ -160,7 +163,9 @@ def _preprocess_data(
     df = df.fillna(value="")
 
     # Chunk the documents (using tokenizer if specified in kwargs)
-    all_splits = chunk_documents(data=df, **kwargs)
+    all_splits = chunk_documents(
+        data=df,
+        **kwargs)
 
     return df, all_splits
 
@@ -168,6 +173,7 @@ def _preprocess_data(
 # RECHUNKING OR LOADING FROM DATA STORE --------------------------
 
 def build_or_use_from_cache(
+    model_id: str,
     filesystem: s3fs.S3FileSystem,
     s3_bucket: str,
     location_dataset: dict = DEFAULT_LOCATIONS,
@@ -196,6 +202,7 @@ def build_or_use_from_cache(
     # Create the storage path for intermediate data
     data_intermediate_storage = _s3_path_intermediate_collection(
         s3_bucket=s3_bucket,
+        model_id=model_id,
         chunk_overlap=chunk_overlap,
         chunk_size=chunk_size,
         max_pages=max_pages
@@ -228,6 +235,7 @@ def build_or_use_from_cache(
         filesystem=filesystem,
         s3_bucket=s3_bucket,
         location_dataset=location_dataset,
+        model_id=model_id,
         **kwargs
     )
 
@@ -240,6 +248,7 @@ def build_or_use_from_cache(
 
 def _s3_path_intermediate_collection(
     s3_bucket: str = S3_BUCKET,
+    model_id: str = "OrdalieTech/Solon-embeddings-large-0.1",
     chunk_overlap: int = None,
     chunk_size: int = None,
     max_pages: int = None
@@ -258,6 +267,7 @@ def _s3_path_intermediate_collection(
     """
     return (
         f"s3://{s3_bucket}/data/chunked_documents/"
+        f"{model_id=}/"
         f"chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}/"
         "docs.jsonl"
     )

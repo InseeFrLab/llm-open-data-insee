@@ -15,7 +15,6 @@ PyYAML
 ragatouille
 s3fs
 scipy
-torch
 tqdm
 transformers
 rank_bm25

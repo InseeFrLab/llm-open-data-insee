@@ -171,6 +171,8 @@ def run_build_database(
             **kwargs,
         )
 
+        logging.info("")
+
         # Log the parameters in a yaml file
         with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/parameters.yaml", "w") as f:
             params = {

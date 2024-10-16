@@ -1,7 +1,7 @@
 import logging
-
-import pandas as pd
+import gc
 import s3fs
+
 from chromadb.config import Settings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -62,6 +62,7 @@ def parse_collection_name(collection_name: str):
 
 
 def build_vector_database(
+    model_id: str,
     persist_directory: str,
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
@@ -79,6 +80,7 @@ def build_vector_database(
         filesystem=filesystem,
         s3_bucket=s3_bucket,
         location_dataset=location_dataset,
+        model_id=model_id,
         **kwargs
     )
 
@@ -103,14 +105,24 @@ def build_vector_database(
     split_docs_chunked = split_list(all_splits, max_batch_size)
 
     # Loop through the chunks and build the Chroma database
-    for split_docs_chunk in split_docs_chunked:
-        db = Chroma.from_documents(
-            collection_name=collection_name,
-            documents=split_docs_chunk,
-            persist_directory=persist_directory,
-            embedding=emb_model,
-            client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
-        )
+    try:
+        for split_docs_chunk in split_docs_chunked:
+            db = Chroma.from_documents(
+                collection_name=collection_name,
+                documents=split_docs_chunk,
+                persist_directory=persist_directory,
+                embedding=emb_model,
+                client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
+            )
+    except Exception as e:
+        logging.error(f"An error occurred while building the Chroma database: {e}")
+
+        # Return None along with the dataframe in case of failure
+        return None, df
+
+    # Cleanup after successful execution
+    del emb_model
+    gc.collect()
 
     logging.info("The database has been built")
     return db, df
