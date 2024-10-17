@@ -128,12 +128,23 @@ parser.add_argument(
     Embedding device
     """,
 )
+parser.add_argument(
+    "--force_rebuild",
+    default=True,
+    action=argparse.BooleanOptionalAction,
+    help="""
+    Should we reuse previously constructed database or rebuild
+    """,
+)
+
+
 args = parser.parse_args()
 
 
 os.environ["MLFLOW_TRACKING_URI"] = (
     "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
 )
+
 
 def run_build_database(
     experiment_name: str,
