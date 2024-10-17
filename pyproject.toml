@@ -20,3 +20,4 @@ select = [
     "I",
 ]
 ignore  = ["B024"]
+

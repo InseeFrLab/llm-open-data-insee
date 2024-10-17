@@ -108,7 +108,7 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
     RecursiveCharacterTextSplitter: A text splitter instance.
     """
 
-    if kwargs.get("use_tokenizer_to_chunk", False):
+    if kwargs.get("use_tokenizer_to_chunk", True):
         autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(
             kwargs.get("embedding_model")
         )
