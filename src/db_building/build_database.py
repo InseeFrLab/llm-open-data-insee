@@ -1,10 +1,11 @@
 import logging
-
-import pandas as pd
+import gc
 import s3fs
+
 from chromadb.config import Settings
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+
 
 from src.config import (
     CHROMA_DB_LOCAL_DIRECTORY,
@@ -14,8 +15,11 @@ from src.config import (
     S3_BUCKET,
 )
 
-from .document_chunker import chunk_documents
-from .utils_db import parse_xmls, split_list
+
+from .corpus_building import (
+    build_or_use_from_cache, DEFAULT_LOCATIONS,
+)
+from .utils_db import split_list
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -58,70 +62,68 @@ def parse_collection_name(collection_name: str):
 
 
 def build_vector_database(
-    data_path: str,
     persist_directory: str,
     collection_name: str,
     filesystem: s3fs.S3FileSystem,
+    s3_bucket: str = S3_BUCKET,
+    location_dataset: dict = DEFAULT_LOCATIONS,
     **kwargs,
 ) -> Chroma:
+
     logging.info(f"The database will temporarily be stored in {persist_directory}")
+
     logging.info("Start building the database")
 
-    data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
+    model_id = kwargs.get("embedding_model")
 
-    if kwargs.get("max_pages") is not None:
-        data = data.head(kwargs.get("max_pages"))
-
-    # Parse the XML content
-    parsed_pages = parse_xmls(data)
-
-    df = data.set_index("id").merge(
-        pd.DataFrame(parsed_pages), left_index=True, right_index=True
+    # Call the process_data function to handle data loading, parsing, and splitting
+    df, all_splits = build_or_use_from_cache(
+        filesystem=filesystem,
+        s3_bucket=s3_bucket,
+        location_dataset=location_dataset,
+        model_id=model_id,
+        **kwargs
     )
-    df = df[
-        [
-            "titre",
-            "categorie",
-            "url",
-            "dateDiffusion",
-            "theme",
-            "collection",
-            "libelleAffichageGeo",
-            "content",
-        ]
-    ]
 
-    # Temporary solution to add the RMES data
-    data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
-    data_rmes = pd.read_parquet(
-        f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem
-    )
-    df = pd.concat([df, data_rmes])
+    logging.info("Document chunking is over, starting to embed them")
 
-    # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
-    df = df.fillna(value="")
+    # Building embedding model using parameters from kwargs
+    embedding_model = kwargs.get("embedding_model")
+    embedding_device = kwargs.get("embedding_device")
 
-    # chucking of documents
-    all_splits = chunk_documents(data=df, **kwargs)
+    logging.info("Loading embedding model")
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=kwargs.get("embedding_model"),
-        model_kwargs={"device": kwargs.get("embedding_device")},
+        model_name=embedding_model,
+        model_kwargs={"device": embedding_device},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )
 
+    logging.info(f"Building embedding model: {embedding_model} on {embedding_device}")
+
     max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
 
-    for split_docs_chunk in split_docs_chunked:
-        db = Chroma.from_documents(
-            collection_name=collection_name,
-            documents=split_docs_chunk,
-            persist_directory=persist_directory,
-            embedding=emb_model,
-            client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
-        )
+    # Loop through the chunks and build the Chroma database
+    try:
+        for split_docs_chunk in split_docs_chunked:
+            db = Chroma.from_documents(
+                collection_name=collection_name,
+                documents=split_docs_chunk,
+                persist_directory=persist_directory,
+                embedding=emb_model,
+                client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
+            )
+    except Exception as e:
+        logging.error(f"An error occurred while building the Chroma database: {e}")
+
+        # Return None along with the dataframe in case of failure
+        return None, df
+
+    # Cleanup after successful execution
+    del emb_model
+    gc.collect()
 
     logging.info("The database has been built")
     return db, df
@@ -155,6 +157,8 @@ def reload_database_from_local_dir(
     )
     return db
 
+
+# LOAD RETRIEVER -------------------------------
 
 def load_retriever(
     emb_model_name,
