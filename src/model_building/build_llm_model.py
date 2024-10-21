@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Any, Optional
 
 from langchain_huggingface import HuggingFacePipeline
 from transformers import (
@@ -21,15 +22,15 @@ if root_dir not in sys.path:
 
 
 def build_llm_model(
-    model_name,
+    model_name: str,
     quantization_config: bool = False,
     config: bool = False,
-    token=None,
     streaming: bool = False,
-    generation_args: dict = None,
+    token: Optional[str] = None,
+    generation_args: dict[str, Any] | None = None,
 ):
     """
-    Create the llm model
+    Create the LLM model
     """
 
     if generation_args is None:

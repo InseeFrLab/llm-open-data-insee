@@ -64,31 +64,29 @@ def parse_collection_name(collection_name: str):
 def build_vector_database(
     persist_directory: str,
     collection_name: str,
+    embedding_model: str,
     filesystem: s3fs.S3FileSystem,
     s3_bucket: str = S3_BUCKET,
     location_dataset: dict = DEFAULT_LOCATIONS,
-    **kwargs,
+    **kwargs
 ) -> Chroma:
 
     logging.info(f"The database will temporarily be stored in {persist_directory}")
 
     logging.info("Start building the database")
 
-    model_id = kwargs.get("embedding_model")
-
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = build_or_use_from_cache(
         filesystem=filesystem,
         s3_bucket=s3_bucket,
         location_dataset=location_dataset,
-        model_id=model_id,
+        model_id=embedding_model,
         **kwargs
     )
 
     logging.info("Document chunking is over, starting to embed them")
 
     # Building embedding model using parameters from kwargs
-    embedding_model = kwargs.get("embedding_model")
     embedding_device = kwargs.get("embedding_device")
 
     logging.info("Loading embedding model")

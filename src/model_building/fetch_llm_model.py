@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Optional
 
 import s3fs
 from transformers import AutoModel
@@ -11,10 +12,10 @@ logging.basicConfig(
 
 
 def cache_model_from_hf_hub(
-    model_name,
-    s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
-    s3_bucket=os.environ["S3_BUCKET"],
-    s3_cache_dir="models/hf_hub",
+    model_name: str,
+    s3_endpoint: Optional[str] = None,
+    s3_bucket: Optional[str] = None,
+    s3_cache_dir: str = "models/hf_hub",
 ):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.
 
@@ -23,11 +24,14 @@ def cache_model_from_hf_hub(
         s3_bucket (str): Name of the S3 bucket to use.
         s3_cache_dir (str): Path of the cache directory on S3.
     """
+    if s3_bucket is None:
+        s3_bucket = os.environ["S3_BUCKET"]
+    if s3_endpoint is None:
+        s3_endpoint = f'https://{os.environ["AWS_S3_ENDPOINT"]}'
     # Local cache config
-    LOCAL_HF_CACHE_DIR = os.path.join(
-        os.path.expanduser("~"), ".cache", "huggingface", "hub"
-    )
-    model_name_hf_cache = "models--" + "--".join(model_name.split("/"))
+    LOCAL_HOME = os.path.expanduser("~")
+    LOCAL_HF_CACHE_DIR = os.path.join(LOCAL_HOME, ".cache", "huggingface", "hub")
+    model_name_hf_cache = "models--" + model_name.replace("/", "--")
     dir_model_local = os.path.join(LOCAL_HF_CACHE_DIR, model_name_hf_cache)
 
     # Remote cache config
