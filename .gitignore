@@ -170,5 +170,8 @@ cython_debug/
 *.ipynb
 !notebooks/*.ipynb
 
-#ignore log files 
+#ignore log files
 data/conversation_logs.json
+
+# Chainlit generated files (e.g. translations)
+.chainlit
