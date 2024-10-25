@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path, PosixPath
 
@@ -12,10 +13,7 @@ import pandas as pd
 import s3fs
 import yaml
 
-from src.config import (
-    CHROMA_DB_LOCAL_DIRECTORY,
-    S3_BUCKET,
-)
+from src.config import config
 from src.db_building import build_vector_database
 
 # Logging configuration
@@ -33,7 +31,7 @@ def str_to_list(arg):
     return ast.literal_eval(arg)
 
 
-# PARSER FOR USED LEVEL ARGUMENTS --------------------------------
+# PARSER FOR USER LEVEL ARGUMENTS --------------------------------
 
 parser = argparse.ArgumentParser(description="Chroma building parameters")
 parser.add_argument(
@@ -136,27 +134,63 @@ parser.add_argument(
     Should we reuse previously constructed database or rebuild
     """,
 )
-
-
-args = parser.parse_args()
-
-
-os.environ["MLFLOW_TRACKING_URI"] = (
-    "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+parser.add_argument(
+    "--config_file",
+    type=str,
+    metavar="FILE",
+    help="""
+    Specify a config file from which parameters can be read
+    """,
 )
+parser.add_argument(
+    "--config_section",
+    type=str,
+    default="DEFAULT",
+    help="""
+    A specific configuration section to override and complete [DEFAULT] parameters
+    """,
+)
+parser.add_argument(
+    "--config_export",
+    action="store_true",
+    help="""
+    Prints full configuration to stdout and immediately terminates
+    """,
+)
+
+# Load default config file first
+default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+config.read_file(default_config_file)
+
+# To load defaults from the default ini file rather than use the hardcoded defaults above
+# parser.set_defaults(**config[config.section])
+
+
+def load_config(args):
+    # Override (and complete) values with (all...) environment variables
+    config.read_dict({"DEFAULT": os.environ})
+    # Override values with custom user provided config file (if any)
+    if args.config_file is not None:
+        config.read_file(default_config_file)
+    # Override values with user provided flags
+    config.read_dict(vars(args))
+    # Update section if set by user
+    if args.config_section is not None:
+        config.section = args.config_section
+    if args.config_export:
+        config.write(sys.stdout)
+        exit()
 
 
 def run_build_database(
-    experiment_name: str,
     data_raw_s3_path: str,
     collection_name: str,
     **kwargs,
 ):
-    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
-    mlflow.set_experiment(experiment_name)
+    mlflow.set_tracking_uri(config["MLFLOW_TRACKING_URI"])
+    mlflow.set_experiment(config["experiment_name"])
 
     with mlflow.start_run():
-
         # Log parameters -------------------------------
 
         for arg_name, arg_value in locals().items():
@@ -166,17 +200,13 @@ def run_build_database(
             else:
                 mlflow.log_param(arg_name, arg_value)
 
-        fs = s3fs.S3FileSystem(
-            client_kwargs={
-                "endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""
-            }
-        )
+        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
         # Build database ------------------------------
 
         db, df_raw = build_vector_database(
-            data_path=data_raw_s3_path,
-            persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+            data_path=config["data_raw_s3_path"],
+            persist_directory=config["CHROMA_DB_LOCAL_DIRECTORY"],
             collection_name=collection_name,
             filesystem=fs,
             **kwargs,
@@ -185,7 +215,7 @@ def run_build_database(
         logging.info("")
 
         # Log the parameters in a yaml file
-        with open(f"{CHROMA_DB_LOCAL_DIRECTORY}/parameters.yaml", "w") as f:
+        with open(f"{config['CHROMA_DB_LOCAL_DIRECTORY']}/parameters.yaml", "w") as f:
             params = {
                 "data_raw_s3_path": data_raw_s3_path,
                 "collection_name": collection_name,
@@ -196,15 +226,15 @@ def run_build_database(
 
         hash_chroma = next(
             entry
-            for entry in os.listdir(CHROMA_DB_LOCAL_DIRECTORY)
-            if os.path.isdir(os.path.join(CHROMA_DB_LOCAL_DIRECTORY, entry))
+            for entry in os.listdir(config["CHROMA_DB_LOCAL_DIRECTORY"])
+            if os.path.isdir(os.path.join(config["CHROMA_DB_LOCAL_DIRECTORY"], entry))
         )
         path_chroma_stored_s3 = f"s3/{S3_BUCKET}/data/chroma_database/{kwargs.get("embedding_model")}/{hash_chroma}/"
         cmd = [
             "mc",
             "cp",
             "-r",
-            f"{CHROMA_DB_LOCAL_DIRECTORY}/",
+            f"{config['CHROMA_DB_LOCAL_DIRECTORY']}/",
             path_chroma_stored_s3,
         ]
         subprocess.run(cmd, check=True)
@@ -221,7 +251,7 @@ def run_build_database(
         mlflow.log_table(data=df_raw.head(10), artifact_file="web4g_data.json")
 
         # Log the vector database
-        mlflow.log_artifacts(Path(CHROMA_DB_LOCAL_DIRECTORY), artifact_path="chroma")
+        mlflow.log_artifacts(Path(config["CHROMA_DB_LOCAL_DIRECTORY"]), artifact_path="chroma")
 
         # Log the first chunks of the vector database
         db_docs = db.get()["documents"]
@@ -247,9 +277,7 @@ def run_build_database(
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
         FILES_TO_LOG = (
-            list(current_dir.glob("src/db_building/*.py"))
-            + list(current_dir.glob("src/config/*.py"))
-            + [PosixPath("run_build_database.py")]
+            list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("run_build_database.py")]
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -268,16 +296,11 @@ def run_build_database(
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
         mlflow.log_param("chroma_path_s3_storage", path_chroma_stored_s3)
-        logger.info(f'Program ended with success, ChromaDB stored at location {path_chroma_stored_s3}')
+        logger.info(f"Program ended with success, ChromaDB stored at location {path_chroma_stored_s3}")
 
 
 if __name__ == "__main__":
-    assert (
-        "MLFLOW_TRACKING_URI" in os.environ
-    ), "Please set the MLFLOW_TRACKING_URI environment variable."
-
     args = parser.parse_args()
-
-    run_build_database(
-        **vars(args),
-    )
+    load_config(args)
+    assert config.get("MLFLOW_TRACKING_URI"), "Please set the MLFLOW_TRACKING_URI parameter (environment variable or configuration file)."
+    run_build_database()

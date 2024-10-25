@@ -1,6 +1,6 @@
 import logging
 import re
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from typing import Any
 
 import pandas as pd
@@ -36,7 +36,7 @@ def get_soup(xml_string: str) -> BeautifulSoup:
     return soup
 
 
-def url_builder(row: pd.Series) -> str:
+def url_builder(row: pd.Series) -> str | None:
     """
     Constructs a URL based on the category and id of a given pandas Series row.
 
@@ -143,9 +143,7 @@ def prepend_text_to_tag(tag, text):
         tag.string = text
 
 
-def parse_xmls(
-    data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content"
-) -> pd.DataFrame:
+def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
     """
     Parses XML content from a DataFrame, extracts data, formats it, and returns a new DataFrame with the formatted content.
 
@@ -157,7 +155,7 @@ def parse_xmls(
     Returns:
         pd.DataFrame: A DataFrame with 'id' as the index and formatted content in the 'content' column.
     """
-    parsed_pages = {"id": [], "content": []}
+    parsed_pages: dict[str, list] = {"id": [], "content": []}
 
     for i, row in data.iterrows():
         page_id = row[id]
@@ -186,7 +184,7 @@ def parse_xmls(
     return pd.DataFrame(parsed_pages).set_index("id")
 
 
-def split_list(input_list: list[Any], chunk_size: int) -> Generator[list[Any]]:
+def split_list(input_list: Iterable[Any], chunk_size: int) -> Generator[list[Any]]:
     """
     Splits a list into smaller chunks of a specified size.
 
@@ -238,13 +236,7 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
         # in the children tags (graphique, tableau...)
         # Maybe we still want to keep it ?
         if any(remove_figure) and tag.name == "figure":
-            if all(
-                tag.find(child_tag) is None
-                for child_tag, remove in zip(
-                    TAGS_FIGURE_CHILDREN, remove_figure, strict=False
-                )
-                if not remove
-            ):
+            if all(tag.find(child_tag) is None for child_tag, remove in zip(TAGS_FIGURE_CHILDREN, remove_figure, strict=False) if not remove):
                 tag.decompose()
             continue
 
@@ -291,11 +283,7 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
 
         # Rename intertitre tags
         if tag.name == "intertitre":
-            tag.name = (
-                f"h{int(tag.get("niveau")) + 2}"
-                if tag.get("niveau") is not None
-                else "h3"
-            )
+            tag.name = f"h{int(tag.get("niveau")) + 2}" if tag.get("niveau") is not None else "h3"
             continue
 
         ## TABLES
