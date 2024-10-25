@@ -1,11 +1,9 @@
-import argparse
-import ast
 import logging
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path, PosixPath
 
 import mlflow
@@ -13,180 +11,13 @@ import pandas as pd
 import s3fs
 import yaml
 
-from src.config import config
-from src.db_building import build_vector_database
+from src.db_building import build_vector_database, load_config
 
 # Logging configuration
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    format="%(asctime)s %(message)s",
-    datefmt="%Y-%m-%d %I:%M:%S %p",
-    level=logging.DEBUG,
-)
 
 
-# Command-line arguments
-def str_to_list(arg):
-    # Convert the argument string to a list
-    return ast.literal_eval(arg)
-
-
-# PARSER FOR USER LEVEL ARGUMENTS --------------------------------
-
-parser = argparse.ArgumentParser(description="Chroma building parameters")
-parser.add_argument(
-    "--experiment_name",
-    type=str,
-    default="default",
-    help="""
-    Name of the experiment.
-    """,
-)
-parser.add_argument(
-    "--data_raw_s3_path",
-    type=str,
-    default="data/raw_data/applishare_solr_joined.parquet",
-    help="""
-    Path to the raw data.
-    Default to data/raw_data/applishare_solr_joined.parquet
-    """,
-)
-parser.add_argument(
-    "--collection_name",
-    type=str,
-    default="insee_data",
-    help="""
-    Collection name.
-    Default to insee_data
-    """,
-)
-parser.add_argument(
-    "--markdown_split",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="""
-    Should we use a markdown split ?
-    --markdown_split yields True and --no-markdown_split yields False
-    """,
-)
-parser.add_argument(
-    "--use_tokenizer_to_chunk",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="""
-    Should we use the tokenizer of the embedding model to chunk ?
-    --use_tokenizer_to_chunk yields True and --no-use_tokenizer_to_chunk yields False
-    """,
-)
-parser.add_argument(
-    "--separators",
-    type=str_to_list,
-    default=r"['\n\n', '\n', '.', ' ', '']",
-    help="List separators to split the text",
-)
-parser.add_argument(
-    "--embedding_model",
-    type=str,
-    default="OrdalieTech/Solon-embeddings-large-0.1",
-    help="""
-    Embedding model.
-    Should be a huggingface model.
-    Defaults to OrdalieTech/Solon-embeddings-large-0.1
-    """,
-)
-parser.add_argument(
-    "--max_pages",
-    type=int,
-    default=None,
-    help="""
-    Maximum number of pages to use for the vector database.
-    """,
-)
-parser.add_argument(
-    "--chunk_size",
-    type=str,
-    default=None,
-    help="""
-    Chunk size
-    """,
-)
-parser.add_argument(
-    "--chunk_overlap",
-    type=str,
-    default=None,
-    help="""
-    Chunk overlap
-    """,
-)
-parser.add_argument(
-    "--embedding_device",
-    type=str,
-    default="cuda",
-    help="""
-    Embedding device
-    """,
-)
-parser.add_argument(
-    "--force_rebuild",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="""
-    Should we reuse previously constructed database or rebuild
-    """,
-)
-parser.add_argument(
-    "--config_file",
-    type=str,
-    metavar="FILE",
-    help="""
-    Specify a config file from which parameters can be read
-    """,
-)
-parser.add_argument(
-    "--config_section",
-    type=str,
-    default="DEFAULT",
-    help="""
-    A specific configuration section to override and complete [DEFAULT] parameters
-    """,
-)
-parser.add_argument(
-    "--config_export",
-    action="store_true",
-    help="""
-    Prints full configuration to stdout and immediately terminates
-    """,
-)
-
-# Load default config file first
-default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
-config.read_file(default_config_file)
-
-# To load defaults from the default ini file rather than use the hardcoded defaults above
-# parser.set_defaults(**config[config.section])
-
-
-def load_config(args):
-    # Override (and complete) values with (all...) environment variables
-    config.read_dict({"DEFAULT": os.environ})
-    # Override values with custom user provided config file (if any)
-    if args.config_file is not None:
-        config.read_file(default_config_file)
-    # Override values with user provided flags
-    config.read_dict(vars(args))
-    # Update section if set by user
-    if args.config_section is not None:
-        config.section = args.config_section
-    if args.config_export:
-        config.write(sys.stdout)
-        exit()
-
-
-def run_build_database(
-    data_raw_s3_path: str,
-    collection_name: str,
-    **kwargs,
-):
+def run_build_database(config: Mapping[str, str]):
     mlflow.set_tracking_uri(config["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(config["experiment_name"])
 
@@ -200,42 +31,35 @@ def run_build_database(
             else:
                 mlflow.log_param(arg_name, arg_value)
 
-        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"https://{config['AWS_S3_ENDPOINT']}"})
 
         # Build database ------------------------------
 
         db, df_raw = build_vector_database(
             data_path=config["data_raw_s3_path"],
-            persist_directory=config["CHROMA_DB_LOCAL_DIRECTORY"],
-            collection_name=collection_name,
+            persist_directory=config["chroma_db_local_dir"],
+            collection_name=config["collection_name"],
             filesystem=fs,
-            **kwargs,
+            config=config,
         )
 
         logging.info("")
 
         # Log the parameters in a yaml file
-        with open(f"{config['CHROMA_DB_LOCAL_DIRECTORY']}/parameters.yaml", "w") as f:
-            params = {
-                "data_raw_s3_path": data_raw_s3_path,
-                "collection_name": collection_name,
-            } | kwargs
-            yaml.dump(params, f, default_flow_style=False)
+        with open(f"{config['chroma_db_local_dir']}/parameters.yaml", "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
 
         # Move ChromaDB in a specific path in s3 -----------------------------
 
         hash_chroma = next(
-            entry
-            for entry in os.listdir(config["CHROMA_DB_LOCAL_DIRECTORY"])
-            if os.path.isdir(os.path.join(config["CHROMA_DB_LOCAL_DIRECTORY"], entry))
+            entry for entry in os.listdir(config["chroma_db_local_dir"]) if os.path.isdir(os.path.join(config["chroma_db_local_dir"], entry))
         )
-        path_chroma_stored_s3 = f"s3/{S3_BUCKET}/data/chroma_database/{kwargs.get("embedding_model")}/{hash_chroma}/"
         cmd = [
             "mc",
             "cp",
             "-r",
-            f"{config['CHROMA_DB_LOCAL_DIRECTORY']}/",
-            path_chroma_stored_s3,
+            f"{config['chroma_db_local_dir']}/",
+            f"{config['chroma_db_s3_dir']}/{hash_chroma}/",
         ]
         subprocess.run(cmd, check=True)
 
@@ -244,14 +68,14 @@ def run_build_database(
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
             df_raw.head(10),
-            source=f"s3://{S3_BUCKET}/{data_raw_s3_path}",
+            source=config["raw_dataset_uri"],
             name="web4g_data",
         )
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=df_raw.head(10), artifact_file="web4g_data.json")
 
         # Log the vector database
-        mlflow.log_artifacts(Path(config["CHROMA_DB_LOCAL_DIRECTORY"]), artifact_path="chroma")
+        mlflow.log_artifacts(Path(config["chroma_db_local_dir"]), artifact_path="chroma")
 
         # Log the first chunks of the vector database
         db_docs = db.get()["documents"]
@@ -295,12 +119,11 @@ def run_build_database(
             # Log all Python files to MLflow artifact
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
-        mlflow.log_param("chroma_path_s3_storage", path_chroma_stored_s3)
-        logger.info(f"Program ended with success, ChromaDB stored at location {path_chroma_stored_s3}")
+        mlflow.log_param("chroma_path_s3_storage", config["path_chroma_stored_s3"])
+        logger.info(f"Program ended with success, ChromaDB stored at location {config['path_chroma_stored_s3']}")
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-    load_config(args)
-    assert config.get("MLFLOW_TRACKING_URI"), "Please set the MLFLOW_TRACKING_URI parameter (environment variable or configuration file)."
-    run_build_database()
+    config = load_config()
+    assert config.has_option("DEFAULT", "MLFLOW_TRACKING_URI"), "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
+    run_build_database(config["DEFAULT"])
