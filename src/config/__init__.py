@@ -5,18 +5,6 @@ import logging
 import os
 import sys
 
-# https://stackoverflow.com/questions/3609852/which-is-the-best-way-to-allow-configuration-options-be-overridden-at-the-comman
-# https://stackoverflow.com/questions/48538581/argparse-defaults-from-file
-# https://gist.github.com/drmalex07/9995807
-
-# https://docs.python.org/3/library/configparser.html
-# https://docs.python.org/3/library/argparse.html
-
-
-def str_to_list(arg):
-    # Convert the argument string to a list
-    return ast.literal_eval(arg)
-
 
 # PARSER FOR USER LEVEL ARGUMENTS --------------------------------
 
@@ -67,8 +55,6 @@ argparser.add_argument(
 )
 argparser.add_argument(
     "--separators",
-    type=str_to_list,
-    default=r"['\n\n', '\n', '.', ' ', '']",
     help="List separators to split the text",
 )
 argparser.add_argument(
@@ -166,7 +152,7 @@ argparser.add_argument(
 
 class PostProcessedConfigParser(configparser.ConfigParser):
     """
-    ConfigParser with registered internal post-processors that are run on templating results.
+    ConfigParser with registered internal post-processors that are run on templated options.
     Only the `get` method is modified. Sections of this ConfigParser should work fine as they
     rely on this method to access options.
     """
@@ -176,23 +162,47 @@ class PostProcessedConfigParser(configparser.ConfigParser):
         self._processors = {}
 
     def setProcessor(self, option, proc):
-        self._processors[option] = proc
+        self._processors[self.optionxform(option)] = proc
 
     def setProcessors(self, procs):
         for opt, proc in procs.items():
             self.setProcessor(opt, proc)
 
     def get(self, section, option, **kwargs):
-        res = super(PostProcessedConfigParser, self).get(section, option, **kwargs)
-        proc = self._processors.get(option)
-        return proc(res) if proc else res
+        tpl_opt = super(PostProcessedConfigParser, self).get(section, option, **kwargs)
+        proc = self._processors.get(self.optionxform(option))
+        return proc(tpl_opt) if proc and tpl_opt else tpl_opt
+
+
+BOOLEAN_STATES = {'1': True,  'yes': True,  'true': True,   'on': True,  'oui': True,
+                  '0': False, 'no': False, 'false': False, 'off': False, 'non': False}
+
+
+def optional_int(value):
+    """ Processor for a parameter representing an integer (empty is None) """
+    return int(value) if value else None
+
+
+def optional_bool(value):
+    """ Processor for a parameter representing a boolean (empty is None) """
+    if value is None:
+        return None
+    if value.lower() not in BOOLEAN_STATES:
+        raise ValueError('Not a boolean: %s' % value)
+    return BOOLEAN_STATES[value.lower()]
 
 
 # Load default config file first
 confparser = PostProcessedConfigParser(interpolation=configparser.ExtendedInterpolation())
 confparser.setProcessors(
     {
-        "chunk_size": int,
+        "chunk_size": optional_int,
+        "chunk_overlap": optional_int,
+        "max_pages": optional_int,
+        "force_rebuild": optional_bool,
+        "markdown_split": optional_bool,
+        "use_tokenizer_to_chunk": optional_bool,
+        "separators": ast.literal_eval
     }
 )
 default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")

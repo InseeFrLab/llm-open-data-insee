@@ -3,7 +3,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from typing import Mapping, Any
 from pathlib import Path, PosixPath
 
 import mlflow
@@ -18,7 +18,7 @@ from src.db_building import build_vector_database
 logger = logging.getLogger(__name__)
 
 
-def run_build_database(config: Mapping[str, str]) -> None:
+def run_build_database(config: Mapping[str, Any]) -> None:
     mlflow.set_tracking_uri(config["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(config["experiment_name"])
 
@@ -110,5 +110,7 @@ def run_build_database(config: Mapping[str, str]) -> None:
 
 if __name__ == "__main__":
     config = load_config()
-    assert config.has_option("DEFAULT", "MLFLOW_TRACKING_URI"), "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
-    run_build_database(config["DEFAULT"])
+    # Note: other configuration sections could also be used for specific parts of the process
+    default_config = config["DEFAULT"]
+    assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
+    run_build_database(default_config)

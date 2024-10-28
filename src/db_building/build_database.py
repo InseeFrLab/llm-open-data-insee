@@ -1,6 +1,6 @@
 import gc
 import logging
-from collections.abc import Mapping
+from typing import Optional, Mapping, Any
 
 import pandas as pd
 import s3fs
@@ -8,10 +8,7 @@ from chromadb.config import Settings
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from .corpus_building import (
-    DEFAULT_LOCATIONS,
-    build_or_use_from_cache,
-)
+from .corpus_building import build_or_use_from_cache
 from .utils_db import split_list
 
 logger = logging.getLogger(__name__)
@@ -51,7 +48,8 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 
 
 def build_vector_database(
-    config: Mapping[str, str], filesystem: s3fs.S3FileSystem, location_dataset: dict = DEFAULT_LOCATIONS
+    config: Mapping[str, Any],
+    filesystem: s3fs.S3FileSystem
 ) -> tuple[Chroma | None, pd.DataFrame]:
     logger.info(f"The database will temporarily be stored in {config['chroma_db_local_dir']}")
 
@@ -62,9 +60,7 @@ def build_vector_database(
     logger.info("Start building the database")
 
     # Call the process_data function to handle data loading, parsing, and splitting
-    df, all_splits = build_or_use_from_cache(
-        config, filesystem=filesystem, s3_bucket=config["s3_bucket"], location_dataset=location_dataset, model_id=embedding_model
-    )
+    df, all_splits = build_or_use_from_cache(config, filesystem=filesystem)
 
     logger.info("Document chunking is over, starting to embed them")
 
@@ -109,26 +105,23 @@ def build_vector_database(
 # RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
 
 
-def reload_database_from_local_dir(
-    embed_model_name: str = EMB_MODEL_NAME,
-    collection_name: str = COLLECTION_NAME,
-    persist_directory: str = CHROMA_DB_LOCAL_DIRECTORY,
-    embed_device: str = EMB_DEVICE,
-) -> Chroma:
+def reload_database_from_local_dir(config: Mapping[str, Any]) -> Chroma:
     emb_model = HuggingFaceEmbeddings(
-        model_name=embed_model_name,
+        model_name=config['emb_model'],
         multi_process=False,
-        model_kwargs={"device": embed_device, "trust_remote_code": True},
+        model_kwargs={"device": config['emb_device'], "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},
         show_progress=True,
     )
     db = Chroma(
-        collection_name=collection_name,
-        persist_directory=persist_directory,
+        collection_name=config['collection_name'],
+        persist_directory=config['chroma_db_local_dir'],
         embedding_function=emb_model,
     )
-
-    logger.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
+    logger.info(
+        f"The database (collection {config['collection_name']}) "
+        f"has been reloaded from directory {config['chroma_db_local_dir']}"
+    )
     return db
 
 
@@ -136,22 +129,14 @@ def reload_database_from_local_dir(
 
 
 def load_retriever(
-    emb_model_name,
-    vectorstore=None,
-    persist_directory="data/chroma_db",
-    device="cuda",
-    collection_name: str = "insee_data",
-    retriever_params: dict | None = None,
+    config: Mapping[str, Any],
+    vectorstore: Optional[Chroma] = None,
+    retriever_params: Optional[dict] = None
 ):
     # Load vector database
     if vectorstore is None:
         logger.info("Reloading database in session")
-        vectorstore = reload_database_from_local_dir(
-            embed_model_name=emb_model_name,
-            collection_name=collection_name,
-            persist_directory=persist_directory,
-            embed_device=device,
-        )
+        vectorstore = reload_database_from_local_dir(config)
     else:
         logger.info("vectorstore being provided, skipping the reloading")
 
