@@ -163,8 +163,38 @@ argparser.add_argument(
     """,
 )
 
+
+class PostProcessedConfigParser(configparser.ConfigParser):
+    """
+    ConfigParser with registered internal post-processors that are run on templating results.
+    Only the `get` method is modified. Sections of this ConfigParser should work fine as they
+    rely on this method to access options.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(PostProcessedConfigParser, self).__init__(*args, **kwargs)
+        self._processors = {}
+
+    def setProcessor(self, option, proc):
+        self._processors[option] = proc
+
+    def setProcessors(self, procs):
+        for opt, proc in procs.items():
+            self.setProcessor(opt, proc)
+
+    def get(self, section, option, **kwargs):
+        res = super(PostProcessedConfigParser, self).get(section, option, **kwargs)
+        proc = self._processors.get(option)
+        return proc(res) if proc else res
+
+
 # Load default config file first
-confparser = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+confparser = PostProcessedConfigParser(interpolation=configparser.ExtendedInterpolation())
+confparser.setProcessors(
+    {
+        "chunk_size": int,
+    }
+)
 default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
 confparser.read(default_config_file)
 
@@ -190,8 +220,12 @@ def load_config():
         confparser.write(sys.stdout)
         exit()
 
-    # Override (and complete) DEFAULT values with (all...) environment variables
-    confparser.read_dict({"DEFAULT": os.environ})
+    # Override DEFAULT values with environment variables
+    # Note: in order not to leak sensitive info from environment,
+    # only the variables already in the config file are overwritten
+    env_remap = {k: os.environ[k] for k in os.environ if confparser["DEFAULT"].has_option(k)}
+    confparser.read_dict({"DEFAULT": env_remap})
+
     # Override DEFAULT values with custom user provided config file (if any)
     if args.config_file is not None:
         confparser.read(args.config_file)

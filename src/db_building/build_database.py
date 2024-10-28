@@ -1,5 +1,6 @@
 import gc
 import logging
+from collections.abc import Mapping
 
 import pandas as pd
 import s3fs
@@ -7,21 +8,13 @@ from chromadb.config import Settings
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from src.config import (
-    CHROMA_DB_LOCAL_DIRECTORY,
-    COLLECTION_NAME,
-    EMB_DEVICE,
-    EMB_MODEL_NAME,
-    S3_BUCKET,
-)
-
 from .corpus_building import (
     DEFAULT_LOCATIONS,
     build_or_use_from_cache,
 )
 from .utils_db import split_list
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
 def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
@@ -58,29 +51,24 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 
 
 def build_vector_database(
-    persist_directory: str,
-    collection_name: str,
-    embedding_model: str,
-    filesystem: s3fs.S3FileSystem,
-    s3_bucket: str = S3_BUCKET,
-    location_dataset: dict = DEFAULT_LOCATIONS,
-    **kwargs,
+    config: Mapping[str, str], filesystem: s3fs.S3FileSystem, location_dataset: dict = DEFAULT_LOCATIONS
 ) -> tuple[Chroma | None, pd.DataFrame]:
-    logging.info(f"The database will temporarily be stored in {persist_directory}")
+    logger.info(f"The database will temporarily be stored in {config['chroma_db_local_dir']}")
 
-    logging.info("Start building the database")
+    # Building embedding model using parameters from kwargs
+    embedding_device = config["emb_device"]
+    embedding_model = config["emb_model"]
+
+    logger.info("Start building the database")
 
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = build_or_use_from_cache(
-        filesystem=filesystem, s3_bucket=s3_bucket, location_dataset=location_dataset, model_id=embedding_model, **kwargs
+        config, filesystem=filesystem, s3_bucket=config["s3_bucket"], location_dataset=location_dataset, model_id=embedding_model
     )
 
-    logging.info("Document chunking is over, starting to embed them")
+    logger.info("Document chunking is over, starting to embed them")
 
-    # Building embedding model using parameters from kwargs
-    embedding_device = kwargs.get("embedding_device")
-
-    logging.info("Loading embedding model")
+    logger.info("Loading embedding model")
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=embedding_model,
@@ -89,7 +77,7 @@ def build_vector_database(
         show_progress=False,
     )
 
-    logging.info(f"Building embedding model: {embedding_model} on {embedding_device}")
+    logger.info(f"Building embedding model: {embedding_model} on {embedding_device}")
 
     max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
@@ -98,14 +86,14 @@ def build_vector_database(
     try:
         for split_docs_chunk in split_docs_chunked:
             db = Chroma.from_documents(
-                collection_name=collection_name,
+                collection_name=config["collection_name"],
                 documents=split_docs_chunk,
-                persist_directory=persist_directory,
+                persist_directory=config["chroma_db_local_dir"],
                 embedding=emb_model,
                 client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
             )
     except Exception as e:
-        logging.error(f"An error occurred while building the Chroma database: {e}")
+        logger.error(f"An error occurred while building the Chroma database: {e}")
 
         # Returns None along with the dataframe in case of failure
         return None, df
@@ -114,7 +102,7 @@ def build_vector_database(
     del emb_model
     gc.collect()
 
-    logging.info("The database has been built")
+    logger.info("The database has been built")
     return db, df
 
 
@@ -140,7 +128,7 @@ def reload_database_from_local_dir(
         embedding_function=emb_model,
     )
 
-    logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
+    logger.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
     return db
 
 
@@ -157,7 +145,7 @@ def load_retriever(
 ):
     # Load vector database
     if vectorstore is None:
-        logging.info("Reloading database in session")
+        logger.info("Reloading database in session")
         vectorstore = reload_database_from_local_dir(
             embed_model_name=emb_model_name,
             collection_name=collection_name,
@@ -165,7 +153,7 @@ def load_retriever(
             embed_device=device,
         )
     else:
-        logging.info("vectorstore being provided, skipping the reloading")
+        logger.info("vectorstore being provided, skipping the reloading")
 
     if retriever_params is None:
         retriever_params = {"search_type": "similarity", "search_kwargs": {"k": 30}}

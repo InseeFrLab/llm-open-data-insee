@@ -11,46 +11,31 @@ import pandas as pd
 import s3fs
 import yaml
 
-from src.db_building import build_vector_database, load_config
+from src.config import load_config
+from src.db_building import build_vector_database
 
 # Logging configuration
 logger = logging.getLogger(__name__)
 
 
-def run_build_database(config: Mapping[str, str]):
+def run_build_database(config: Mapping[str, str]) -> None:
     mlflow.set_tracking_uri(config["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(config["experiment_name"])
 
     with mlflow.start_run():
-        # Log parameters -------------------------------
-
-        for arg_name, arg_value in locals().items():
-            if arg_name == "kwargs":
-                for key, value in arg_value.items():
-                    mlflow.log_param(key, value)
-            else:
-                mlflow.log_param(arg_name, arg_value)
-
-        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"https://{config['AWS_S3_ENDPOINT']}"})
-
-        # Build database ------------------------------
-
-        db, df_raw = build_vector_database(
-            data_path=config["data_raw_s3_path"],
-            persist_directory=config["chroma_db_local_dir"],
-            collection_name=config["collection_name"],
-            filesystem=fs,
-            config=config,
-        )
-
-        logging.info("")
+        # Logging the full configuration to mlflow
+        mlflow.log_params(dict(config))
 
         # Log the parameters in a yaml file
         with open(f"{config['chroma_db_local_dir']}/parameters.yaml", "w") as f:
             yaml.dump(config, f, default_flow_style=False)
 
-        # Move ChromaDB in a specific path in s3 -----------------------------
+        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": config["s3_endpoint_url"]})
 
+        # Build database
+        db, df_raw = build_vector_database(config, filesystem=fs)
+
+        # Move ChromaDB in a specific path in s3
         hash_chroma = next(
             entry for entry in os.listdir(config["chroma_db_local_dir"]) if os.path.isdir(os.path.join(config["chroma_db_local_dir"], entry))
         )

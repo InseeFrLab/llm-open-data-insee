@@ -1,67 +1,43 @@
 import logging
 import typing as t
+from typing import Mapping
 
 import jsonlines
 import pandas as pd
 import s3fs
 from langchain.schema import Document
 
-from src.config import (
-    S3_BUCKET,
-)
-
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
-# PARAMETERS ---------------------------------------------------
-
-DEFAULT_WEB4G_PATH = "data/raw_data/applishare_solr_joined.parquet"
-DEFAULT_RMES_PATH = "data/raw_data/applishare_solr_joined.parquet"
-
-
-DEFAULT_LOCATIONS = {"web4g_data": DEFAULT_WEB4G_PATH, "rmes_data": DEFAULT_RMES_PATH}
-
-
 # CHUNKING ALL DATASET ---------------------------------------------------
 
 
 def preprocess_and_store_data(
-    filesystem: s3fs.S3FileSystem,
-    s3_bucket: str,
-    location_dataset: dict = DEFAULT_LOCATIONS,
-    model_id: str = "OrdalieTech/Solon-embeddings-large-0.1",
-    **kwargs,
+    config: Mapping[str, str],
+    filesystem: s3fs.S3FileSystem
 ) -> tuple[pd.DataFrame, t.Iterable[Document]]:
     """
     Process data from S3, chunk the documents, and store them in an intermediate location.
 
     Parameters:
+    - config: Configuration for data processing and chunking (e.g., 'max_pages', 'chunk_overlap', 'chunk_size').
     - filesystem: s3fs.S3FileSystem object for interacting with S3.
-    - s3_bucket: str, the name of the S3 bucket.
     - location_dataset: dict, paths to the main data files in the S3 bucket.
-    - kwargs: Optional keyword arguments for data processing and chunking (e.g., 'max_pages', 'chunk_overlap', 'chunk_size').
 
     Returns:
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
     """
 
     # Handle data loading, parsing, and splitting
-    df, all_splits = _preprocess_data(model_id=model_id, filesystem=filesystem, s3_bucket=s3_bucket, location_dataset=location_dataset, **kwargs)
+    df, all_splits = _preprocess_data(config, filesystem)
 
     logging.info("Saving chunked documents in an intermediate location")
 
-    # Extract parameters from kwargs
-    chunk_overlap = kwargs.get("chunk_overlap", None)
-    chunk_size = kwargs.get("chunk_size", None)
-    max_pages = kwargs.get("max_pages", None)
-
     # Create the storage path for intermediate data
-    data_intermediate_storage = _s3_path_intermediate_collection(
-        s3_bucket=s3_bucket, model_id=model_id, chunk_overlap=chunk_overlap, chunk_size=chunk_size, max_pages=max_pages
-    )
+    data_intermediate_storage = _s3_path_intermediate_collection(config)
 
     # Save chunked documents to JSONL using S3 and s3fs
     save_docs_to_jsonl(all_splits, data_intermediate_storage, filesystem)
@@ -75,7 +51,10 @@ def preprocess_and_store_data(
     return df, all_splits
 
 
-def _preprocess_data(filesystem: s3fs.S3FileSystem, s3_bucket: str = S3_BUCKET, location_dataset: dict = DEFAULT_LOCATIONS, **kwargs):
+def _preprocess_data(
+    config: Mapping[str, str],
+    filesystem: s3fs.S3FileSystem
+) -> tuple[pd.DataFrame, tuple[list[Document], dict]]:
     """
     Process and merge data from multiple parquet sources, parse XML content,
     and split the documents into chunks for embedding.
@@ -90,17 +69,14 @@ def _preprocess_data(filesystem: s3fs.S3FileSystem, s3_bucket: str = S3_BUCKET, 
     - all_splits: list or DataFrame containing the processed and chunked documents.
     """
 
-    # Defining data locations
-    web4g_path = location_dataset.get("web4g_data", DEFAULT_WEB4G_PATH)
-    data_path_rmes = location_dataset.get("rmes_data", DEFAULT_RMES_PATH)
+    logging.info(f"Input data extracted from s3://{config['s3_bucket']}")
 
     # Load main data from parquet file
-    logging.info(f"Input data extracted from s3://{s3_bucket}")
-    data = pd.read_parquet(f"s3://{s3_bucket}/{web4g_path}", filesystem=filesystem)
+    data = pd.read_parquet(config['rawdata_web4g_uri'], filesystem=filesystem)
 
     # Limit the number of pages if specified
-    if kwargs.get("max_pages") is not None:
-        data = data.head(kwargs.get("max_pages"))
+    if config.get("max_pages") is not None:
+        data = data.head(config.get("max_pages"))
 
     # Parse the XML content
     parsed_pages = parse_xmls(data)
@@ -123,7 +99,7 @@ def _preprocess_data(filesystem: s3fs.S3FileSystem, s3_bucket: str = S3_BUCKET, 
     ]
 
     # Load additional RMES data
-    data_rmes = pd.read_parquet(f"s3://{s3_bucket}/{data_path_rmes}", filesystem=filesystem)
+    data_rmes = pd.read_parquet(config['rawdata_rmes_uri'], filesystem=filesystem)
 
     # Concatenate the original data with the RMES data
     df = pd.concat([df, data_rmes])
@@ -132,7 +108,14 @@ def _preprocess_data(filesystem: s3fs.S3FileSystem, s3_bucket: str = S3_BUCKET, 
     df = df.fillna(value="")
 
     # Chunk the documents (using tokenizer if specified in kwargs)
-    all_splits = chunk_documents(data=df, **kwargs)
+    all_splits = chunk_documents(data=df,
+        config['emb_model'],
+        markdown_split: bool = False,
+        use_tokenizer_to_chunk: bool = True,
+        chunk_size: config.get('chunk_size'),
+        chunk_overlap: Optional[int] = None,
+        separators
+    )
 
     return df, all_splits
 
@@ -141,7 +124,13 @@ def _preprocess_data(filesystem: s3fs.S3FileSystem, s3_bucket: str = S3_BUCKET, 
 
 
 def build_or_use_from_cache(
-    model_id: str, filesystem: s3fs.S3FileSystem, s3_bucket: str, location_dataset: dict = DEFAULT_LOCATIONS, force_rebuild: bool = False, **kwargs
+    config: Mapping[str, str],
+    model_id: str,
+    filesystem: s3fs.S3FileSystem,
+    s3_bucket: str,
+    location_dataset: dict = DEFAULT_LOCATIONS,
+    force_rebuild: bool = False,
+    **kwargs
 ) -> tuple[pd.DataFrame, t.Iterable[Document]]:
     """
     Either load the chunked documents and DataFrame from cache or process and store the data.
@@ -157,15 +146,8 @@ def build_or_use_from_cache(
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
     """
 
-    # Extract parameters from kwargs
-    chunk_overlap = kwargs.get("chunk_overlap", None)
-    chunk_size = kwargs.get("chunk_size", None)
-    max_pages = kwargs.get("max_pages", None)
-
     # Create the storage path for intermediate data
-    data_intermediate_storage = _s3_path_intermediate_collection(
-        s3_bucket=s3_bucket, model_id=model_id, chunk_overlap=chunk_overlap, chunk_size=chunk_size, max_pages=max_pages
-    )
+    data_intermediate_storage = _s3_path_intermediate_collection(config)
 
     # Create the Parquet file path (corpus.parquet)
     parquet_file_path = data_intermediate_storage.replace("docs.jsonl", "corpus.parquet")
@@ -200,13 +182,7 @@ def build_or_use_from_cache(
 # PATH BUILDER FOR S3 STORAGE ------------------------------------
 
 
-def _s3_path_intermediate_collection(
-    s3_bucket: str = S3_BUCKET,
-    model_id: str = "OrdalieTech/Solon-embeddings-large-0.1",
-    chunk_overlap: int | None = None,
-    chunk_size: int | None = None,
-    max_pages: int | None = None,
-) -> str:
+def _s3_path_intermediate_collection(config: Mapping[str, str]) -> str:
     """
     Build the intermediate storage path for chunked documents on S3.
 
@@ -219,8 +195,13 @@ def _s3_path_intermediate_collection(
     Returns:
     - str: The constructed S3 path for saving the chunked documents.
     """
+
+    model_id = config.get('chunk_overlap', "OrdalieTech/Solon-embeddings-large-0.1")
+    chunk_overlap = int(config['chunk_overlap']) if config.get('chunk_overlap') else None
+    chunk_size = int(config['chunk_size']) if config.get('chunk_size') else None
+    max_pages = int(config['max_pages']) if config.get('max_pages') else None
     return (
-        f"s3://{s3_bucket}/data/chunked_documents/"
+        f"s3://{config['s3_bucket']}/data/chunked_documents/"
         f"{model_id=}/"
         f"chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}/"
         "docs.jsonl"
