@@ -12,8 +12,8 @@ from .utils_db import parse_xmls
 
 logger = logging.getLogger(__name__)
 
-# CHUNKING ALL DATASET ---------------------------------------------------
 
+# CHUNKING ALL DATASET ---------------------------------------------------
 
 def preprocess_and_store_data(
     config: Mapping[str, Any],
@@ -23,9 +23,18 @@ def preprocess_and_store_data(
     Process data from S3, chunk the documents, and store them in an intermediate location.
 
     Parameters:
-    - config: Configuration for data processing and chunking (e.g., 'max_pages', 'chunk_overlap', 'chunk_size').
-    - filesystem: s3fs.S3FileSystem object for interacting with S3.
-    - location_dataset: dict, paths to the main data files in the S3 bucket.
+    - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
+        - s3_bucket: the name of the S3 bucket.
+        - chunk_overlap (int): the chunk overlap value (can be None).
+        - chunk_size (int): the chunk size (can be None).
+        - max_pages (int): the maximum number of pages (can be None).
+        - rawdata_web4g_uri
+        - rawdata_rmes_uri
+        - emb_model
+        - markdown_split
+        - use_tokenizer_to_chunk
+        - separators
+    - filesystem (s3fs.S3FileSystem): object for interacting with S3
 
     Returns:
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
@@ -60,10 +69,18 @@ def _preprocess_data(
     and split the documents into chunks for embedding.
 
     Parameters:
-    - s3_bucket: str, the S3 bucket name.
-    - filesystem: object, the filesystem handler (e.g., s3fs).
-    - location_dataset: dict, path to the main data files in the S3 bucket.
-    - kwargs: optional keyword arguments to control parser behavior, including 'max_pages' for limiting the number of rows.
+    - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
+        - max_pages
+        - rawdata_web4g_uri: link to the web4g data
+        - rawdata_rmes_uri: link to the rmes data
+        - emb_model: The name of the Hugging Face tokenizer to use.
+        - markdown_split (bool): Whether to split markdown headers into separate chunks.
+        - hf_tokenizer_name (str, optional): Name of the Hugging Face tokenizer to use.
+        - use_tokenizer_to_chunk
+        - chunk_size (int, optional): Size of each chunk if not using hf_tokenizer.
+        - chunk_overlap (int, optional): Overlap size between chunks if not using hf_tokenizer.
+        - separators (list, optional): List of separators to use for splitting the text.
+    - filesystem (s3fs.S3FileSystem): object for interacting with S3
 
     Returns:
     - all_splits: list or DataFrame containing the processed and chunked documents.
@@ -72,7 +89,7 @@ def _preprocess_data(
     logger.info(f"Input data extracted from s3://{config['s3_bucket']}")
 
     # Load main data from parquet file
-    data = pd.read_parquet(config['rawdata_web4g_uri'], filesystem=filesystem)
+    data = pd.read_parquet(config["rawdata_web4g_uri"], filesystem=filesystem)
 
     # Limit the number of pages if specified
     if config.get("max_pages") is not None:
@@ -132,11 +149,14 @@ def build_or_use_from_cache(
     Either load the chunked documents and DataFrame from cache or process and store the data.
 
     Parameters:
-    - filesystem: s3fs.S3FileSystem object for interacting with S3.
-    - s3_bucket: str, the name of the S3 bucket.
-    - location_dataset: dict, paths to the main data files in the S3 bucket.
-    - force_rebuild: bool, if True, will force data processing and storage even if cache exists.
-    - kwargs: Optional keyword arguments for data processing and chunking (e.g., 'max_pages', 'chunk_overlap', 'chunk_size').
+    - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
+        - s3_bucket: the name of the S3 bucket.
+        - force_rebuild (bool): force data processing and storage even if cache exists.
+        - max_pages
+        - chunk_overlap (int): the chunk overlap value (can be None).
+        - chunk_size (int): the chunk size (can be None).
+        - max_pages (int): the maximum number of pages (can be None).
+    - filesystem (s3fs.S3FileSystem): object for interacting with S3
 
     Returns:
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
@@ -181,23 +201,21 @@ def _s3_path_intermediate_collection(config: Mapping[str, Any]) -> str:
     Build the intermediate storage path for chunked documents on S3.
 
     Parameters:
-    - s3_bucket: str, the name of the S3 bucket.
-    - chunk_overlap: int, the chunk overlap value (can be None).
-    - chunk_size: int, the chunk size (can be None).
-    - max_pages: int, the maximum number of pages (can be None).
+    - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
+        - s3_bucket: the name of the S3 bucket.
+        - chunk_overlap (int): the chunk overlap value (can be None).
+        - chunk_size (int): the chunk size (can be None).
+        - max_pages (int): the maximum number of pages (can be None).
 
     Returns:
     - str: The constructed S3 path for saving the chunked documents.
     """
 
-    model_id = config.get('chunk_overlap', "OrdalieTech/Solon-embeddings-large-0.1")
-    chunk_overlap = int(config['chunk_overlap']) if config.get('chunk_overlap') else None
-    chunk_size = int(config['chunk_size']) if config.get('chunk_size') else None
-    max_pages = int(config['max_pages']) if config.get('max_pages') else None
+    model_id = config['emb_model']
     return (
         f"s3://{config['s3_bucket']}/data/chunked_documents/"
         f"{model_id=}/"
-        f"chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}/"
+        f"chunk_overlap={config['chunk_overlap']}/chunk_size={config['chunk_size']}/max_pages={config['max_pages']}/"
         "docs.jsonl"
     )
 
@@ -205,7 +223,10 @@ def _s3_path_intermediate_collection(config: Mapping[str, Any]) -> str:
 # SAVE AND LOAD DOCUMENTS AS JSON ---------------------------------
 
 
-def save_docs_to_jsonl(documents: t.Iterable[Document], file_path: str, fs: s3fs.S3FileSystem) -> None:
+def save_docs_to_jsonl(
+    documents: t.Iterable[Document],
+    file_path: str, fs: s3fs.S3FileSystem
+) -> None:
     """
     Save a list of Document objects to a JSONL file on S3 using s3fs.
 
@@ -223,7 +244,8 @@ def load_docs_from_jsonl(file_path: str, fs: s3fs.S3FileSystem) -> t.Iterable[Do
     """
     Load Document objects from a JSONL file on S3 using s3fs.
 
-    :param file_path: The S3 path where the JSONL file is stored (e.g., "s3://bucket-name/path/to/file.jsonl").
+    :param file_path: The S3 path where the JSONL file is stored
+        (e.g., "s3://bucket-name/path/to/file.jsonl").
     :param fs: s3fs.S3FileSystem object for handling S3 file operations.
     :return: Iterable of Document objects loaded from the JSONL file.
     """

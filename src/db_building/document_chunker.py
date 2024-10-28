@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 import pandas as pd
 from langchain.text_splitter import RecursiveCharacterTextSplitter, TextSplitter
@@ -34,14 +35,12 @@ def chunk_documents(
     - data (pd.DataFrame): The dataframe containing documents to be chunked.
     - embedding_model (str): The name of the Hugging Face tokenizer to use.
     - markdown_split (bool): Whether to split markdown headers into separate chunks.
-    - hf_tokenizer_name (str, optional): Name of the Hugging Face tokenizer to use.
     - chunk_size (int, optional): Size of each chunk if not using hf_tokenizer.
     - chunk_overlap (int, optional): Overlap size between chunks if not using hf_tokenizer.
     - separators (list, optional): List of separators to use for splitting the text.
 
     Returns:
-    - Tuple[List[Document], dict]: A tuple containing the list of processed unique document chunks
-    and chunking information.
+    - list[Document]: The list of processed unique document chunks
     """
 
     logging.info("Building the list of Document objects")
@@ -80,10 +79,10 @@ def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
     capabilities of a Hugging Face tokenizer.
 
     Parameters:
-    hf_tokenizer_name (str): The name of the Hugging Face tokenizer to use.
+    - hf_tokenizer_name (str): The name of the Hugging Face tokenizer to use.
 
     Returns:
-    tuple: A tuple containing the tokenizer instance, the chunk size, and the chunk overlap.
+    - tuple: A tuple containing the tokenizer instance, the chunk size, and the chunk overlap.
     """
     # Load the tokenizer
     autokenizer = AutoTokenizer.from_pretrained(hf_tokenizer_name)
@@ -100,9 +99,9 @@ def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
 def get_text_splitter(
     embedding_model: str,
     use_tokenizer_to_chunk: bool = True,
-    chunk_size: int | None = None,
-    chunk_overlap: int | None = None,
-    separators: list[str] | None = None,
+    chunk_size: Optional[int] = None,
+    chunk_overlap: Optional[int] = None,
+    separators: Optional[list[str]] = None,
 ) -> TextSplitter:
     """
     Get a text splitter based on the specified parameters.
@@ -110,12 +109,12 @@ def get_text_splitter(
     Parameters:
     - embedding_model (str): The name of the Hugging Face tokenizer to use.
     - use_tokenizer_to_chunk (bool): Whether to use a Hugging Face tokenizer to chunk the text.
-    - chunk_size (int): The size of each chunk.
-    - chunk_overlap (int): The overlap size between chunks.
-    - separators (list): List of separators to use for chunking.
+    - chunk_size (Optional[int]): The size of each chunk.
+    - chunk_overlap (Optional[int]): The overlap size between chunks.
+    - separators (Optional[list[str]]): List of separators to use for chunking.
 
     Returns:
-    RecursiveCharacterTextSplitter: A text splitter instance.
+    - RecursiveCharacterTextSplitter: A text splitter instance.
     """
 
     if use_tokenizer_to_chunk:
@@ -129,7 +128,10 @@ def get_text_splitter(
         )
     else:
         if chunk_size is None or chunk_overlap is None:
-            raise ValueError("chunk_size and chunk_overlap must be specified" "if use_tokenizer_to_chunk is set to True")
+            raise ValueError(
+                "chunk_size and chunk_overlap must be specified"
+                "if use_tokenizer_to_chunk is set to True"
+            )
         else:
             return RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,
@@ -138,7 +140,10 @@ def get_text_splitter(
             )
 
 
-def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
+def make_md_splits(
+    document_list: list[Document],
+    markdown_splitter: MarkdownHeaderTextSplitter
+) -> list[Document]:
     """
     Splits the content of each document in the document list based on Markdown headers,
     and preserves the original metadata in each split section.

@@ -26,7 +26,10 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
-            raise ValueError("String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'")
+            raise ValueError(
+                "String format is incorrect."
+                "Expected format: 'modelname_chunkSize_overlapSize'"
+                )
 
         # Extract and assign the parts
         model_name = parts[0]
@@ -45,7 +48,6 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 
 
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
-
 
 def build_vector_database(
     config: Mapping[str, Any],
@@ -126,7 +128,6 @@ def reload_database_from_local_dir(config: Mapping[str, Any]) -> Chroma:
 
 
 # LOAD RETRIEVER -------------------------------
-
 
 def load_retriever(
     config: Mapping[str, Any],

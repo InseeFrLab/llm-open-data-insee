@@ -1,6 +1,6 @@
 import argparse
 import ast
-import configparser
+from configparser import ExtendedInterpolation, ConfigParser
 import logging
 import os
 import sys
@@ -12,7 +12,6 @@ argparser = argparse.ArgumentParser(description="Chroma building parameters")
 argparser.add_argument(
     "--experiment_name",
     type=str,
-    default="default",
     help="""
     Name of the experiment.
     """,
@@ -20,7 +19,6 @@ argparser.add_argument(
 argparser.add_argument(
     "--data_raw_s3_path",
     type=str,
-    default="data/raw_data/applishare_solr_joined.parquet",
     help="""
     Path to the raw data.
     Default to data/raw_data/applishare_solr_joined.parquet
@@ -29,7 +27,6 @@ argparser.add_argument(
 argparser.add_argument(
     "--collection_name",
     type=str,
-    default="insee_data",
     help="""
     Collection name.
     Default to insee_data
@@ -61,7 +58,6 @@ argparser.add_argument(
     "--embedding_model",
     type=str,
     dest="emb_model",
-    default="OrdalieTech/Solon-embeddings-large-0.1",
     help="""
     Embedding model.
     Should be a huggingface model.
@@ -71,7 +67,6 @@ argparser.add_argument(
 argparser.add_argument(
     "--max_pages",
     type=int,
-    default=None,
     help="""
     Maximum number of pages to use for the vector database.
     """,
@@ -79,7 +74,6 @@ argparser.add_argument(
 argparser.add_argument(
     "--chunk_size",
     type=str,
-    default=None,
     help="""
     Chunk size
     """,
@@ -95,7 +89,6 @@ argparser.add_argument(
 argparser.add_argument(
     "--embedding_device",
     type=str,
-    default="cuda",
     dest="emb_device",
     help="""
     Embedding device
@@ -150,7 +143,7 @@ argparser.add_argument(
 )
 
 
-class PostProcessedConfigParser(configparser.ConfigParser):
+class PostProcessedConfigParser(ConfigParser):
     """
     ConfigParser with registered internal post-processors that are run on templated options.
     Only the `get` method is modified. Sections of this ConfigParser should work fine as they
@@ -171,7 +164,17 @@ class PostProcessedConfigParser(configparser.ConfigParser):
     def get(self, section, option, **kwargs):
         tpl_opt = super(PostProcessedConfigParser, self).get(section, option, **kwargs)
         proc = self._processors.get(self.optionxform(option))
-        return proc(tpl_opt) if proc and tpl_opt else tpl_opt
+        return proc(tpl_opt) if proc and tpl_opt is not None else tpl_opt
+
+    def update_dict(self, d, section='DEFAULT'):
+        """ Updates the already loaded parameters with (not None) values from given dict """
+        self.read_dict({
+            section: {
+                k: str(v)
+                for k, v in d.items()
+                if v is not None and self.has_option(section, k)
+                }
+            })
 
 
 BOOLEAN_STATES = {'1': True,  'yes': True,  'true': True,   'on': True,  'oui': True,
@@ -185,38 +188,18 @@ def optional_int(value):
 
 def optional_bool(value):
     """ Processor for a parameter representing a boolean (empty is None) """
-    if value is None:
+    if not value:
         return None
     if value.lower() not in BOOLEAN_STATES:
         raise ValueError('Not a boolean: %s' % value)
     return BOOLEAN_STATES[value.lower()]
 
 
-# Load default config file first
-confparser = PostProcessedConfigParser(interpolation=configparser.ExtendedInterpolation())
-confparser.setProcessors(
-    {
-        "chunk_size": optional_int,
-        "chunk_overlap": optional_int,
-        "max_pages": optional_int,
-        "force_rebuild": optional_bool,
-        "markdown_split": optional_bool,
-        "use_tokenizer_to_chunk": optional_bool,
-        "separators": ast.literal_eval
-    }
-)
-default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
-confparser.read(default_config_file)
-
-# To load defaults from the default ini file rather than use the hardcoded defaults above
-argparser.set_defaults(**confparser["DEFAULT"])
-
-
 def load_config():
     args = argparser.parse_args()
 
     # Verbose mode means "debug" level of logging
-    if args.pop("verbose"):
+    if args.verbose:
         args.loggingLevel = "DEBUG"
     # Configure logging with selected level
     logging.basicConfig(
@@ -225,20 +208,39 @@ def load_config():
         level=args.loggingLevel,
     )
 
-    # If args is set
-    if args.config_export:
-        confparser.write(sys.stdout)
-        exit()
-
-    # Override DEFAULT values with environment variables
-    # Note: in order not to leak sensitive info from environment,
-    # only the variables already in the config file are overwritten
-    env_remap = {k: os.environ[k] for k in os.environ if confparser["DEFAULT"].has_option(k)}
-    confparser.read_dict({"DEFAULT": env_remap})
+    # Load default config file first
+    confparser = PostProcessedConfigParser(interpolation=ExtendedInterpolation())
+    confparser.setProcessors(
+        {
+            "chunk_size": optional_int,
+            "chunk_overlap": optional_int,
+            "max_pages": optional_int,
+            "force_rebuild": optional_bool,
+            "markdown_split": optional_bool,
+            "use_tokenizer_to_chunk": optional_bool,
+            "separators": ast.literal_eval
+        }
+    )
+    default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
+    confparser.read(default_config_file)
 
     # Override DEFAULT values with custom user provided config file (if any)
     if args.config_file is not None:
         confparser.read(args.config_file)
+    # Note: it is best to avoid defaults in the argument parser
+    # since they will override the default values from ini file
+
+    # Override DEFAULT values with environment variables
+    # Note: in order not to leak sensitive info from environment,
+    # only the variables already in the config file are overwritten
+    confparser.update_dict(os.environ)
+
     # Override DEFAULT values with user provided flags
-    confparser.read_dict(vars(args))
+    confparser.update_dict(vars(args))
+
+    # If args is set
+    if args.export_config:
+        confparser.write(sys.stdout)
+        exit()
+
     return confparser

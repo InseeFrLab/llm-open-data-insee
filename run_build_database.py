@@ -86,7 +86,9 @@ def run_build_database(config: Mapping[str, Any]) -> None:
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
         FILES_TO_LOG = (
-            list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("run_build_database.py")]
+            list(current_dir.glob("src/db_building/*.py")) +
+            list(current_dir.glob("src/config/*.py")) +
+            [PosixPath("run_build_database.py")]
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -104,13 +106,14 @@ def run_build_database(config: Mapping[str, Any]) -> None:
             # Log all Python files to MLflow artifact
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
-        mlflow.log_param("chroma_path_s3_storage", config["path_chroma_stored_s3"])
-        logger.info(f"Program ended with success, ChromaDB stored at location {config['path_chroma_stored_s3']}")
+        logger.info("Program ended with success.")
+        logger.info(f"ChromaDB stored at location {config['path_chroma_stored_s3']}")
 
 
 if __name__ == "__main__":
     config = load_config()
     # Note: other configuration sections could also be used for specific parts of the process
     default_config = config["DEFAULT"]
-    assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
+    assert "MLFLOW_TRACKING_URI" in default_config, \
+        "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
     run_build_database(default_config)
