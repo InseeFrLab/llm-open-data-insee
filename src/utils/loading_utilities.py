@@ -7,7 +7,7 @@ import s3fs
 from src.config import S3_ENDPOINT_URL
 
 
-def load_dataframe_from_parquet(path: str, engine: str = "fastparquet"):
+def load_dataframe_from_parquet(path: str, engine: str = "fastparquet") -> pd.DataFrame:
     return pd.read_parquet(path, engine)
 
 

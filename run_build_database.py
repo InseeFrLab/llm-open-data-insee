@@ -3,8 +3,9 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import Mapping, Any
+from collections.abc import Mapping
 from pathlib import Path, PosixPath
+from typing import Any
 
 import mlflow
 import pandas as pd
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_build_database(config: Mapping[str, Any]) -> None:
-    mlflow.set_tracking_uri(config["MLFLOW_TRACKING_URI"])
+    mlflow.set_tracking_uri(config["mlflow_tracking_uri"])
     mlflow.set_experiment(config["experiment_name"])
 
     with mlflow.start_run():
@@ -30,7 +31,7 @@ def run_build_database(config: Mapping[str, Any]) -> None:
         with open(f"{config['chroma_db_local_dir']}/parameters.yaml", "w") as f:
             yaml.dump(config, f, default_flow_style=False)
 
-        fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": config["s3_endpoint_url"]})
+        fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
         # Build database
         db, df_raw = build_vector_database(config, filesystem=fs)
@@ -86,9 +87,7 @@ def run_build_database(config: Mapping[str, Any]) -> None:
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
         FILES_TO_LOG = (
-            list(current_dir.glob("src/db_building/*.py")) +
-            list(current_dir.glob("src/config/*.py")) +
-            [PosixPath("run_build_database.py")]
+            list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("run_build_database.py")]
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -114,6 +113,5 @@ if __name__ == "__main__":
     config = load_config()
     # Note: other configuration sections could also be used for specific parts of the process
     default_config = config["DEFAULT"]
-    assert "MLFLOW_TRACKING_URI" in default_config, \
-        "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
+    assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
     run_build_database(default_config)

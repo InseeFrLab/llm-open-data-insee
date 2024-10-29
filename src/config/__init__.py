@@ -1,10 +1,11 @@
 import argparse
 import ast
-from configparser import ExtendedInterpolation, ConfigParser
 import logging
 import os
 import sys
+from configparser import ConfigParser, ExtendedInterpolation
 
+import mlflow
 
 # PARSER FOR USER LEVEL ARGUMENTS --------------------------------
 
@@ -105,9 +106,20 @@ argparser.add_argument(
 argparser.add_argument(
     "--config_file",
     type=str,
-    metavar="FILE",
+    metavar="INIFILE",
     help="""
     Specify a config file from which parameters can be read
+    """,
+)
+argparser.add_argument(
+    "--config_mlflow",
+    type=str,
+    metavar="RUNID",
+    dest="mlflow_run_id",
+    help="""
+    Load configuration from a previous mlflow run.
+    Other flags will override this configuration
+    but neither will .ini config files nor environment variables.
     """,
 )
 argparser.add_argument(
@@ -151,7 +163,7 @@ class PostProcessedConfigParser(ConfigParser):
     """
 
     def __init__(self, *args, **kwargs):
-        super(PostProcessedConfigParser, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._processors = {}
 
     def setProcessor(self, option, proc):
@@ -162,40 +174,45 @@ class PostProcessedConfigParser(ConfigParser):
             self.setProcessor(opt, proc)
 
     def get(self, section, option, **kwargs):
-        tpl_opt = super(PostProcessedConfigParser, self).get(section, option, **kwargs)
+        tpl_opt = super().get(section, option, **kwargs)
         proc = self._processors.get(self.optionxform(option))
         return proc(tpl_opt) if proc and tpl_opt is not None else tpl_opt
 
-    def update_dict(self, d, section='DEFAULT'):
-        """ Updates the already loaded parameters with (not None) values from given dict """
-        self.read_dict({
-            section: {
-                k: str(v)
-                for k, v in d.items()
-                if v is not None and self.has_option(section, k)
-                }
-            })
+    def update_dict(self, d, section="DEFAULT"):
+        """Updates the already loaded parameters with (not None) values from given dict"""
+        self.read_dict({section: {k: str(v) for k, v in d.items() if v is not None and self.has_option(section, k)}})
 
 
-BOOLEAN_STATES = {'1': True,  'yes': True,  'true': True,   'on': True,  'oui': True,
-                  '0': False, 'no': False, 'false': False, 'off': False, 'non': False}
+BOOLEAN_STATES = {"1": True, "yes": True, "true": True, "on": True, "oui": True, "0": False, "no": False, "false": False, "off": False, "non": False}
 
 
 def optional_int(value):
-    """ Processor for a parameter representing an integer (empty is None) """
+    """Processor for a parameter representing an integer (empty is None)"""
     return int(value) if value else None
 
 
 def optional_bool(value):
-    """ Processor for a parameter representing a boolean (empty is None) """
+    """Processor for a parameter representing a boolean (empty is None)"""
     if not value:
         return None
     if value.lower() not in BOOLEAN_STATES:
-        raise ValueError('Not a boolean: %s' % value)
+        raise ValueError(f"Not a boolean: {value}")
     return BOOLEAN_STATES[value.lower()]
 
 
 def load_config():
+    """Load configuration from:
+    - the default .ini config file
+    - user provided .ini config files (using --config_file)
+    - environment variables
+    - a previous mlflow run configuration (using --config_mlflow)
+    - parameters from the arguments
+    in loading order which is the reverse order of precedence:
+    each configuration overrides the previous ones.
+
+    Exits if the --export_config flag is in the arguments.
+    """
+
     args = argparser.parse_args()
 
     # Verbose mode means "debug" level of logging
@@ -218,7 +235,7 @@ def load_config():
             "force_rebuild": optional_bool,
             "markdown_split": optional_bool,
             "use_tokenizer_to_chunk": optional_bool,
-            "separators": ast.literal_eval
+            "separators": ast.literal_eval,
         }
     )
     default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
@@ -235,10 +252,19 @@ def load_config():
     # only the variables already in the config file are overwritten
     confparser.update_dict(os.environ)
 
+    # If a mlflow run ID is provided, override all with
+    if args.mlflow_run_id:
+        mlflow.tracking.MlflowClient(tracking_uri=confparser.get("DEFAULT", "mlflow_tracking_uri"))
+        mlflow.set_experiment(confparser.get("DEFAULT", "experiment_name"))
+        mlflow_params = mlflow.get_run(args.mlflow_run_id).data.params
+        mlflow_params.pop("experiment_name", None)
+        mlflow_params.pop("mlflow_tracking_uri", None)
+        confparser.update_dict(mlflow_params)
+
     # Override DEFAULT values with user provided flags
     confparser.update_dict(vars(args))
 
-    # If args is set
+    # If export_config is set, print out config and exit
     if args.export_config:
         confparser.write(sys.stdout)
         exit()

@@ -1,6 +1,7 @@
 import gc
 import logging
-from typing import Optional, Mapping, Any
+from collections.abc import Mapping
+from typing import Any
 
 import pandas as pd
 import s3fs
@@ -26,10 +27,7 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
-            raise ValueError(
-                "String format is incorrect."
-                "Expected format: 'modelname_chunkSize_overlapSize'"
-                )
+            raise ValueError("String format is incorrect." "Expected format: 'modelname_chunkSize_overlapSize'")
 
         # Extract and assign the parts
         model_name = parts[0]
@@ -43,16 +41,14 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
             "overlap_size": overlap_size,
         }
     except Exception as e:
-        print(f"Error parsing string: {e}")
+        logger.error(f"Error parsing string: {e}")
         return None
 
 
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
 
-def build_vector_database(
-    config: Mapping[str, Any],
-    filesystem: s3fs.S3FileSystem
-) -> tuple[Chroma | None, pd.DataFrame]:
+
+def build_vector_database(config: Mapping[str, Any], filesystem: s3fs.S3FileSystem) -> tuple[Chroma | None, pd.DataFrame]:
     logger.info(f"The database will temporarily be stored in {config['chroma_db_local_dir']}")
 
     # Building embedding model using parameters from kwargs
@@ -109,31 +105,25 @@ def build_vector_database(
 
 def reload_database_from_local_dir(config: Mapping[str, Any]) -> Chroma:
     emb_model = HuggingFaceEmbeddings(
-        model_name=config['emb_model'],
+        model_name=config["emb_model"],
         multi_process=False,
-        model_kwargs={"device": config['emb_device'], "trust_remote_code": True},
+        model_kwargs={"device": config["emb_device"], "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},
         show_progress=True,
     )
     db = Chroma(
-        collection_name=config['collection_name'],
-        persist_directory=config['chroma_db_local_dir'],
+        collection_name=config["collection_name"],
+        persist_directory=config["chroma_db_local_dir"],
         embedding_function=emb_model,
     )
-    logger.info(
-        f"The database (collection {config['collection_name']}) "
-        f"has been reloaded from directory {config['chroma_db_local_dir']}"
-    )
+    logger.info(f"The database (collection {config['collection_name']}) " f"has been reloaded from directory {config['chroma_db_local_dir']}")
     return db
 
 
 # LOAD RETRIEVER -------------------------------
 
-def load_retriever(
-    config: Mapping[str, Any],
-    vectorstore: Optional[Chroma] = None,
-    retriever_params: Optional[dict] = None
-):
+
+def load_retriever(config: Mapping[str, Any], vectorstore: Chroma | None = None, retriever_params: dict | None = None):
     # Load vector database
     if vectorstore is None:
         logger.info("Reloading database in session")
