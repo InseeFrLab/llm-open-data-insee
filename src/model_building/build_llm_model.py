@@ -1,6 +1,7 @@
 import os
 import sys
-from typing import Any, Optional
+from collections.abc import Mapping
+from typing import Any
 
 from langchain_huggingface import HuggingFacePipeline
 from transformers import (
@@ -11,6 +12,8 @@ from transformers import (
     TextStreamer,
     pipeline,
 )
+
+from src.config import default_config
 
 # from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
@@ -24,23 +27,16 @@ if root_dir not in sys.path:
 def build_llm_model(
     model_name: str,
     quantization_config: bool = False,
-    config: bool = False,
+    load_LLM_config: bool = False,
     streaming: bool = False,
-    token: Optional[str] = None,
-    generation_args: dict[str, Any] | None = None,
+    hf_token: str | None = None,
+    config: Mapping[str, Any] = default_config,
 ):
     """
     Create the LLM model
     """
-
-    if generation_args is None:
-        generation_args = {}
-
     cache_model_from_hf_hub(
-        model_name,
-        s3_bucket=os.environ["S3_BUCKET"],
-        s3_cache_dir="models/hf_hub",
-        s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
+        model_name, s3_bucket=config["s3_bucket"], s3_cache_dir=config["s3_model_cache_dir"], s3_endpoint=config["s3_endpoint_url"]
     )
 
     configs = {
@@ -56,18 +52,12 @@ def build_llm_model(
             else None
         ),
         # Load LLM config
-        "config": (
-            AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token)
-            if config
-            else None
-        ),
-        "token": token,
+        "config": (AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=hf_token) if load_LLM_config else None),
+        "token": hf_token,
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, use_fast=True, device_map="auto", token=configs["token"]
-    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)
@@ -84,11 +74,11 @@ def build_llm_model(
         task="text-generation",  # TextGenerationPipeline HF pipeline
         model=model,
         tokenizer=tokenizer,
-        max_new_tokens=generation_args.get("max_new_tokens", 2000),
-        return_full_text=generation_args.get("return_full_text", False),
+        max_new_tokens=config.get("max_new_tokens", 2000),
+        return_full_text=config.get("return_full_text", False),
         device_map="auto",
-        do_sample=generation_args.get("do_sample", True),
-        temperature=generation_args.get("temperature", 0.2),
+        do_sample=config.get("do_sample", True),
+        temperature=config.get("temperature", 0.2),
         streamer=streamer,
     )
     llm = HuggingFacePipeline(pipeline=pipeline_HF)

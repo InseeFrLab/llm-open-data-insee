@@ -12,14 +12,14 @@ import pandas as pd
 import s3fs
 import yaml
 
-from src.config import load_config
+from src.config import default_config, load_config, simple_argparser
 from src.db_building import build_vector_database
 
 # Logging configuration
 logger = logging.getLogger(__name__)
 
 
-def run_build_database(config: Mapping[str, Any]) -> None:
+def run_build_database(config: Mapping[str, Any] = default_config) -> None:
     mlflow.set_tracking_uri(config["mlflow_tracking_uri"])
     mlflow.set_experiment(config["experiment_name"])
 
@@ -27,14 +27,14 @@ def run_build_database(config: Mapping[str, Any]) -> None:
         # Logging the full configuration to mlflow
         mlflow.log_params(dict(config))
 
+        filesystem = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
+
         # Log the parameters in a yaml file
         with open(f"{config['chroma_db_local_dir']}/parameters.yaml", "w") as f:
             yaml.dump(config, f, default_flow_style=False)
 
-        fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
-
         # Build database
-        db, df_raw = build_vector_database(config, filesystem=fs)
+        db, df_raw = build_vector_database(filesystem=filesystem, config=config)
 
         # Move ChromaDB in a specific path in s3
         hash_chroma = next(
@@ -60,8 +60,9 @@ def run_build_database(config: Mapping[str, Any]) -> None:
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=df_raw.head(10), artifact_file="web4g_data.json")
 
-        # Log the vector database
-        mlflow.log_artifacts(Path(config["chroma_db_local_dir"]), artifact_path="chroma")
+        # Log the vector database unless it was already loaded from an other run ID
+        if not (config["mlflow_run_id"] and config["mlflow_load_artifacts"]):
+            mlflow.log_artifacts(Path(config["chroma_db_local_dir"]), artifact_path="chroma")
 
         # Log the first chunks of the vector database
         db_docs = db.get()["documents"]
@@ -110,8 +111,10 @@ def run_build_database(config: Mapping[str, Any]) -> None:
 
 
 if __name__ == "__main__":
-    config = load_config()
-    # Note: other configuration sections could also be used for specific parts of the process
-    default_config = config["DEFAULT"]
+    argparser = simple_argparser()
+    load_config(argparser)
     assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
+    # Note: other configuration sections could also be used for specific parts of the process
+    # config = load_config(argparser)
+    # config['DEFAULT'] (= default_config)  /  config['OTHER_SECTION']
     run_build_database(default_config)

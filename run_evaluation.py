@@ -1,11 +1,11 @@
-import argparse
-import ast
 import logging
 import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import mlflow
 import pandas as pd
@@ -14,264 +14,54 @@ from langchain_core.prompts import PromptTemplate
 
 from src.chain_building import build_chain_validator
 from src.chain_building.build_chain import build_chain
-from src.config import CHATBOT_TEMPLATE, CHROMA_DB_LOCAL_DIRECTORY, RAG_PROMPT_TEMPLATE
+from src.config import default_config, llm_argparser, load_config
 from src.db_building import chroma_topk_to_df, load_retriever, load_vector_database
 from src.evaluation import answer_faq_by_bot, compare_performance_reranking, evaluate_question_validator, transform_answers_bot
 from src.model_building import build_llm_model
 
 # Logging configuration
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    format="%(asctime)s %(message)s",
-    datefmt="%Y-%m-%d %I:%M:%S %p",
-    level=logging.DEBUG,
-)
 
 
-# Command-line arguments
-def str_to_list(arg):
-    # Convert the argument string to a list
-    return ast.literal_eval(arg)
+def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
+    mlflow.set_tracking_uri(config["mlflow_tracking_uri"])
+    mlflow.set_experiment(config["experiment_name"])
 
+    with mlflow.start_run():
+        # Logging the full configuration to mlflow
+        mlflow.log_params(dict(config))
 
-# PARSER FOR USED LEVEL ARGUMENTS --------------------------------
+        filesystem = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
-parser = argparse.ArgumentParser(description="LLM building parameters")
-parser.add_argument(
-    "--experiment_name",
-    type=str,
-    default="default",
-    help="""
-    Name of the experiment.
-    """,
-)
-
-## Optional database arguments ----
-parser.add_argument(
-    "--data_raw_s3_path",
-    type=str,
-    default="data/raw_data/applishare_solr_joined.parquet",
-    help="""
-    Path to the raw data.
-    Default to data/raw_data/applishare_solr_joined.parquet
-    """,
-)
-parser.add_argument(
-    "--collection_name",
-    type=str,
-    default="insee_data",
-    help="""
-    Collection name.
-    Default to insee_data
-    """,
-)
-parser.add_argument(
-    "--markdown_split",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="""
-    Should we use a markdown split ?
-    --markdown_split yields True and --no-markdown_split yields False
-    """,
-)
-parser.add_argument(
-    "--use_tokenizer_to_chunk",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="""
-    Should we use the tokenizer of the embedding model to chunk ?
-    --use_tokenizer_to_chunk yields True and --no-use_tokenizer_to_chunk yields False
-    """,
-)
-parser.add_argument(
-    "--separators",
-    type=str_to_list,
-    default=r"['\n\n', '\n', '.', ' ', '']",
-    help="List separators to split the text",
-)
-parser.add_argument(
-    "--embedding_model",
-    type=str,
-    default="OrdalieTech/Solon-embeddings-large-0.1",
-    help="""
-    Embedding model.
-    Should be a huggingface model.
-    Defaults to OrdalieTech/Solon-embeddings-large-0.1""",
-)
-parser.add_argument(
-    "--max_pages",
-    type=int,
-    default=None,
-    help="""
-    Maximum number of pages that has been used by the vector database.
-    This parameter is useful when experimenting. 
-    """,
-)
-parser.add_argument(
-    "--chunk_size",
-    type=str,
-    default=None,
-    help="""
-    Chunk size
-    """,
-)
-parser.add_argument(
-    "--chunk_overlap",
-    type=str,
-    default=None,
-    help="""
-    Chunk overlap
-    """,
-)
-parser.add_argument(
-    "--embedding_device",
-    type=str,
-    default="cuda",
-    help="""
-    Embedding device
-    """,
-)
-# Either we define arguments or we give mlflow run id
-parser.add_argument(
-    "--database_run_id",
-    type=str,
-    default=None,
-    help="""
-    Mlflow run id of the database building.
-    """,
-)
-
-## LLM specific arguments ----
-parser.add_argument(
-    "--llm_model",
-    type=str,
-    default=os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2"),
-    help="""
-    LLM used to generate chat.
-    Should be a huggingface model.
-    Defaults to mistralai/Mistral-7B-Instruct-v0.2
-    """,
-)
-parser.add_argument(
-    "--quantization",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="""
-    Should we use a quantized version of "model" argument ?
-    --quantization yields True and --no-quantization yields False
-    """,
-)
-parser.add_argument(
-    "--max_new_tokens",
-    type=int,
-    default=2000,
-    help="""
-    The maximum numbers of tokens to generate, ignoring the number of tokens in the prompt.
-    See https://huggingface.co/docs/transformers/main_classes/text_generation
-    """,
-)
-parser.add_argument(
-    "--model_temperature",
-    type=int,
-    default=0.2,
-    help="""
-    The value used to modulate the next token probabilities.
-    See https://huggingface.co/docs/transformers/main_classes/text_generation
-    """,
-)
-parser.add_argument(
-    "--return_full_text",
-    action=argparse.BooleanOptionalAction,
-    default=True,
-    help="""
-    Should we return the full text ?
-    --return_full_text yields True and --no-return_full_text yields False
-    Default to True
-    """,
-)
-parser.add_argument(
-    "--do_sample",
-    action=argparse.BooleanOptionalAction,
-    default=True,
-    help="""
-    if set to True , this parameter enables decoding strategies such as multinomial sampling, beam-search multinomial sampling, Top-K sampling
-    and Top-p sampling. All these strategies select the next token from the probability distribution over the entire vocabulary
-    with various strategy-specific adjustments.
-    --do_sample yields True and --no-do_sample yields False
-    Default to True
-    """,
-)
-
-parser.add_argument(
-    "--reranking_method",
-    type=str,
-    default=None,
-    help="""
-    Reranking document relevancy after retrieval phase.
-    Defaults to None (no reranking)
-    """,
-)
-parser.add_argument(
-    "--topk_stats",
-    type=int,
-    default=5,
-    help="""
-    Number of links considered to evaluate retriever quality.
-    """,
-)
-
-
-args = parser.parse_args()
-
-
-def run_evaluation(
-    experiment_name: str,
-    **kwargs,
-):
-    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
-    mlflow.set_experiment(experiment_name)
-
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
-
-    # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
-    bucket = "projet-llm-insee-open-data"
-    path = "data/FAQ_site/faq.parquet"
-    faq = pd.read_parquet(f"{bucket}/{path}", filesystem=fs)
-    # Extract all URLs from the 'sources' column
-    faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
-
-    # Log parameters
-    for arg_name, arg_value in locals().items():
-        if arg_name == "kwargs":
-            for key, value in arg_value.items():
-                mlflow.log_param(key, value)
-        else:
-            mlflow.log_param(arg_name, arg_value)
+        # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
+        faq = pd.read_parquet(config["faq_s3_uri"], filesystem=filesystem)
+        # Extract all URLs from the 'sources' column
+        faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
         # ------------------------
         # I - LOAD VECTOR DATABASE
 
         # Ensure correct database is used
-        db = load_vector_database(filesystem=fs, **kwargs)
+        db = load_vector_database(filesystem, config)
 
         # ------------------------
         # II - CREATING RETRIEVER
 
-        logging.info(f"Training retriever {80*'='}")
+        logger.info(f"Training retriever {80*'='}")
 
-        mlflow.log_text(RAG_PROMPT_TEMPLATE, "rag_prompt.md")
+        mlflow.log_text(config["RAG_PROMPT_TEMPLATE"], "rag_prompt.md")
 
         # Load LLM in session
         llm, tokenizer = build_llm_model(
-            model_name=kwargs.get("llm_model"),
-            quantization_config=kwargs.get("quantization"),
-            config=True,
+            model_name=config["llm_model"],
+            quantization_config=config.get("quantization"),
+            load_LLM_config=True,
             token=os.getenv("HF_TOKEN"),
             streaming=False,
-            generation_args=kwargs,
+            config=config,
         )
 
-        logging.info("Logging an example of tokenized text")
+        logger.info("Logging an example of tokenized text")
         query = "Quels sont les chiffres du chômages en 2023 ?"
         mlflow.log_text(
             f"{query} \n ---------> \n {', '.join(tokenizer.tokenize(query))}",
@@ -279,9 +69,9 @@ def run_evaluation(
         )
 
         retriever, vectorstore = load_retriever(
-            emb_model_name=kwargs.get("embedding_model"),
+            emb_model_name=config.get("emb_model"),
             vectorstore=db,
-            persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+            persist_directory=config.get("CHROMA_DB_LOCAL_DIRECTORY"),
             retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
         )
 
@@ -296,7 +86,7 @@ def run_evaluation(
         # ------------------------
         # III - QUESTION VALIDATOR
 
-        logging.info("Testing the questions that are accepted/refused by our agent")
+        logger.info("Testing the questions that are accepted/refused by our agent")
 
         validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
         validator_answers = evaluate_question_validator(validator=validator)
@@ -308,20 +98,20 @@ def run_evaluation(
         # ------------------------
         # IV - RERANKER
 
-        reranking_method = kwargs.get("reranking_method")
+        reranking_method = config.get("reranking_method")
 
         if reranking_method is not None:
-            logging.info(f"Applying reranking {80*'='}")
-            logging.info(f"Selected method: {reranking_method}")
+            logger.info(f"Applying reranking {80*'='}")
+            logger.info(f"Selected method: {reranking_method}")
         else:
-            logging.info(f"Skipping reranking since value is None {80*'='}")
+            logger.info(f"Skipping reranking since value is None {80*'='}")
 
         if reranking_method is not None:
             # Define a langchain prompt template
-            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True)
+            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(config.get("CHATBOT_TEMPLATE"), tokenize=False, add_generation_prompt=True)
             prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER)
 
-            mlflow.log_dict(CHATBOT_TEMPLATE, "chatbot_template.json")
+            mlflow.log_dict(config.get("CHATBOT_TEMPLATE"), "chatbot_template.json")
 
             chain = build_chain(
                 retriever=retriever,
@@ -334,11 +124,11 @@ def run_evaluation(
         # ------------------------
         # V - EVALUATION
 
-        logging.info(f"Evaluating model performance against expectations {80*'='}")
+        logger.info(f"Evaluating model performance against expectations {80*'='}")
 
         if reranking_method is None:
             answers_bot = answer_faq_by_bot(retriever, faq)
-            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=kwargs.get("topk_stats"))
+            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=config.get("topk_stats"))
         else:
             answers_bot_before_reranker = answer_faq_by_bot(retriever, faq)
             eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(answers_bot_before_reranker, k=5)
@@ -356,11 +146,7 @@ def run_evaluation(
             document_is_top_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].min()
 
         # Store FAQ
-        mlflow_faq_raw = mlflow.data.from_pandas(
-            faq,
-            source=f"s3://{bucket}/{path}",
-            name="FAQ_data",
-        )
+        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=config["faq_s3_uri"], name="FAQ_data")
         mlflow.log_input(mlflow_faq_raw, context="faq-raw")
         mlflow.log_table(data=faq, artifact_file="faq_data.json")
 
@@ -404,12 +190,8 @@ def run_evaluation(
 
 
 if __name__ == "__main__":
-    assert "MLFLOW_TRACKING_URI" in os.environ, "Please set the MLFLOW_TRACKING_URI environment variable."
-
-    assert "HF_TOKEN" in os.environ, "Please set the HF_TOKEN environment variable."
-
-    args = parser.parse_args()
-
-    run_evaluation(
-        **vars(args),
-    )
+    argparser = llm_argparser()
+    load_config(argparser)
+    assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI environment variable."
+    assert "HF_TOKEN" in default_config, "Please set the HF_TOKEN environment variable."
+    run_evaluation(default_config)

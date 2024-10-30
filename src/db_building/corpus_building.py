@@ -1,11 +1,14 @@
 import logging
 import typing as t
-from typing import Mapping, Any
+from collections.abc import Mapping
+from typing import Any
 
 import jsonlines
 import pandas as pd
 import s3fs
 from langchain.schema import Document
+
+from src.config import default_config
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls
@@ -15,10 +18,8 @@ logger = logging.getLogger(__name__)
 
 # CHUNKING ALL DATASET ---------------------------------------------------
 
-def preprocess_and_store_data(
-    config: Mapping[str, Any],
-    filesystem: s3fs.S3FileSystem
-) -> tuple[pd.DataFrame, t.Iterable[Document]]:
+
+def preprocess_and_store_data(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process data from S3, chunk the documents, and store them in an intermediate location.
 
@@ -60,10 +61,7 @@ def preprocess_and_store_data(
     return df, all_splits
 
 
-def _preprocess_data(
-    config: Mapping[str, Any],
-    filesystem: s3fs.S3FileSystem
-) -> tuple[pd.DataFrame, list[Document]]:
+def _preprocess_data(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process and merge data from multiple parquet sources, parse XML content,
     and split the documents into chunks for embedding.
@@ -116,7 +114,7 @@ def _preprocess_data(
     ]
 
     # Load additional RMES data
-    data_rmes = pd.read_parquet(config['rawdata_rmes_uri'], filesystem=filesystem)
+    data_rmes = pd.read_parquet(config["rawdata_rmes_uri"], filesystem=filesystem)
 
     # Concatenate the original data with the RMES data
     df = pd.concat([df, data_rmes])
@@ -127,12 +125,12 @@ def _preprocess_data(
     # Chunk the documents (using tokenizer if specified in kwargs)
     all_splits = chunk_documents(
         data=df,
-        embedding_model=config['emb_model'],
-        markdown_split=config['markdown_split'],
-        use_tokenizer_to_chunk=config['use_tokenizer_to_chunk'],
-        chunk_size=config.get('chunk_size'),
-        chunk_overlap=config.get('chunk_overlap'),
-        separators=config.get('separators')
+        embedding_model=config["emb_model"],
+        markdown_split=config["markdown_split"],
+        use_tokenizer_to_chunk=config["use_tokenizer_to_chunk"],
+        chunk_size=config.get("chunk_size"),
+        chunk_overlap=config.get("chunk_overlap"),
+        separators=config.get("separators"),
     )
 
     return df, all_splits
@@ -141,10 +139,7 @@ def _preprocess_data(
 # RECHUNKING OR LOADING FROM DATA STORE --------------------------
 
 
-def build_or_use_from_cache(
-    config: Mapping[str, Any],
-    filesystem: s3fs.S3FileSystem
-) -> tuple[pd.DataFrame, t.Iterable[Document]]:
+def build_or_use_from_cache(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> tuple[pd.DataFrame, list[Document]]:
     """
     Either load the chunked documents and DataFrame from cache or process and store the data.
 
@@ -169,7 +164,7 @@ def build_or_use_from_cache(
     parquet_file_path = data_intermediate_storage.replace("docs.jsonl", "corpus.parquet")
 
     # Check if we should use the cached data
-    if not config.get('force_rebuild'):
+    if not config.get("force_rebuild"):
         try:
             # Attempt to load the cached documents from S3
             logger.info(f"Attempting to load chunked documents from {data_intermediate_storage}")
@@ -196,7 +191,7 @@ def build_or_use_from_cache(
 # PATH BUILDER FOR S3 STORAGE ------------------------------------
 
 
-def _s3_path_intermediate_collection(config: Mapping[str, Any]) -> str:
+def _s3_path_intermediate_collection(config: Mapping[str, Any] = default_config) -> str:
     """
     Build the intermediate storage path for chunked documents on S3.
 
@@ -211,11 +206,13 @@ def _s3_path_intermediate_collection(config: Mapping[str, Any]) -> str:
     - str: The constructed S3 path for saving the chunked documents.
     """
 
-    model_id = config['emb_model']
+    model_id = config["emb_model"]
     return (
         f"s3://{config['s3_bucket']}/data/chunked_documents/"
         f"{model_id=}/"
-        f"chunk_overlap={config['chunk_overlap']}/chunk_size={config['chunk_size']}/max_pages={config['max_pages']}/"
+        f"chunk_overlap={config['chunk_overlap']}/"
+        f"chunk_size={config['chunk_size']}/"
+        f"max_pages={config['max_pages']}/"
         "docs.jsonl"
     )
 
@@ -223,24 +220,21 @@ def _s3_path_intermediate_collection(config: Mapping[str, Any]) -> str:
 # SAVE AND LOAD DOCUMENTS AS JSON ---------------------------------
 
 
-def save_docs_to_jsonl(
-    documents: t.Iterable[Document],
-    file_path: str, fs: s3fs.S3FileSystem
-) -> None:
+def save_docs_to_jsonl(documents: t.Iterable[Document], file_path: str, fs: s3fs.S3FileSystem) -> None:
     """
     Save a list of Document objects to a JSONL file on S3 using s3fs.
 
     :param documents: Iterable of Document objects to be saved.
-    :param file_path: The S3 path where the JSONL file will be saved (e.g., "s3://bucket-name/path/to/file.jsonl").
+    :param file_path: The S3 path where the JSONL file will be saved
+      (e.g., "s3://bucket-name/path/to/file.jsonl").
     :param fs: s3fs.S3FileSystem object for handling S3 file operations.
     """
-    with fs.open(file_path, mode="w") as f:
-        with jsonlines.Writer(f) as writer:
-            for doc in documents:
-                writer.write(doc.dict())  # Assuming Document has a .dict() method
+    with fs.open(file_path, mode="w") as f, jsonlines.Writer(f) as writer:
+        for doc in documents:
+            writer.write(doc.dict())  # Assuming Document has a .dict() method
 
 
-def load_docs_from_jsonl(file_path: str, fs: s3fs.S3FileSystem) -> t.Iterable[Document]:
+def load_docs_from_jsonl(file_path: str, fs: s3fs.S3FileSystem) -> list[Document]:
     """
     Load Document objects from a JSONL file on S3 using s3fs.
 
@@ -250,8 +244,8 @@ def load_docs_from_jsonl(file_path: str, fs: s3fs.S3FileSystem) -> t.Iterable[Do
     :return: Iterable of Document objects loaded from the JSONL file.
     """
     documents = []
-    with fs.open(file_path, mode="r") as f:
-        with jsonlines.Reader(f) as reader:
-            for doc in reader:
-                documents.append(Document(**doc))  # Assuming Document can be instantiated from a dict
+    with fs.open(file_path, mode="r") as f, jsonlines.Reader(f) as reader:
+        for doc in reader:
+            documents.append(Document(**doc))
+            # Assuming Document can be instantiated from a dict
     return documents

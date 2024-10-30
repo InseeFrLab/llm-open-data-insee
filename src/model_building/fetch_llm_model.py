@@ -1,28 +1,27 @@
 import logging
 import os
-from typing import Optional
+from collections.abc import Iterable
 
 import s3fs
 from transformers import AutoModel
 
+from src.config import default_config, load_config, models_only_argparser
+
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=logging.INFO
-)
 
 
 def cache_model_from_hf_hub(
     model_name: str,
-    s3_endpoint: Optional[str] = None,
-    s3_bucket: Optional[str] = None,
+    s3_endpoint: str | None = None,
+    s3_bucket: str | None = None,
     s3_cache_dir: str = "models/hf_hub",
 ):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.
 
     Args:
-        model_name (str): Name of the model on the HF hub.
-        s3_bucket (str): Name of the S3 bucket to use.
-        s3_cache_dir (str): Path of the cache directory on S3.
+        model_name (str, optional): Name of the model on the HF hub.
+        s3_bucket (str, optional): Name of the S3 bucket to use.
+        s3_cache_dir (str, optional): Path of the cache directory on S3.
     """
     if s3_bucket is None:
         s3_bucket = os.environ["S3_BUCKET"]
@@ -35,10 +34,8 @@ def cache_model_from_hf_hub(
     dir_model_local = os.path.join(LOCAL_HF_CACHE_DIR, model_name_hf_cache)
 
     # Remote cache config
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": s3_endpoint})
-    available_models_s3 = [
-        os.path.basename(path) for path in fs.ls(os.path.join(s3_bucket, s3_cache_dir))
-    ]
+    fs = s3fs.S3FileSystem(endpoint_url=s3_endpoint)
+    available_models_s3 = [os.path.basename(path) for path in fs.ls(os.path.join(s3_bucket, s3_cache_dir))]
     dir_model_s3 = os.path.join(s3_bucket, s3_cache_dir, model_name_hf_cache)
 
     if model_name_hf_cache not in os.listdir(LOCAL_HF_CACHE_DIR):
@@ -60,6 +57,19 @@ def cache_model_from_hf_hub(
             fs.put(dir_model_local, dir_model_s3, recursive=True)
 
 
+def cache_models_from_hf_hub(
+    models_names: Iterable[str], s3_endpoint: str | None = None, s3_bucket: str | None = None, s3_cache_dir: str = "models/hf_hub"
+):
+    for model_name in models_names:
+        cache_model_from_hf_hub(model_name, s3_endpoint, s3_bucket, s3_cache_dir)
+
+
 if __name__ == "__main__":
-    cache_model_from_hf_hub(os.environ["EMB_MODEL_NAME"])
-    cache_model_from_hf_hub(os.environ["LLM_MODEL_NAME"])
+    argparser = models_only_argparser()
+    load_config(argparser)
+    cache_models_from_hf_hub(
+        [default_config["emb_model"], default_config["llm_model"]],
+        default_config.get("s3_bucket"),
+        default_config.get("s3_endpoint_url"),
+        default_config.get("s3_model_cache_dir"),
+    )
