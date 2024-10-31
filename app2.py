@@ -14,37 +14,16 @@ from src.model_building import build_llm_model
 from src.results_logging.log_conversations import log_qa_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
-# Logging configuration
+# Logging, configuration and S3
 logger = logging.getLogger(__name__)
 
 config = load_config(simple_argparser())["chainlit.app"]
 
 fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
-# Remote file configuration
-os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
-fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
-
 # PARAMETERS --------------------------------------
 
-os.environ["UVICORN_TIMEOUT_KEEP_ALIVE"] = "0"
-
-model = os.getenv("LLM_MODEL_NAME")
-CHROMA_DB_LOCAL_DIRECTORY = "./data/chroma_db"
-CLI_MESSAGE_SEPARATOR = f"{80*'-'} \n"
-quantization = True
-DEFAULT_MAX_NEW_TOKENS = 10
-DEFAULT_MODEL_TEMPERATURE = 1
-embedding = os.getenv("EMB_MODEL_NAME", EMB_MODEL_NAME)
-
-LLM_MODEL = os.getenv("LLM_MODEL_NAME", "mistralai/Mistral-7B-Instruct-v0.2")
-QUANTIZATION = os.getenv("QUANTIZATION", True)
-MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", DEFAULT_MAX_NEW_TOKENS))
-MODEL_TEMPERATURE = int(os.getenv("MODEL_TEMPERATURE", DEFAULT_MODEL_TEMPERATURE))
-RETURN_FULL_TEXT = os.getenv("RETURN_FULL_TEXT", True)
-DO_SAMPLE = os.getenv("DO_SAMPLE", True)
-DATABASE_RUN_ID = "32d4150a14fa40d49b9512e1f3ff9e8c"
-
+CLI_MESSAGE_SEPARATOR = (int(config.get("CLI_MESSAGE_SEPARATOR_LENGTH")) * "-") + " \n"
 
 # APPLICATION -----------------------------------------
 
@@ -59,16 +38,16 @@ def retrieve_model_tokenizer_and_db(
 
     # Load LLM in session
     llm, tokenizer = build_llm_model(
-        model_name=LLM_MODEL,
-        quantization_config=QUANTIZATION,
+        model_name=config["LLM_MODEL"],
+        quantization_config=config["QUANTIZATION"],
         config=True,
         token=os.getenv("HF_TOKEN"),
         streaming=False,
         generation_args={
-            "max_new_tokens": MAX_NEW_TOKENS,
-            "return_full_text": RETURN_FULL_TEXT,
-            "do_sample": DO_SAMPLE,
-            "temperature": MODEL_TEMPERATURE,
+            "max_new_tokens": config["MAX_NEW_TOKENS"],
+            "return_full_text": config["RETURN_FULL_TEXT"],
+            "do_sample": config["DO_SAMPLE"],
+            "temperature": config["MODEL_TEMPERATURE"],
         },
     )
 
@@ -78,7 +57,7 @@ def retrieve_model_tokenizer_and_db(
     # Ensure production database is used
     db = load_vector_database(
         filesystem=fs,
-        database_run_id=DATABASE_RUN_ID,
+        database_run_id=config["DATABASE_RUN_ID"],
         # hard coded pour le moment
     )
 
@@ -115,7 +94,7 @@ async def on_chat_start():
     # I - CREATING RETRIEVER AND IMPORTING DATABASE
 
     # Build chat model
-    RETRIEVER_ONLY = str_to_bool(os.getenv("RETRIEVER_ONLY", "false"))
+    RETRIEVER_ONLY = config.get("RETRIEVER_ONLY", fallback=False)
     cl.user_session.set("RETRIEVER_ONLY", RETRIEVER_ONLY)
 
     # Log on CLI to follow the configuration
@@ -128,12 +107,12 @@ async def on_chat_start():
     prompt = None
     db = load_vector_database(
         filesystem=fs,
-        database_run_id=DATABASE_RUN_ID,
+        database_run_id=config["DATABASE_RUN_ID"],
         # hard coded pour le moment
     )
     retriever, vectorstore = await cl.make_async(load_retriever)(
-        emb_model_name=embedding,
-        persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+        emb_model_name=config["emb_model"],
+        persist_directory=config["CHROMA_DB_LOCAL_DIRECTORY"],
         vectorstore=db,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
     )
@@ -149,7 +128,7 @@ async def on_chat_start():
         logging.info(ndocs)
 
         RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
-            CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
+            config["CHATBOT_TEMPLATE"], tokenize=False, add_generation_prompt=True
         )
         prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
         logging.info("------prompt loaded")
@@ -180,7 +159,7 @@ async def on_message(message: cl.Message):
     """
     Handle incoming messages and process the response using the RAG chain.
     """
-    validator = cl.user_session.get("validator")
+    # validator = cl.user_session.get("validator")
     # test_relevancy = await check_query_relevance(
     #    validator=validator, query=message.content
     # )

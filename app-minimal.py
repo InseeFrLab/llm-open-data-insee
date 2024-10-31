@@ -57,16 +57,16 @@ async def on_chat_start():
     db = await cl.make_async(load_vector_database)(filesystem=fs, database_run_id="32d4150a14fa40d49b9512e1f3ff9e8c")
 
     llm, tokenizer = await cl.make_async(build_llm_model)(
-        model_name=model,
-        quantization_config=quantization,
+        model_name=config["llm_model"],
+        quantization_config=config["quantization"],
         config=True,
         token=os.getenv("HF_TOKEN"),
         streaming=False,
         generation_args={
-            "max_new_tokens": max_new_tokens,
-            "return_full_text": False,
-            "do_sample": True,
-            "temperature": model_temperature,
+            "max_new_tokens": config["max_new_tokens"],
+            "return_full_text": config["return_full_text"],
+            "do_sample": config["do_sample"],
+            "temperature": config["model_temperature"],
         },
     )
     logger.info("------llm loaded")
@@ -76,13 +76,15 @@ async def on_chat_start():
     cl.user_session.set("validator", validator)
     logger.info("------validator loaded")
 
-    RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True)
+    RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
+        config["CHATBOT_TEMPLATE"], tokenize=False, add_generation_prompt=True
+    )
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
     logger.info("------prompt loaded")
     retriever, vectorstore = await cl.make_async(load_retriever)(
         emb_model_name="OrdalieTech/Solon-embeddings-large-0.1",
         vectorstore=db,
-        persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+        persist_directory=config["CHROMA_DB_LOCAL_DIRECTORY"],
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
     )
     logger.info("------retriever loaded")
@@ -147,19 +149,15 @@ async def on_message(message: cl.Message):
 
         # Log Q/A
         if cl.user_session.get("IS_LOGGING_ON"):
-            embedding_model_name = os.getenv("EMB_MODEL_NAME")
-            LLM_name = os.getenv("LLM_MODEL_NAME")
-            reranker = os.getenv("RERANKING_METHOD")
-
             log_qa_to_s3(
                 thread_id=message.thread_id,
                 message_id=sources_msg.id,
                 user_query=message.content,
                 generated_answer=(None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer),
                 retrieved_documents=docs,
-                embedding_model_name=embedding_model_name,
-                LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else LLM_name,
-                reranker=reranker,
+                embedding_model_name=config["emb_model"],
+                LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else config.get("LLM_MODEL_NAME"),
+                reranker=config.get("RERANKING_METHOD"),
             )
     else:
         await cl.Message(

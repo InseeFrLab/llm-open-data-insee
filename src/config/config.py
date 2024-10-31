@@ -37,12 +37,28 @@ class PostProcessedConfigParser(ConfigParser):
         self.read_dict({section: options})
 
 
-BOOLEAN_STATES = {"1": True, "yes": True, "true": True, "on": True, "oui": True, "0": False, "no": False, "false": False, "off": False, "non": False}
+BOOLEAN_STATES = {
+    "1": True,
+    "yes": True,
+    "true": True,
+    "on": True,
+    "oui": True,
+    "0": False,
+    "no": False,
+    "false": False,
+    "off": False,
+    "non": False,
+}
 
 
 def optional_int(value: str) -> int | None:
     """Processor for a parameter representing an integer (empty is None)"""
     return int(value) if value else None
+
+
+def optional_float(value: str) -> float | None:
+    """Processor for a parameter representing an integer (empty is None)"""
+    return float(value) if value else None
 
 
 def optional_bool(value: str) -> bool | None:
@@ -85,6 +101,14 @@ def load_config(argparser: argparse.ArgumentParser | None = None) -> PostProcess
             "max_new_tokens": optional_int,
             "quantization": optional_int,
             "mlflow_load_artifacts": optional_bool,
+            "uvicorn_timeout_keep_alive": optional_int,
+            "cli_message_separator_length": optional_int,
+            "model_temperature": optional_float,
+            "return_full_text": optional_bool,
+            "do_sample": optional_bool,
+            "temperature": optional_float,
+            "rep_penalty": optional_float,
+            "top_p": optional_float,
         }
     )
     # Load default config file first
