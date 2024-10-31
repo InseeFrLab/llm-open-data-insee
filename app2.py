@@ -1,38 +1,33 @@
 import logging
 import os
-import s3fs
 
 import chainlit as cl
-import chainlit.data as cl_data
+import s3fs
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.prompts import PromptTemplate
 
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
-from src.config import CHATBOT_TEMPLATE, EMB_MODEL_NAME
-from src.db_building import (
-    load_retriever,
-    load_vector_database
-)
+from src.config import load_config, simple_argparser
+from src.db_building import load_retriever, load_vector_database
 from src.model_building import build_llm_model
-from src.results_logging.log_conversations import log_feedback_to_s3, log_qa_to_s3
+from src.results_logging.log_conversations import log_qa_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
 
 # Logging configuration
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    format="%(asctime)s %(message)s",
-    datefmt="%Y-%m-%d %I:%M:%S %p",
-    level=logging.DEBUG,
-)
+
+config = load_config(simple_argparser())["chainlit.app"]
+
+fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
 # Remote file configuration
-os.environ['MLFLOW_TRACKING_URI'] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
 fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
 # PARAMETERS --------------------------------------
 
-os.environ['UVICORN_TIMEOUT_KEEP_ALIVE'] = "0"
+os.environ["UVICORN_TIMEOUT_KEEP_ALIVE"] = "0"
 
 model = os.getenv("LLM_MODEL_NAME")
 CHROMA_DB_LOCAL_DIRECTORY = "./data/chroma_db"
@@ -56,26 +51,25 @@ DATABASE_RUN_ID = "32d4150a14fa40d49b9512e1f3ff9e8c"
 
 def retrieve_model_tokenizer_and_db(
     filesystem=fs,
-    with_db=True
-    #**kwargs
+    with_db=True,
+    # **kwargs
 ):
-
     # ------------------------
     # I - LOAD VECTOR DATABASE
 
     # Load LLM in session
     llm, tokenizer = build_llm_model(
-            model_name=LLM_MODEL,
-            quantization_config=QUANTIZATION,
-            config=True,
-            token=os.getenv("HF_TOKEN"),
-            streaming=False,
-            generation_args={
-                "max_new_tokens": MAX_NEW_TOKENS,
-                "return_full_text": RETURN_FULL_TEXT,
-                "do_sample": DO_SAMPLE,
-                "temperature": MODEL_TEMPERATURE
-            },
+        model_name=LLM_MODEL,
+        quantization_config=QUANTIZATION,
+        config=True,
+        token=os.getenv("HF_TOKEN"),
+        streaming=False,
+        generation_args={
+            "max_new_tokens": MAX_NEW_TOKENS,
+            "return_full_text": RETURN_FULL_TEXT,
+            "do_sample": DO_SAMPLE,
+            "temperature": MODEL_TEMPERATURE,
+        },
     )
 
     if with_db is False:
@@ -84,7 +78,7 @@ def retrieve_model_tokenizer_and_db(
     # Ensure production database is used
     db = load_vector_database(
         filesystem=fs,
-        database_run_id=DATABASE_RUN_ID
+        database_run_id=DATABASE_RUN_ID,
         # hard coded pour le moment
     )
 
@@ -95,15 +89,13 @@ def retrieve_model_tokenizer_and_db(
 async def on_chat_start():
     # Initial message
     init_msg = cl.Message(
-        content="Bienvenue sur le ChatBot de l'INSEE!"#, disable_feedback=True
+        content="Bienvenue sur le ChatBot de l'INSEE!"  # , disable_feedback=True
     )
     await init_msg.send()
 
     # Logging configuration
     IS_LOGGING_ON = True
-    ASK_USER_BEFORE_LOGGING = str_to_bool(
-        os.getenv("ASK_USER_BEFORE_LOGGING", "false")
-    )
+    ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
     if ASK_USER_BEFORE_LOGGING:
         res = await cl.AskActionMessage(
             content="Autorisez-vous le partage de vos interactions avec le ChatBot!",
@@ -113,14 +105,10 @@ async def on_chat_start():
             ],
         ).send()
         if res and res.get("value") == "log":
-            await cl.Message(
-                content="Vous avez choisi de partager vos interactions."
-            ).send()
+            await cl.Message(content="Vous avez choisi de partager vos interactions.").send()
         if res and res.get("value") == "no_log":
             IS_LOGGING_ON = False
-            await cl.Message(
-                content="Vous avez choisi de garder vos interactions avec le ChatBot privées."
-            ).send()
+            await cl.Message(content="Vous avez choisi de garder vos interactions avec le ChatBot privées.").send()
     cl.user_session.set("IS_LOGGING_ON", IS_LOGGING_ON)
 
     # -------------------------------------------------
@@ -132,36 +120,29 @@ async def on_chat_start():
 
     # Log on CLI to follow the configuration
     if RETRIEVER_ONLY:
-        logging.info(
-            f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : retriever only \n"
-        )
+        logging.info(f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : retriever only \n")
     else:
-        logging.info(
-            f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : RAG \n"
-        )
+        logging.info(f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : RAG \n")
 
     llm = None
     prompt = None
     db = load_vector_database(
-            filesystem=fs,
-            database_run_id=DATABASE_RUN_ID
-            # hard coded pour le moment
-    ) 
+        filesystem=fs,
+        database_run_id=DATABASE_RUN_ID,
+        # hard coded pour le moment
+    )
     retriever, vectorstore = await cl.make_async(load_retriever)(
-                emb_model_name=embedding,
-                persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
-                vectorstore=db,
-                retriever_params={
-                    "search_type": "similarity",
-                    "search_kwargs": {"k": 30}
-                },
-            )
+        emb_model_name=embedding,
+        persist_directory=CHROMA_DB_LOCAL_DIRECTORY,
+        vectorstore=db,
+        retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+    )
     logging.info("Retriever loaded !")
 
     if RETRIEVER_ONLY is False:
         llm, tokenizer, db = await cl.make_async(retrieve_model_tokenizer_and_db)(
             filesystem=fs,
-            with_db=True  # **vars(args)
+            with_db=True,  # **vars(args)
         )
         db_docs = db.get()["documents"]
         ndocs = f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents"
@@ -170,19 +151,13 @@ async def on_chat_start():
         RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
             CHATBOT_TEMPLATE, tokenize=False, add_generation_prompt=True
         )
-        prompt = PromptTemplate(
-            input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE
-        )
+        prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
         logging.info("------prompt loaded")
 
-
     # Set Validator chain in chainlit session
-    validator = build_chain_validator(
-        evaluator_llm=llm, tokenizer=tokenizer
-    )
+    validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
     cl.user_session.set("validator", validator)
     logging.info("------validator loaded")
-
 
     # Build chain
     RERANKING_METHOD = os.getenv("RERANKING_METHOD")
@@ -206,25 +181,23 @@ async def on_message(message: cl.Message):
     Handle incoming messages and process the response using the RAG chain.
     """
     validator = cl.user_session.get("validator")
-    #test_relevancy = await check_query_relevance(
+    # test_relevancy = await check_query_relevance(
     #    validator=validator, query=message.content
-    #)
+    # )
     test_relevancy = True
     if test_relevancy:
         # Retrieve the chain from the user session
         chain = cl.user_session.get("chain")
 
         # Initialize ChatBot's answer
-        answer_msg = cl.Message(content="")#, disable_feedback=True)
+        answer_msg = cl.Message(content="")  # , disable_feedback=True)
         sources = list()
         titles = list()
 
         # Generate ChatBot's answer
         async for chunk in chain.astream(
             message.content,
-            config=RunnableConfig(
-                callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]
-            ),
+            config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]),
         ):
             if "answer" in chunk:
                 await answer_msg.stream_token(chunk["answer"])
@@ -241,8 +214,8 @@ async def on_message(message: cl.Message):
 
         # Add sources to answer
         sources_msg = cl.Message(
-            content=add_sources_to_messages(message="", sources=sources, titles=titles)#,
-            #disable_feedback=False,
+            content=add_sources_to_messages(message="", sources=sources, titles=titles)  # ,
+            # disable_feedback=False,
         )
         await sources_msg.send()
 
@@ -256,9 +229,7 @@ async def on_message(message: cl.Message):
                 thread_id=message.thread_id,
                 message_id=sources_msg.id,
                 user_query=message.content,
-                generated_answer=(
-                    None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer
-                ),
+                generated_answer=(None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer),
                 retrieved_documents=docs,
                 embedding_model_name=embedding_model_name,
                 LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else LLM_name,

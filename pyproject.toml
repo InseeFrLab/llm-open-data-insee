@@ -1,5 +1,5 @@
 [tool.ruff]
-line-length = 150
+line-length = 120
 extend-include = ["*.ipynb"]
 extend-exclude = ["notebooks/*"]
 target-version = "py312"
@@ -20,4 +20,3 @@ select = [
     "I",
 ]
 ignore  = ["B024"]
-

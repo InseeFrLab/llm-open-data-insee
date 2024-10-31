@@ -36,7 +36,10 @@ def build_llm_model(
     Create the LLM model
     """
     cache_model_from_hf_hub(
-        model_name, s3_bucket=config["s3_bucket"], s3_cache_dir=config["s3_model_cache_dir"], s3_endpoint=config["s3_endpoint_url"]
+        model_name,
+        s3_bucket=config["s3_bucket"],
+        s3_cache_dir=config["s3_model_cache_dir"],
+        s3_endpoint=config["s3_endpoint_url"],
     )
 
     configs = {
@@ -52,7 +55,9 @@ def build_llm_model(
             else None
         ),
         # Load LLM config
-        "config": (AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=hf_token) if load_LLM_config else None),
+        "config": (
+            AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=hf_token) if load_LLM_config else None
+        ),
         "token": hf_token,
     }
 

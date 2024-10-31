@@ -16,7 +16,12 @@ from src.chain_building import build_chain_validator
 from src.chain_building.build_chain import build_chain
 from src.config import default_config, llm_argparser, load_config
 from src.db_building import chroma_topk_to_df, load_retriever, load_vector_database
-from src.evaluation import answer_faq_by_bot, compare_performance_reranking, evaluate_question_validator, transform_answers_bot
+from src.evaluation import (
+    answer_faq_by_bot,
+    compare_performance_reranking,
+    evaluate_question_validator,
+    transform_answers_bot,
+)
 from src.model_building import build_llm_model
 
 # Logging configuration
@@ -56,7 +61,7 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
             model_name=config["llm_model"],
             quantization_config=config.get("quantization"),
             load_LLM_config=True,
-            token=os.getenv("HF_TOKEN"),
+            hf_token=os.getenv("HF_TOKEN"),
             streaming=False,
             config=config,
         )
@@ -108,7 +113,9 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
 
         if reranking_method is not None:
             # Define a langchain prompt template
-            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(config.get("CHATBOT_TEMPLATE"), tokenize=False, add_generation_prompt=True)
+            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(
+                config.get("CHATBOT_TEMPLATE"), tokenize=False, add_generation_prompt=True
+            )
             prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER)
 
             mlflow.log_dict(config.get("CHATBOT_TEMPLATE"), "chatbot_template.json")
@@ -131,10 +138,16 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
             eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=config.get("topk_stats"))
         else:
             answers_bot_before_reranker = answer_faq_by_bot(retriever, faq)
-            eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(answers_bot_before_reranker, k=5)
+            eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(
+                answers_bot_before_reranker, k=5
+            )
             answers_bot_after_reranker = answer_faq_by_bot(chain, faq)
-            eval_reponses_bot_after_reranker, answers_bot_topk_after_reranker = transform_answers_bot(answers_bot_after_reranker, k=5)
-            eval_reponses_bot = compare_performance_reranking(eval_reponses_bot_after_reranker, eval_reponses_bot_before_reranker)
+            eval_reponses_bot_after_reranker, answers_bot_topk_after_reranker = transform_answers_bot(
+                answers_bot_after_reranker, k=5
+            )
+            eval_reponses_bot = compare_performance_reranking(
+                eval_reponses_bot_after_reranker, eval_reponses_bot_before_reranker
+            )
             answers_bot_topk = answers_bot_topk_after_reranker
 
         # Compute model performance at the end of the pipeline
@@ -154,7 +167,10 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
         mlflow.log_metric("document_is_first", 100 * document_is_top)
         mlflow.log_metric("document_among_topk", 100 * document_among_topk)
         mlflow.log_metrics(
-            {f'document_in_top_{int(row["document_position"])}': 100 * row["cumsum_url_expected"] for _, row in answers_bot_topk.iterrows()}
+            {
+                f'document_in_top_{int(row["document_position"])}': 100 * row["cumsum_url_expected"]
+                for _, row in answers_bot_topk.iterrows()
+            }
         )
         mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
 

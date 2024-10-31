@@ -1,62 +1,43 @@
-from transformers import AutoTokenizer
-import os
-import s3fs
 import logging
+import os
 
-from src.db_building import load_retriever, load_vector_database
-
+import chainlit as cl
+import s3fs
 from langchain.schema.runnable.config import RunnableConfig
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
 from langchain_community.llms import VLLM
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import (
-    RunnableLambda,
-    RunnableParallel,
     RunnablePassthrough,
 )
-import chainlit as cl
 
-from src.config import CHATBOT_TEMPLATE, EMB_MODEL_NAME
-from utils import (
-    format_docs, create_prompt_from_instructions,
-    retrieve_llm_from_cache,
-    retrieve_db_from_cache
-)
+from src.config import load_config, simple_argparser
+from src.db_building import load_retriever
+from utils import create_prompt_from_instructions, format_docs, retrieve_db_from_cache
 
 # Logging configuration
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    format="%(asctime)s %(message)s",
-    datefmt="%Y-%m-%d %I:%M:%S %p",
-    level=logging.DEBUG,
-)
 
-# Remote file configuration
-os.environ["MLFLOW_TRACKING_URI"] = (
-    "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
-)
-fs = s3fs.S3FileSystem(
-    client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
-)
+config = load_config(simple_argparser())["chainlit.app"]
+
+fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
 # PARAMETERS --------------------------------------
 
-os.environ["UVICORN_TIMEOUT_KEEP_ALIVE"] = "0"
+config["UVICORN_TIMEOUT_KEEP_ALIVE"] = "0"
 
-CLI_MESSAGE_SEPARATOR = f"{80*'-'} \n"
-quantization = True
+CLI_MESSAGE_SEPARATOR = (config["CLI_MESSAGE_SEPARATOR_LENGTH"] * "-") + " \n"
 DEFAULT_MAX_NEW_TOKENS = 10
 DEFAULT_MODEL_TEMPERATURE = 1
-embedding = os.getenv("EMB_MODEL_NAME", EMB_MODEL_NAME)
+embedding = config.get("EMB_MODEL")
 
-QUANTIZATION = os.getenv("QUANTIZATION", True)
+QUANTIZATION = config.get("QUANTIZATION")
 MAX_NEW_TOKENS = int(os.getenv("MAX_NEW_TOKENS", DEFAULT_MAX_NEW_TOKENS))
 MODEL_TEMPERATURE = int(os.getenv("MODEL_TEMPERATURE", DEFAULT_MODEL_TEMPERATURE))
 RETURN_FULL_TEXT = os.getenv("RETURN_FULL_TEXT", True)
 DO_SAMPLE = os.getenv("DO_SAMPLE", True)
 
 DATABASE_RUN_ID = "32d4150a14fa40d49b9512e1f3ff9e8c"
-LLM_MODEL = "meta-llama/Llama-3.2-3B-Instruct"
+LLM_MODEL = config.get("LLM_MODEL")
 MAX_NEW_TOKEN = 8192
 TEMPERATURE = 0.2
 REP_PENALTY = 1.1
@@ -76,7 +57,7 @@ La réponse doit être développée et citer ses sources (titre et url de la pub
 
 Cite 5 sources maximum.
 
-Tu n'es pas obligé d'utiliser les sources les moins pertinentes. 
+Tu n'es pas obligé d'utiliser les sources les moins pertinentes.
 
 Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
 
@@ -92,12 +73,11 @@ Réponse:
 """
 
 
-prompt = create_prompt_from_instructions(
-    system_instructions, question_instructions
-)
+prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
 
 # CHAT START -------------------------------
+
 
 def format_docs2(docs: list):
     return "\n\n".join(
@@ -111,25 +91,22 @@ def format_docs2(docs: list):
         ]
     )
 
+
 @cl.on_chat_start
 async def on_chat_start():
-
     # Initial message
     init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
     await init_msg.send()
 
-    logging.info(f"------ downloading {LLM_MODEL} or using from cache")
+    logger.info(f"------ downloading {LLM_MODEL} or using from cache")
 
     # retrieve_llm_from_cache(model_id=LLM_MODEL)
 
-    logging.info("------ database loaded")
+    logger.info("------ database loaded")
 
-    db = retrieve_db_from_cache(
-        filesystem=fs,
-        run_id=DATABASE_RUN_ID
-    )
+    db = retrieve_db_from_cache(filesystem=fs, run_id=DATABASE_RUN_ID)
 
-    logging.info("------ database loaded")
+    logger.info("------ database loaded")
 
     retriever, vectorstore = await cl.make_async(load_retriever)(
         emb_model_name=embedding,
@@ -139,9 +116,9 @@ async def on_chat_start():
 
     db_docs = db.get()["documents"]
     ndocs = f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents"
-    logging.info(ndocs)
+    logger.info(ndocs)
 
-    logging.info("------ retriever ready for use")
+    logger.info("------ retriever ready for use")
 
     llm = VLLM(
         model=LLM_MODEL,
@@ -151,33 +128,26 @@ async def on_chat_start():
         rep_penalty=REP_PENALTY,
     )
 
-    logging.info("------ VLLM object ready")
+    logger.info("------ VLLM object ready")
 
     rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
+        {"context": retriever | format_docs, "question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
     )
 
     cl.user_session.set("rag_chain", rag_chain)
 
-    logging.info("------ rag_chain initialized, ready for use")
-    logging.info(f"Thread ID : {init_msg.thread_id}")
+    logger.info("------ rag_chain initialized, ready for use")
+    logger.info(f"Thread ID : {init_msg.thread_id}")
 
 
 @cl.on_message
 async def on_message(message: cl.Message):
-
     rag_chain = cl.user_session.get("rag_chain")
 
     answer_msg = cl.Message(content="")
 
     async for chunk in rag_chain.astream(
-        message.content,
-        config=RunnableConfig(
-                callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]
-        )
+        message.content, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
     ):
         await answer_msg.send()
         await cl.sleep(1)
