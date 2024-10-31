@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 from transformers import TokenClassificationPipeline, pipeline
+
 from utils import fs
 
 ner = pipeline(
@@ -31,7 +32,7 @@ def custom_ner(ner_pipeline: TokenClassificationPipeline, text: str) -> list[dic
     Returns:
         Dict: NER output.
     """
-    if (text == "") or (text is None):
+    if text is None or text == "":
         return ""
     else:
         return ner(text)
