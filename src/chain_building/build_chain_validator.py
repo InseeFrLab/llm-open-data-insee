@@ -16,7 +16,8 @@ Les domaines d'expertise de l'INSEE incluent, mais ne sont pas limités à :
 7. Conditions de vie et pauvreté
 8. Éducation et formation
 
-Évaluez la pertinence de la question utilisateur suivante en vous assurant qu'elle est liée à l'un des domaines d'expertise de l'INSEE.
+Évaluez la pertinence de la question utilisateur suivante
+en vous assurant qu'elle est liée à l'un des domaines d'expertise de l'INSEE.
 Répondez par "Oui" ou "Non" et fournissez une brève justification.
 
 Exemples :
@@ -25,7 +26,8 @@ Réponse: "Oui. Cette question est pertinente car elle concerne les statistiques
 qui sont des domaines d'expertise de l'INSEE."
 
 Question: "Quelle est la recette pour faire un gâteau au chocolat ?"
-Réponse: "Non. Cette question n'est pas pertinente car elle concerne la cuisine, qui n'est pas un domaine d'expertise de l'INSEE."
+Réponse: "Non. Cette question n'est pas pertinent car elle concerne la cuisine,
+qui n'est pas un domaine d'expertise de l'INSEE."
 """
 
 USER_INSTRUCTION = """Question utilisateur : {query}

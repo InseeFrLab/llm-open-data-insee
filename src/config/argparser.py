@@ -233,9 +233,10 @@ def llm_argparser():
         action=argparse.BooleanOptionalAction,
         default=True,
         help="""
-        if set to True , this parameter enables decoding strategies such as multinomial sampling, beam-search multinomial sampling, Top-K sampling
-        and Top-p sampling. All these strategies select the next token from the probability distribution over the entire vocabulary
-        with various strategy-specific adjustments.
+        if set to True , this parameter enables decoding strategies such as multinomial
+        sampling, beam-search multinomial sampling, Top-K sampling and Top-p sampling.
+        All these strategies select the next token from the probability distribution
+        over the entire vocabulary with various strategy-specific adjustments.
         --do_sample yields True and --no-do_sample yields False
         Default to True
         """,
