@@ -1,8 +1,8 @@
 import logging
 import os
-
+import subprocess
 import s3fs
-from transformers import AutoModel
+from transformers import AutoModelForCausalLM
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -10,11 +10,20 @@ logging.basicConfig(
 )
 
 
+def get_file_system() -> s3fs.S3FileSystem:
+    """
+    Return the s3 file system.
+    """
+    return s3fs.S3FileSystem(
+        client_kwargs={"endpoint_url": f"https://{os.environ['AWS_S3_ENDPOINT']}"},
+        key=os.environ["AWS_ACCESS_KEY_ID"],
+        secret=os.environ["AWS_SECRET_ACCESS_KEY"],
+    )
+
 def cache_model_from_hf_hub(
     model_name,
-    s3_endpoint=f'https://{os.environ["AWS_S3_ENDPOINT"]}',
-    s3_bucket=os.environ["S3_BUCKET"],
-    s3_cache_dir="models/hf_hub",
+    s3_bucket="models-hf",
+    s3_cache_dir="hf_hub",
 ):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.
 
@@ -23,15 +32,17 @@ def cache_model_from_hf_hub(
         s3_bucket (str): Name of the S3 bucket to use.
         s3_cache_dir (str): Path of the cache directory on S3.
     """
+    assert (
+        "MC_host_s3" in os.environ
+    ), "Please set the MC_host_s3 environment variable."
+
     # Local cache config
-    LOCAL_HF_CACHE_DIR = os.path.join(
-        os.path.expanduser("~"), ".cache", "huggingface", "hub"
-    )
+    LOCAL_HF_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
     model_name_hf_cache = "models--" + "--".join(model_name.split("/"))
     dir_model_local = os.path.join(LOCAL_HF_CACHE_DIR, model_name_hf_cache)
 
     # Remote cache config
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": s3_endpoint})
+    fs = get_file_system()
     available_models_s3 = [
         os.path.basename(path) for path in fs.ls(os.path.join(s3_bucket, s3_cache_dir))
     ]
@@ -40,20 +51,48 @@ def cache_model_from_hf_hub(
     if model_name_hf_cache not in os.listdir(LOCAL_HF_CACHE_DIR):
         # Try fetching from S3 if available
         if model_name_hf_cache in available_models_s3:
-            logger.info(f"Fetching model {model_name} from S3.")
-            fs.get(dir_model_s3, LOCAL_HF_CACHE_DIR, recursive=True)
+            print(f"Fetching model {model_name} from S3.")
+            cmd = [
+                "mc",
+                "cp",
+                "-r",
+                f"s3/{dir_model_s3}",
+                f"{LOCAL_HF_CACHE_DIR}/",
+                "> dev/null",
+
+            ]
+            subprocess.run(cmd, check=True)
         # Else, fetch from HF Hub and push to S3
         else:
-            logger.info(f"Model {model_name} not found on S3, fetching from HF hub.")
-            AutoModel.from_pretrained(model_name)
-            logger.info(f"Putting model {model_name} on S3.")
-            fs.put(dir_model_local, dir_model_s3, recursive=True)
+            print(f"Model {model_name} not found on S3, fetching from HF hub.")
+            AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype="auto",
+            )
+            print(f"Putting model {model_name} on S3.")
+            cmd = [
+                "mc",
+                "cp",
+                "-r",
+                f"{dir_model_local}/",
+                f"s3/{dir_model_s3}",
+                "> dev/null",
+            ]
+            subprocess.run(cmd, check=True)
     else:
-        logger.info(f"Model {model_name} found in local cache. ")
+        print(f"Model {model_name} found in local cache. ")
         if model_name_hf_cache not in available_models_s3:
             # Push from local HF cache to S3
-            logger.info(f"Putting model {model_name} on S3.")
-            fs.put(dir_model_local, dir_model_s3, recursive=True)
+            print(f"Putting model {model_name} on S3.")
+            cmd = [
+                "mc",
+                "cp",
+                "-r",
+                f"{dir_model_local}/",
+                f"s3/{dir_model_s3}",
+                "> dev/null",
+            ]
+            subprocess.run(cmd, check=True)
 
 
 if __name__ == "__main__":
