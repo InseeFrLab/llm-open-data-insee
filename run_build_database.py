@@ -38,7 +38,9 @@ def run_build_database(config: Mapping[str, Any] = default_config) -> None:
 
         # Move ChromaDB in a specific path in s3
         hash_chroma = next(
-            entry for entry in os.listdir(config["chroma_db_local_dir"]) if os.path.isdir(os.path.join(config["chroma_db_local_dir"], entry))
+            entry
+            for entry in os.listdir(config["chroma_db_local_dir"])
+            if os.path.isdir(os.path.join(config["chroma_db_local_dir"], entry))
         )
         cmd = [
             "mc",
@@ -88,7 +90,9 @@ def run_build_database(config: Mapping[str, Any] = default_config) -> None:
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
         FILES_TO_LOG = (
-            list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py")) + [PosixPath("run_build_database.py")]
+            list(current_dir.glob("src/db_building/*.py"))
+            + list(current_dir.glob("src/config/*.py"))
+            + [PosixPath("run_build_database.py")]
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -113,7 +117,9 @@ def run_build_database(config: Mapping[str, Any] = default_config) -> None:
 if __name__ == "__main__":
     argparser = simple_argparser()
     load_config(argparser)
-    assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
+    assert (
+        "MLFLOW_TRACKING_URI" in default_config
+    ), "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
     # Note: other configuration sections could also be used for specific parts of the process
     # config = load_config(argparser)
     # config['DEFAULT'] (= default_config)  /  config['OTHER_SECTION']

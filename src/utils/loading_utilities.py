@@ -13,7 +13,9 @@ def load_dataframe_from_parquet(path: str, engine: str = "fastparquet") -> pd.Da
     return pd.read_parquet(path, engine)
 
 
-def load_dataframe_from_parquet_using_S3(filepath: str, engine: str = "fastparquet", config: Mapping[str, Any] = default_config) -> pd.DataFrame:
+def load_dataframe_from_parquet_using_S3(
+    filepath: str, engine: str = "fastparquet", config: Mapping[str, Any] = default_config
+) -> pd.DataFrame:
     fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
     with fs.open(filepath, mode="rb") as file_in:
         return pd.read_parquet(file_in, engine)

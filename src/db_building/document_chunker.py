@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import pandas as pd
 from langchain.text_splitter import RecursiveCharacterTextSplitter, TextSplitter
@@ -99,9 +98,9 @@ def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
 def get_text_splitter(
     embedding_model: str,
     use_tokenizer_to_chunk: bool = True,
-    chunk_size: Optional[int] = None,
-    chunk_overlap: Optional[int] = None,
-    separators: Optional[list[str]] = None,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    separators: list[str] | None = None,
 ) -> TextSplitter:
     """
     Get a text splitter based on the specified parameters.
@@ -129,8 +128,7 @@ def get_text_splitter(
     else:
         if chunk_size is None or chunk_overlap is None:
             raise ValueError(
-                "chunk_size and chunk_overlap must be specified"
-                "if use_tokenizer_to_chunk is set to True"
+                "chunk_size and chunk_overlap must be specified" "if use_tokenizer_to_chunk is set to True"
             )
         else:
             return RecursiveCharacterTextSplitter(
@@ -140,10 +138,7 @@ def get_text_splitter(
             )
 
 
-def make_md_splits(
-    document_list: list[Document],
-    markdown_splitter: MarkdownHeaderTextSplitter
-) -> list[Document]:
+def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
     """
     Splits the content of each document in the document list based on Markdown headers,
     and preserves the original metadata in each split section.
