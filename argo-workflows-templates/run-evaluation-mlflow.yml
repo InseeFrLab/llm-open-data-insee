@@ -68,7 +68,7 @@ spec:
             pip install -r requirements-dev.txt &&
             python run_evaluation.py --experiment_name {{inputs.parameters.EXPERIMENT}} \
               --llm_model {{inputs.parameters.LLM_MODEL}} \
-              --database_run_id {{inputs.parameters.RUN_ID}}
+              --config_mlflow {{inputs.parameters.RUN_ID}}
 
         volumeMounts:
           - mountPath: /dev/shm

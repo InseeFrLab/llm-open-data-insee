@@ -17,29 +17,32 @@ from .build_database import reload_database_from_local_dir
 logger = logging.getLogger(__name__)
 
 
-def load_vector_database(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> Chroma | None:
+def load_vector_database(
+    filesystem: s3fs.S3FileSystem, mlflow_run_id: str | None = None, config: Mapping[str, Any] = default_config
+) -> Chroma | None:
     """
     Loads a vector database from S3 or a local path based on the provided parameters.
 
     Parameters:
-    filesystem : s3fs.S3FileSystem
+    filesystem: s3fs.S3FileSystem
         The filesystem object for interacting with S3.
-    config : Mapping[str, Any]
-        Keyword arguments for configuring the database loading.
-        - database_run_id (str, optional): If provided, download artifacts using MLflow.
+    mlflow_run_id: str | None
+        MLflow run ID to load parameters from
+    config: Mapping[str, Any]
+        Keyword arguments for configuring the database loading:
+        - mlflow_run_id (str, optional): If provided, download artifacts using MLflow.
+        - mlflow_load_artifacts (bool, optional): If provided and false, forbids using MLflow
         - Other parameters as required by the specific use case.
 
     Returns:
     Optional[Chroma]
         The loaded database object or None if an error occurred.
     """
+    if mlflow_run_id is None and config.get("mlflow_load_artifacts") and config.get("mlflow_run_id"):
+        mlflow_run_id = config["mlflow_run_id"]
     try:
-        if (
-            config["mlflow_run_id"]
-            and config["mlflow_load_artifacts"]
-            and mlflow.artifacts.list_artifacts(run_id=config["mlflow_run_id"], artifact_path="chroma")
-        ):
-            local_path = _download_mlflow_artifacts_if_exists(run_id=config["mlflow_run_id"])
+        if mlflow_run_id and mlflow.artifacts.list_artifacts(run_id=mlflow_run_id, artifact_path="chroma"):
+            local_path = _download_mlflow_artifacts_if_exists(run_id=mlflow_run_id)
             return reload_database_from_local_dir(local_path, config)
         else:
             return _load_database_from_s3(filesystem, config)
@@ -100,7 +103,7 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, config: Mapping[str, A
     logger.info("Searching for database with the following parameters:")
     for key in required_keys:
         if key in config:
-            logger.info(key, "-", config[key])
+            logger.info(f"  {key}: {config[key]}")
 
     db_path_prefix = f"{config['s3_bucket']}/data/chroma_database/{config['emb_model']}"
 
@@ -118,10 +121,12 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, config: Mapping[str, A
         if not different_params:
             return _reload_database_from_s3(filesystem, db_path, config)
 
-    raise FileNotFoundError(f"Database with parameters {config} not found")
+    raise FileNotFoundError(f"Database with parameters { { k:config[k] for k in required_keys } } not found")
 
 
-def _reload_database_from_s3(filesystem: s3fs.S3FileSystem, db_path: str, config: Mapping[str, Any] = default_config) -> Chroma:
+def _reload_database_from_s3(
+    filesystem: s3fs.S3FileSystem, db_path: str, config: Mapping[str, Any] = default_config
+) -> Chroma:
     """Helper function to reload database from S3 to a local temporary directory."""
     with tempfile.TemporaryDirectory() as temp_dir:
         filesystem.get(db_path, temp_dir, recursive=True)

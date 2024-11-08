@@ -4,6 +4,9 @@ extend-include = ["*.ipynb"]
 extend-exclude = ["notebooks/*"]
 target-version = "py312"
 
+[tool.mypy-s3fs.overrides]
+ignore_missing_imports = true
+
 [tool.ruff.lint]
 select = [
     # pycodestyle

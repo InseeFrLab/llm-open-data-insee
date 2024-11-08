@@ -7,6 +7,8 @@ from configparser import ConfigParser, ExtendedInterpolation
 
 import mlflow
 
+# TODO: probably cleaner to use .toml config files instead (parsed with tomli)
+
 
 class PostProcessedConfigParser(ConfigParser):
     """
@@ -61,13 +63,16 @@ def optional_float(value: str) -> float | None:
     return float(value) if value else None
 
 
-def optional_bool(value: str) -> bool | None:
-    """Processor for a parameter representing a boolean (empty is None)"""
-    if not value:
-        return None
+def str_to_bool(value: str) -> bool:
+    """Processor for a parameter representing a boolean"""
     if value.lower() not in BOOLEAN_STATES:
         raise ValueError(f"Not a boolean: {value}")
     return BOOLEAN_STATES[value.lower()]
+
+
+def optional_bool(value: str) -> bool | None:
+    """Processor for a parameter representing a boolean (empty is None)"""
+    return str_to_bool(value) if value else None
 
 
 # Global variables to access default config: confparser and default_config proxy
@@ -99,7 +104,7 @@ def load_config(argparser: argparse.ArgumentParser | None = None) -> PostProcess
             "use_tokenizer_to_chunk": optional_bool,
             "separators": ast.literal_eval,
             "max_new_tokens": optional_int,
-            "quantization": optional_int,
+            "quantization": optional_bool,
             "mlflow_load_artifacts": optional_bool,
             "uvicorn_timeout_keep_alive": optional_int,
             "cli_message_separator_length": optional_int,
@@ -111,12 +116,14 @@ def load_config(argparser: argparse.ArgumentParser | None = None) -> PostProcess
             "top_p": optional_float,
         }
     )
+
     # Load default config file first
     default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
     confparser.read(default_config_file)
+    loggingLevel = logging.INFO
 
     # Override values from DEFAULT section with environment variables
-    # Note: in order not to leak sensitive info from environment,
+    # Note: in order not to expose sensitive info from environment,
     # only the variables already in the section (no credentials) are overwritten
     confparser.update_dict(os.environ)
 
@@ -124,16 +131,11 @@ def load_config(argparser: argparse.ArgumentParser | None = None) -> PostProcess
         args = argparser.parse_args()
 
         # Verbose mode means "debug" level of logging
-        if args.verbose:
-            args.loggingLevel = "DEBUG"
-        # Configure logging with selected level
-        logging.basicConfig(
-            format="%(asctime)s %(message)s",
-            datefmt="%Y-%m-%d %I:%M:%S %p",
-            level=args.loggingLevel,
-        )
+        loggingLevel = "DEBUG" if args.verbose else args.loggingLevel
 
         # Override DEFAULT values with custom user provided config file (if any)
+        if os.getenv("CONFIG_FILE") is not None:
+            confparser.read(os.getenv("CONFIG_FILE"))
         if args.config_file is not None:
             confparser.read(args.config_file)
         # Note: it is best to avoid defaults in the argument parser
@@ -155,5 +157,8 @@ def load_config(argparser: argparse.ArgumentParser | None = None) -> PostProcess
         if args.export_config:
             confparser.write(sys.stdout)
             exit()
+
+    # Configure logging with selected level
+    logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=loggingLevel)
 
     return confparser

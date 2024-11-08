@@ -58,15 +58,17 @@ def cache_model_from_hf_hub(
 
 
 def cache_models_from_hf_hub(
-    models_names: Iterable[str], s3_endpoint: str | None = None, s3_bucket: str | None = None, s3_cache_dir: str = "models/hf_hub"
+    models_names: Iterable[str],
+    s3_endpoint: str | None = None,
+    s3_bucket: str | None = None,
+    s3_cache_dir: str = "models/hf_hub",
 ):
     for model_name in models_names:
         cache_model_from_hf_hub(model_name, s3_endpoint, s3_bucket, s3_cache_dir)
 
 
 if __name__ == "__main__":
-    argparser = models_only_argparser()
-    load_config(argparser)
+    load_config(models_only_argparser())
     cache_models_from_hf_hub(
         [default_config["emb_model"], default_config["llm_model"]],
         default_config.get("s3_bucket"),

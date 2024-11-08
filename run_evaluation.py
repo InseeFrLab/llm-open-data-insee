@@ -1,5 +1,4 @@
 import logging
-import os
 import shutil
 import subprocess
 import tempfile
@@ -23,20 +22,19 @@ from src.evaluation import (
     transform_answers_bot,
 )
 from src.model_building import build_llm_model
+from src.utils.formatting_utilities import get_chatbot_template
 
 # Logging configuration
 logger = logging.getLogger(__name__)
 
 
-def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
+def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> None:
     mlflow.set_tracking_uri(config["mlflow_tracking_uri"])
     mlflow.set_experiment(config["experiment_name"])
 
     with mlflow.start_run():
         # Logging the full configuration to mlflow
         mlflow.log_params(dict(config))
-
-        filesystem = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
         # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
         faq = pd.read_parquet(config["faq_s3_uri"], filesystem=filesystem)
@@ -47,7 +45,7 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
         # I - LOAD VECTOR DATABASE
 
         # Ensure correct database is used
-        db = load_vector_database(filesystem, config)
+        db = load_vector_database(filesystem, config=config)
 
         # ------------------------
         # II - CREATING RETRIEVER
@@ -59,9 +57,7 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
         # Load LLM in session
         llm, tokenizer = build_llm_model(
             model_name=config["llm_model"],
-            quantization_config=config.get("quantization"),
             load_LLM_config=True,
-            hf_token=os.getenv("HF_TOKEN"),
             streaming=False,
             config=config,
         )
@@ -74,10 +70,9 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
         )
 
         retriever, vectorstore = load_retriever(
-            emb_model_name=config.get("emb_model"),
             vectorstore=db,
-            persist_directory=config.get("CHROMA_DB_LOCAL_DIRECTORY"),
             retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+            config=config,
         )
 
         # Log retriever
@@ -108,25 +103,23 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
         if reranking_method is not None:
             logger.info(f"Applying reranking {80*'='}")
             logger.info(f"Selected method: {reranking_method}")
-        else:
-            logger.info(f"Skipping reranking since value is None {80*'='}")
 
-        if reranking_method is not None:
             # Define a langchain prompt template
             RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(
-                config.get("CHATBOT_TEMPLATE"), tokenize=False, add_generation_prompt=True
+                get_chatbot_template(), tokenize=False, add_generation_prompt=True
             )
             prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER)
 
-            mlflow.log_dict(config.get("CHATBOT_TEMPLATE"), "chatbot_template.json")
+            mlflow.log_dict(get_chatbot_template(config)[0], "chatbot_template.json")
 
             chain = build_chain(
                 retriever=retriever,
                 prompt=prompt,
                 llm=llm,
-                bool_log=False,
                 reranker=reranking_method,
             )
+        else:
+            logger.info(f"Skipping reranking since value is None {80*'='}")
 
         # ------------------------
         # V - EVALUATION
@@ -135,7 +128,7 @@ def run_evaluation(config: Mapping[str, Any] = default_config) -> None:
 
         if reranking_method is None:
             answers_bot = answer_faq_by_bot(retriever, faq)
-            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=config.get("topk_stats"))
+            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=int(config.get("topk_stats")))
         else:
             answers_bot_before_reranker = answer_faq_by_bot(retriever, faq)
             eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(
@@ -210,4 +203,5 @@ if __name__ == "__main__":
     load_config(argparser)
     assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI environment variable."
     assert "HF_TOKEN" in default_config, "Please set the HF_TOKEN environment variable."
-    run_evaluation(default_config)
+    filesystem = s3fs.S3FileSystem(endpoint_url=default_config["s3_endpoint_url"])
+    run_evaluation(filesystem, default_config)

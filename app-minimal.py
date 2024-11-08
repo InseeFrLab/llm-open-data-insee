@@ -2,24 +2,21 @@ import logging
 import os
 
 import chainlit as cl
-import chainlit.data as cl_data
 import s3fs
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.prompts import PromptTemplate
 
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
-from src.config import load_config, simple_argparser
+from src.config import load_config
 from src.db_building import load_retriever, load_vector_database
 from src.model_building import build_llm_model
-from src.results_logging.log_conversations import log_feedback_to_s3, log_qa_to_s3
-from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
+from src.results_logging.log_conversations import log_qa_to_s3
+from src.utils.formatting_utilities import add_sources_to_messages, get_chatbot_template, str_to_bool
 
-# Logging configuration
+# Configuration and initial setup
+config = load_config()["DEFAULT"]
 logger = logging.getLogger(__name__)
-
-config = load_config(simple_argparser())["chainlit.app"]
-
 fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
 # APPLICATION -----------------------------------------
@@ -28,7 +25,7 @@ fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 @cl.on_chat_start
 async def on_chat_start():
     # Initial message
-    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
+    init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE !")
     await init_msg.send()
 
     # Logging configuration
@@ -36,7 +33,7 @@ async def on_chat_start():
     ASK_USER_BEFORE_LOGGING = str_to_bool(os.getenv("ASK_USER_BEFORE_LOGGING", "false"))
     if ASK_USER_BEFORE_LOGGING:
         res = await cl.AskActionMessage(
-            content="Autorisez-vous le partage de vos interactions avec le ChatBot!",
+            content="Autorisez-vous le partage de vos interactions avec le ChatBot ?",
             actions=[
                 cl.Action(name="log", value="log", label="✅ Accepter"),
                 cl.Action(name="no log", value="no_log", label="❌ Refuser"),
@@ -54,20 +51,11 @@ async def on_chat_start():
     cl.user_session.set("RETRIEVER_ONLY", RETRIEVER_ONLY)
     logger.info("------ chatbot mode : RAG")
 
-    db = await cl.make_async(load_vector_database)(filesystem=fs, database_run_id="32d4150a14fa40d49b9512e1f3ff9e8c")
-
+    db = await cl.make_async(load_vector_database)(filesystem=fs, config=config)
     llm, tokenizer = await cl.make_async(build_llm_model)(
         model_name=config["llm_model"],
-        quantization_config=config["quantization"],
-        config=True,
-        token=os.getenv("HF_TOKEN"),
         streaming=False,
-        generation_args={
-            "max_new_tokens": config["max_new_tokens"],
-            "return_full_text": config["return_full_text"],
-            "do_sample": config["do_sample"],
-            "temperature": config["model_temperature"],
-        },
+        config=config,
     )
     logger.info("------llm loaded")
 
@@ -77,29 +65,25 @@ async def on_chat_start():
     logger.info("------validator loaded")
 
     RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
-        config["CHATBOT_TEMPLATE"], tokenize=False, add_generation_prompt=True
+        get_chatbot_template(config=config), tokenize=False, add_generation_prompt=True
     )
     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
     logger.info("------prompt loaded")
     retriever, vectorstore = await cl.make_async(load_retriever)(
-        emb_model_name="OrdalieTech/Solon-embeddings-large-0.1",
         vectorstore=db,
-        persist_directory=config["CHROMA_DB_LOCAL_DIRECTORY"],
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+        config=config,
     )
     logger.info("------retriever loaded")
     logger.info(f"----- {len(vectorstore.get()['documents'])} documents")
 
     # Build chain
-    RERANKING_METHOD = os.getenv("RERANKING_METHOD")
-    if RERANKING_METHOD == "":
-        RERANKING_METHOD = None
     chain = build_chain(
         retriever=retriever,
         prompt=prompt,
         llm=llm,
         bool_log=IS_LOGGING_ON,
-        reranker=RERANKING_METHOD,
+        reranker=config.get("RERANKING_METHOD") or None,
     )
     cl.user_session.set("chain", chain)
     logger.info("------chain built")
@@ -130,7 +114,7 @@ async def on_message(message: cl.Message):
         ):
             if "answer" in chunk:
                 await answer_msg.stream_token(chunk["answer"])
-                generated_answer = chunk["answer"]
+                generated_answer = str(chunk["answer"])
 
             if "context" in chunk:
                 docs = chunk["context"]
@@ -142,22 +126,22 @@ async def on_message(message: cl.Message):
         await cl.sleep(1)
 
         # Add sources to answer
-        sources_msg = cl.Message(
-            content=add_sources_to_messages(message="", sources=sources, titles=titles),
-        )
+        sources_msg = cl.Message(content=add_sources_to_messages(message="", sources=sources, titles=titles))
         await sources_msg.send()
 
         # Log Q/A
         if cl.user_session.get("IS_LOGGING_ON"):
             log_qa_to_s3(
+                filesystem=fs,
                 thread_id=message.thread_id,
                 message_id=sources_msg.id,
                 user_query=message.content,
-                generated_answer=(None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer),
+                generated_answer=None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer,
                 retrieved_documents=docs,
                 embedding_model_name=config["emb_model"],
-                LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else config.get("LLM_MODEL_NAME"),
+                LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else config["LLM_MODEL_NAME"],
                 reranker=config.get("RERANKING_METHOD"),
+                config=config,
             )
     else:
         await cl.Message(
@@ -170,15 +154,24 @@ async def check_query_relevance(validator, query):
     return result
 
 
+"""
+from src.results_logging.log_conversations import log_feedback_to_s3
+import chainlit.data as cl_data
+from chainlit.types import Feedback
+
 class CustomDataLayer(cl_data.BaseDataLayer):
-    async def upsert_feedback(self, feedback: cl_data.Feedback) -> str:
+    async def upsert_feedback(self, feedback: Feedback) -> str:
         log_feedback_to_s3(
-            thread_id=feedback.threadId,
+            filesystem=fs,
+            thread_id=feedback.threadId or 'no_thread_id',
             message_id=feedback.forId,
             feedback_value=feedback.value,
             feedback_comment=feedback.comment,
+            config=config,
         )
+        return "Done"
 
 
 # Enable data persistence for human feedbacks
 cl_data._data_layer = CustomDataLayer()
+"""

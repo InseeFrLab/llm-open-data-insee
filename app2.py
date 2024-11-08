@@ -1,24 +1,25 @@
 import logging
 import os
+from typing import Any
 
 import chainlit as cl
 import s3fs
 from langchain.schema.runnable.config import RunnableConfig
+from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import PromptTemplate
+from langchain_huggingface import HuggingFacePipeline
 
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
-from src.config import load_config, simple_argparser
+from src.config import load_config
 from src.db_building import load_retriever, load_vector_database
 from src.model_building import build_llm_model
 from src.results_logging.log_conversations import log_qa_to_s3
-from src.utils.formatting_utilities import add_sources_to_messages, str_to_bool
+from src.utils.formatting_utilities import add_sources_to_messages, get_chatbot_template, str_to_bool
 
 # Logging, configuration and S3
+config = load_config()["DEFAULT"]
 logger = logging.getLogger(__name__)
-
-config = load_config(simple_argparser())["chainlit.app"]
-
 fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
 
 # PARAMETERS --------------------------------------
@@ -28,40 +29,21 @@ CLI_MESSAGE_SEPARATOR = (int(config.get("CLI_MESSAGE_SEPARATOR_LENGTH")) * "-") 
 # APPLICATION -----------------------------------------
 
 
-def retrieve_model_tokenizer_and_db(
-    filesystem=fs,
-    with_db=True,
-    # **kwargs
-):
+def retrieve_model_tokenizer_and_db(filesystem=fs, with_db=True) -> tuple[HuggingFacePipeline, Any, Chroma | None]:
     # ------------------------
     # I - LOAD VECTOR DATABASE
 
     # Load LLM in session
     llm, tokenizer = build_llm_model(
         model_name=config["LLM_MODEL"],
-        quantization_config=config["QUANTIZATION"],
-        config=True,
-        token=os.getenv("HF_TOKEN"),
         streaming=False,
-        generation_args={
-            "max_new_tokens": config["MAX_NEW_TOKENS"],
-            "return_full_text": config["RETURN_FULL_TEXT"],
-            "do_sample": config["DO_SAMPLE"],
-            "temperature": config["MODEL_TEMPERATURE"],
-        },
+        config=config,
     )
-
-    if with_db is False:
-        return llm, tokenizer, None
-
-    # Ensure production database is used
-    db = load_vector_database(
-        filesystem=fs,
-        database_run_id=config["DATABASE_RUN_ID"],
-        # hard coded pour le moment
+    return (
+        llm,
+        tokenizer,
+        (load_vector_database(filesystem=fs, config=config) if with_db else None),
     )
-
-    return llm, tokenizer, db
 
 
 @cl.on_chat_start
@@ -99,59 +81,50 @@ async def on_chat_start():
 
     # Log on CLI to follow the configuration
     if RETRIEVER_ONLY:
-        logging.info(f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : retriever only \n")
+        logger.info(f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : retriever only \n")
     else:
-        logging.info(f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : RAG \n")
+        logger.info(f"{CLI_MESSAGE_SEPARATOR} \nchatbot mode : RAG \n")
 
     llm = None
     prompt = None
-    db = load_vector_database(
-        filesystem=fs,
-        database_run_id=config["DATABASE_RUN_ID"],
-        # hard coded pour le moment
-    )
+    db = load_vector_database(filesystem=fs, config=config)
     retriever, vectorstore = await cl.make_async(load_retriever)(
-        emb_model_name=config["emb_model"],
-        persist_directory=config["CHROMA_DB_LOCAL_DIRECTORY"],
         vectorstore=db,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
+        config=config,
     )
-    logging.info("Retriever loaded !")
+    logger.info("Retriever loaded !")
 
-    if RETRIEVER_ONLY is False:
+    if not RETRIEVER_ONLY:
         llm, tokenizer, db = await cl.make_async(retrieve_model_tokenizer_and_db)(
             filesystem=fs,
-            with_db=True,  # **vars(args)
+            with_db=True,
         )
         db_docs = db.get()["documents"]
-        ndocs = f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents"
-        logging.info(ndocs)
+        logger.info(f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents")
 
         RAG_PROMPT_TEMPLATE = tokenizer.apply_chat_template(
-            config["CHATBOT_TEMPLATE"], tokenize=False, add_generation_prompt=True
+            get_chatbot_template(config=config), tokenize=False, add_generation_prompt=True
         )
         prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE)
-        logging.info("------prompt loaded")
+        logger.info("------prompt loaded")
 
     # Set Validator chain in chainlit session
     validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
     cl.user_session.set("validator", validator)
-    logging.info("------validator loaded")
+    logger.info("------validator loaded")
 
     # Build chain
-    RERANKING_METHOD = os.getenv("RERANKING_METHOD")
-    if RERANKING_METHOD == "":
-        RERANKING_METHOD = None
     chain = build_chain(
         retriever=retriever,
         prompt=prompt,
         llm=llm,
-        reranker=RERANKING_METHOD,
+        reranker=os.getenv("RERANKING_METHOD") or None,
     )
     cl.user_session.set("chain", chain)
-    logging.info("------chain built")
+    logger.info("------chain built")
 
-    logging.info(f"Thread ID : {init_msg.thread_id}")
+    logger.info(f"Thread ID : {init_msg.thread_id}")
 
 
 @cl.on_message
@@ -205,6 +178,7 @@ async def on_message(message: cl.Message):
             reranker = os.getenv("RERANKING_METHOD")
 
             log_qa_to_s3(
+                filesystem=fs,
                 thread_id=message.thread_id,
                 message_id=sources_msg.id,
                 user_query=message.content,
@@ -213,6 +187,7 @@ async def on_message(message: cl.Message):
                 embedding_model_name=embedding_model_name,
                 LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else LLM_name,
                 reranker=reranker,
+                config=config,
             )
     else:
         await cl.Message(

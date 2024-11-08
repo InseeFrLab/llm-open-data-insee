@@ -6,8 +6,8 @@ TBD
 
 ## Evaluating best performing model
 
-We use `MLFlow` to centralize all training performance. 
-To reproduce our examples in your MLFlow store, use the 
+We use `MLFlow` to centralize all training performance.
+To reproduce our examples in your MLFlow store, use the
 following instructions:
 
 
@@ -20,7 +20,7 @@ python run_build_database.py --max_pages 20 --experiment_name "BUILD_CHROMA_TEST
 2. Evaluate model performance. If MLFlow has been used in previous example and you know the run id (see below for cases where you don't know it), you can use the following
 
 ```python
-python run_evaluation.py --experiment_name BUILD_CHROMA_TEST --database_run_id ${your_run_id_here}
+python run_evaluation.py --experiment_name BUILD_CHROMA_TEST --config_mlflow ${your_mlflow_run_id_here}
 ```
 
 

@@ -9,6 +9,7 @@ from langchain_core.runnables import RunnablePassthrough
 
 from src.config import load_config, simple_argparser
 from src.db_building import load_retriever
+from src.model_building import cache_model_from_hf_hub
 from utils import create_prompt_from_instructions, format_docs, retrieve_db_from_cache
 
 # Logging configuration
@@ -80,7 +81,7 @@ async def on_chat_start():
 
     logger.info(f"------ downloading {config["LLM_MODEL"]} or using from cache")
 
-    # retrieve_llm_from_cache(model_id=LLM_MODEL)
+    cache_model_from_hf_hub(model_id=config["LLM_MODEL"])
 
     logger.info("------ database loaded")
 
@@ -89,14 +90,12 @@ async def on_chat_start():
     logger.info("------ database loaded")
 
     retriever, vectorstore = await cl.make_async(load_retriever)(
-        emb_model_name=config["emb_model"],
         vectorstore=db,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 10}},
+        config=config,
     )
 
-    db_docs = db.get()["documents"]
-    ndocs = f"Ma base de connaissance du site Insee comporte {len(db_docs)} documents"
-    logger.info(ndocs)
+    logger.info(f"Ma base de connaissance du site Insee comporte {len(db.get()["documents"])} documents")
 
     logger.info("------ retriever ready for use")
 

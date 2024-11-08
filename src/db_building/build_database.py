@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma, VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from src.config import default_config
@@ -50,7 +50,22 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
 
 
-def build_vector_database(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> tuple[Chroma | None, pd.DataFrame]:
+def build_vector_database(
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config
+) -> tuple[Chroma | None, pd.DataFrame]:
+    """
+    Build vector database from documents.
+
+    Parameters:
+    filesystem: s3fs.S3FileSystem
+        The filesystem object for interacting with S3.
+    config: Mapping[str, Any]
+        Keyword arguments for building the vector database:
+        - emb_device (str):
+        - emb_model (str):
+        - collection_name (str): langchain collection name
+        - chroma_db_local_dir (str):
+    """
     logger.info(f"The database will temporarily be stored in {config['chroma_db_local_dir']}")
 
     # Building embedding model using parameters from kwargs
@@ -105,7 +120,12 @@ def build_vector_database(filesystem: s3fs.S3FileSystem, config: Mapping[str, An
 # RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
 
 
-def reload_database_from_local_dir(persist_directory: str | None = None, config: Mapping[str, Any] = default_config) -> Chroma:
+def reload_database_from_local_dir(
+    persist_directory: str | None = None, config: Mapping[str, Any] = default_config
+) -> Chroma:
+    """
+    Reload Chroma vector database from local directory.
+    """
     if persist_directory is None:
         persist_directory = config["chroma_db_local_dir"]
     emb_model = HuggingFaceEmbeddings(
@@ -120,14 +140,16 @@ def reload_database_from_local_dir(persist_directory: str | None = None, config:
         persist_directory=persist_directory,
         embedding_function=emb_model,
     )
-    logger.info(f"The database (collection {config['collection_name']}) has been reloaded from directory {persist_directory}")
+    logger.info(f"Database (collection {config['collection_name']}) reloaded from directory {persist_directory}")
     return db
 
 
 # LOAD RETRIEVER -------------------------------
 
 
-def load_retriever(vectorstore: Chroma | None = None, retriever_params: dict | None = None, config: Mapping[str, Any] = default_config):
+def load_retriever(
+    vectorstore: Chroma | None = None, retriever_params: dict | None = None, config: Mapping[str, Any] = default_config
+) -> tuple[VectorStoreRetriever, Chroma]:
     # Load vector database
     if vectorstore is None:
         logger.info("Reloading database in session")

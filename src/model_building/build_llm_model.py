@@ -26,15 +26,16 @@ if root_dir not in sys.path:
 
 def build_llm_model(
     model_name: str,
-    quantization_config: bool = False,
     load_LLM_config: bool = False,
     streaming: bool = False,
     hf_token: str | None = None,
     config: Mapping[str, Any] = default_config,
-):
+) -> tuple[HuggingFacePipeline, Any]:
     """
     Create the LLM model
     """
+    if hf_token is None:
+        hf_token = os.getenv("HF_TOKEN")
     cache_model_from_hf_hub(
         model_name,
         s3_bucket=config["s3_bucket"],
@@ -51,7 +52,7 @@ def build_llm_model(
                 bnb_4bit_compute_dtype="float16",
                 bnb_4bit_use_double_quant=False,
             )
-            if quantization_config
+            if config.get("quantization")
             else None
         ),
         # Load LLM config
@@ -62,7 +63,7 @@ def build_llm_model(
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=hf_token)
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)

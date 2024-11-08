@@ -1,3 +1,9 @@
+from collections.abc import Mapping
+from typing import Any
+
+from src.config import default_config
+
+
 def str_to_bool(value):
     value = value.lower()
     if value == "true":
@@ -6,6 +12,17 @@ def str_to_bool(value):
         return False
     else:
         raise ValueError(f"Invalid value: {value}")
+
+
+def get_chatbot_template(
+    system_instruction: str | None = None, config: Mapping[str, Any] = default_config
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": system_instruction or config["CHATBOT_SYSTEM_INSTRUCTION"],
+        },
+    ]
 
 
 def add_sources_to_messages(message: str, sources: list, titles: list, topk: int = 5):

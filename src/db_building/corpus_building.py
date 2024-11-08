@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 # CHUNKING ALL DATASET ---------------------------------------------------
 
 
-def preprocess_and_store_data(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> tuple[pd.DataFrame, list[Document]]:
+def preprocess_and_store_data(
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config
+) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process data from S3, chunk the documents, and store them in an intermediate location.
 
@@ -61,12 +63,15 @@ def preprocess_and_store_data(filesystem: s3fs.S3FileSystem, config: Mapping[str
     return df, all_splits
 
 
-def _preprocess_data(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> tuple[pd.DataFrame, list[Document]]:
+def _preprocess_data(
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config
+) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process and merge data from multiple parquet sources, parse XML content,
     and split the documents into chunks for embedding.
 
     Parameters:
+    - filesystem (s3fs.S3FileSystem): connexion object for interacting with S3
     - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
         - max_pages
         - rawdata_web4g_uri: link to the web4g data
@@ -78,7 +83,6 @@ def _preprocess_data(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = 
         - chunk_size (int, optional): Size of each chunk if not using hf_tokenizer.
         - chunk_overlap (int, optional): Overlap size between chunks if not using hf_tokenizer.
         - separators (list, optional): List of separators to use for splitting the text.
-    - filesystem (s3fs.S3FileSystem): object for interacting with S3
 
     Returns:
     - all_splits: list or DataFrame containing the processed and chunked documents.
@@ -139,7 +143,9 @@ def _preprocess_data(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = 
 # RECHUNKING OR LOADING FROM DATA STORE --------------------------
 
 
-def build_or_use_from_cache(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> tuple[pd.DataFrame, list[Document]]:
+def build_or_use_from_cache(
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config
+) -> tuple[pd.DataFrame, list[Document]]:
     """
     Either load the chunked documents and DataFrame from cache or process and store the data.
 
