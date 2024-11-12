@@ -20,6 +20,7 @@ def get_file_system() -> s3fs.S3FileSystem:
         secret=os.environ["AWS_SECRET_ACCESS_KEY"],
     )
 
+
 def cache_model_from_hf_hub(
     model_name,
     s3_bucket="models-hf",
@@ -33,8 +34,8 @@ def cache_model_from_hf_hub(
         s3_cache_dir (str): Path of the cache directory on S3.
     """
     assert (
-        "MC_host_s3" in os.environ
-    ), "Please set the MC_host_s3 environment variable."
+        "MC_HOST_s3" in os.environ
+    ), "Please set the MC_HOST_s3 environment variable."
 
     # Local cache config
     LOCAL_HF_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
@@ -57,11 +58,10 @@ def cache_model_from_hf_hub(
                 "cp",
                 "-r",
                 f"s3/{dir_model_s3}",
-                f"{LOCAL_HF_CACHE_DIR}/",
-                "> dev/null",
-
+                f"{LOCAL_HF_CACHE_DIR}/"
             ]
-            subprocess.run(cmd, check=True)
+            with open("/dev/null", "w") as devnull:
+                subprocess.run(cmd, check=True, stdout=devnull, stderr=devnull)
         # Else, fetch from HF Hub and push to S3
         else:
             print(f"Model {model_name} not found on S3, fetching from HF hub.")
@@ -75,10 +75,10 @@ def cache_model_from_hf_hub(
                 "cp",
                 "-r",
                 f"{dir_model_local}/",
-                f"s3/{dir_model_s3}",
-                "> dev/null",
+                f"s3/{dir_model_s3}",            
             ]
-            subprocess.run(cmd, check=True)
+            with open("/dev/null", "w") as devnull:
+                subprocess.run(cmd, check=True, stdout=devnull, stderr=devnull)
     else:
         print(f"Model {model_name} found in local cache. ")
         if model_name_hf_cache not in available_models_s3:
@@ -90,9 +90,9 @@ def cache_model_from_hf_hub(
                 "-r",
                 f"{dir_model_local}/",
                 f"s3/{dir_model_s3}",
-                "> dev/null",
             ]
-            subprocess.run(cmd, check=True)
+            with open("/dev/null", "w") as devnull:
+                subprocess.run(cmd, check=True, stdout=devnull, stderr=devnull)
 
 
 if __name__ == "__main__":
