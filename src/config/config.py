@@ -1,164 +1,141 @@
-import argparse
 import ast
-import logging
 import os
-import sys
-from configparser import ConfigParser, ExtendedInterpolation
+from dataclasses import dataclass
+from typing import Any
 
 import mlflow
+import toml
+from confz import BaseConfig, CLArgSource, ConfigSource, EnvSource, FileSource
+from confz.base_config import BaseConfigMetaclass
+from confz.loaders import Loader, register_loader
+from pydantic import validator
 
-# TODO: probably cleaner to use .toml config files instead (parsed with tomli)
-
-
-class PostProcessedConfigParser(ConfigParser):
-    """
-    ConfigParser with registered internal post-processors that are run on templated options.
-    Only the `get` method is modified. Sections of this ConfigParser should work fine as they
-    rely on this method to access options.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._processors = {}
-
-    def setProcessor(self, option, proc):
-        self._processors[self.optionxform(option)] = proc
-
-    def setProcessors(self, procs):
-        for opt, proc in procs.items():
-            self.setProcessor(opt, proc)
-
-    def get(self, section, option, **kwargs):
-        tpl_opt = super().get(section, option, **kwargs)
-        proc = self._processors.get(self.optionxform(option))
-        return proc(tpl_opt) if proc and tpl_opt is not None else tpl_opt
-
-    def update_dict(self, d, section="DEFAULT"):
-        """Updates the already loaded parameters with (not None) values from given dict"""
-        options = {k: str(v) for k, v in d.items() if v is not None and self.has_option(section, k)}
-        self.read_dict({section: options})
+default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag.toml")
 
 
-BOOLEAN_STATES = {
-    "1": True,
-    "yes": True,
-    "true": True,
-    "on": True,
-    "oui": True,
-    "0": False,
-    "no": False,
-    "false": False,
-    "off": False,
-    "non": False,
-}
+@dataclass
+class MLFlowSource(ConfigSource):
+    pass
 
 
-def optional_int(value: str) -> int | None:
-    """Processor for a parameter representing an integer (empty is None)"""
-    return int(value) if value else None
-
-
-def optional_float(value: str) -> float | None:
-    """Processor for a parameter representing an integer (empty is None)"""
-    return float(value) if value else None
-
-
-def str_to_bool(value: str) -> bool:
-    """Processor for a parameter representing a boolean"""
-    if value.lower() not in BOOLEAN_STATES:
-        raise ValueError(f"Not a boolean: {value}")
-    return BOOLEAN_STATES[value.lower()]
-
-
-def optional_bool(value: str) -> bool | None:
-    """Processor for a parameter representing a boolean (empty is None)"""
-    return str_to_bool(value) if value else None
-
-
-# Global variables to access default config: confparser and default_config proxy
-confparser = PostProcessedConfigParser(interpolation=ExtendedInterpolation())
-default_config = confparser[confparser.default_section]
-
-
-def load_config(argparser: argparse.ArgumentParser | None = None) -> PostProcessedConfigParser:
-    """Load configuration from:
-    - the default .ini config file
-    - environment variables
-    - a previous mlflow run configuration (using --config_mlflow)
-    - user-provided .ini config files (using --config_file)
-    - parameters from the arguments
-    in loading order which is the reverse order of precedence:
-    each configuration overrides the previous ones.
-
-    Prints configuration and exits if the --export_config flag is in the arguments.
-    Prints help and exits if the --help flag is in the arguments.
-    """
-    # Custom PostProcessors
-    confparser.setProcessors(
-        {
-            "chunk_size": optional_int,
-            "chunk_overlap": optional_int,
-            "max_pages": optional_int,
-            "force_rebuild": optional_bool,
-            "markdown_split": optional_bool,
-            "use_tokenizer_to_chunk": optional_bool,
-            "separators": ast.literal_eval,
-            "max_new_tokens": optional_int,
-            "quantization": optional_bool,
-            "mlflow_load_artifacts": optional_bool,
-            "uvicorn_timeout_keep_alive": optional_int,
-            "cli_message_separator_length": optional_int,
-            "model_temperature": optional_float,
-            "return_full_text": optional_bool,
-            "do_sample": optional_bool,
-            "temperature": optional_float,
-            "rep_penalty": optional_float,
-            "top_p": optional_float,
-        }
-    )
-
-    # Load default config file first
-    default_config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.ini")
-    confparser.read(default_config_file)
-    loggingLevel = logging.INFO
-
-    # Override values from DEFAULT section with environment variables
-    # Note: in order not to expose sensitive info from environment,
-    # only the variables already in the section (no credentials) are overwritten
-    confparser.update_dict(os.environ)
-
-    if argparser is not None:
-        args = argparser.parse_args()
-
-        # Verbose mode means "debug" level of logging
-        loggingLevel = "DEBUG" if args.verbose else args.loggingLevel
-
-        # Override DEFAULT values with custom user provided config file (if any)
-        if os.getenv("CONFIG_FILE") is not None:
-            confparser.read(os.getenv("CONFIG_FILE"))
-        if args.config_file is not None:
-            confparser.read(args.config_file)
-        # Note: it is best to avoid defaults in the argument parser
-        # since they will override the default values from ini file
-
-        # If a mlflow run ID is provided, load parameters
-        if args.mlflow_run_id:
-            mlflow.tracking.MlflowClient(tracking_uri=confparser.get("DEFAULT", "mlflow_tracking_uri"))
-            mlflow.set_experiment(confparser.get("DEFAULT", "experiment_name"))
-            mlflow_params = mlflow.get_run(args.mlflow_run_id).data.params
+class MLFlowLoader(Loader):
+    @classmethod
+    def populate_config(cls, config: dict, config_source: MLFlowSource):
+        if config.get("mlflow_run_id") and config.get("mlflow_tracking_uri"):
+            client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow_tracking_uri"])
+            mlflow_params = client.get_run(config["mlflow_run_id"]).data.params
             mlflow_params.pop("experiment_name", None)
             mlflow_params.pop("mlflow_tracking_uri", None)
-            confparser.update_dict(mlflow_params)
+            mlflow_params.pop("mlflow_run_id", None)
+            cls.update_dict_recursively(config, mlflow_params)
+        else:
+            print("No loading from MLFLOW")
+            print(config)
 
-        # Override DEFAULT values with user provided flags
-        confparser.update_dict(vars(args))
 
-        # If export_config is set, print out config and exit
-        if args.export_config:
-            confparser.write(sys.stdout)
-            exit()
+register_loader(MLFlowSource, MLFlowLoader)
 
-    # Configure logging with selected level
-    logging.basicConfig(format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %I:%M:%S %p", level=loggingLevel)
 
-    return confparser
+class RAGConfig(BaseConfig, metaclass=BaseConfigMetaclass):
+    # S3 CONFIG
+    experiment_name: str
+    aws_s3_endpoint: str
+    s3_bucket: str
+
+    # LOCAL FILES
+    relative_data_dir: str
+    relative_log_dir: str
+
+    # ML FLOW LOGGING
+    mlflow_tracking_uri: str
+    mlflow_load_artifacts: bool
+
+    # RAW DATA PROCESSING
+    data_raw_s3_path: str
+    markdown_split: bool
+    use_tokenizer_to_chunk: bool
+    separators: list[str]
+
+    rawdata_web4g: str
+    rawdata_rmes: str
+
+    # PARSING, PROCESSING and CHUNKING
+    max_pages: int | None = None
+    chunk_size: int | None
+    chunk_overlap: int | None
+
+    # VECTOR DATABASE
+    chroma_db_local_dir: str
+    chroma_db_s3_dir: str
+    collection_name: str
+    force_rebuild: bool
+
+    # EMBEDDING MODEL
+    emb_device: str
+    emb_model: str
+
+    # LLM
+    llm_model: str
+    quantization: bool
+    s3_model_cache_dir: str
+    max_new_tokens: int
+
+    # EVALUATION
+    faq_s3_path: str
+
+    # INSTRUCTION PROMPT
+    BASIC_RAG_PROMPT_TEMPLATE: str
+    RAG_PROMPT_TEMPLATE: str
+
+    # CHATBOT TEMPLATE
+    CHATBOT_SYSTEM_INSTRUCTION: str
+
+    # DATA
+    RAW_DATA: str
+    LS_DATA_PATH: str
+    LS_ANNOTATIONS_PATH: str
+
+    # CHAINLIT
+    uvicorn_timeout_keep_alive: int
+    cli_message_separator_length: int
+    llm_temperature: float
+    return_full_text: bool
+    do_sample: bool
+    temperature: float
+    rep_penalty: float
+    top_p: float
+    reranking_method: str | None = None
+
+    # Optional
+    @validator("chunk_size", "chunk_overlap", "max_pages", pre=True)
+    def allow_none(cls, data: Any) -> int | None:
+        return None if data == "None" else data
+
+    # AST-parsing of separator list
+    @validator("separators", pre=True)
+    def json_serialize(cls, data: Any) -> int | None:
+        return ast.literal_eval(data) if isinstance(data, str) else data
+
+    CONFIG_SOURCES = [
+        FileSource(file=default_config_path),
+        FileSource(file_from_env="RAG_CONFIG_FILE", optional=True),
+        EnvSource(
+            allow_all=True,
+            prefix="RAG_",
+            remap={
+                # Add explicit env variable remapping if needed
+            },
+        ),
+        FileSource(file_from_cl="--config_file", optional=True),
+        CLArgSource(
+            remap={
+                # Add explicit command line arguments remapping if needed
+                "config_mlflow": "mlflow_run_id"
+            }
+        ),
+        MLFlowSource(),
+    ]
+
+
+if __name__ == "__main__":
+    print(toml.dumps(vars(RAGConfig())))

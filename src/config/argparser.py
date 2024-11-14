@@ -1,27 +1,33 @@
 import argparse
+import logging
+import sys
+from argparse import ArgumentParser, BooleanOptionalAction
+
+import toml
+
+from .configz import RAGConfig
 
 # PARSER FOR USER LEVEL ARGUMENTS --------------------------------
 
 
 def minimal_argparser():
-    argparser = argparse.ArgumentParser()
+    argparser = ArgumentParser()
     argparser.add_argument(
         "--config_file",
         type=str,
-        metavar="INIFILE",
+        metavar="FILE",
         help="""
-        Specify a config file from which parameters can be read
+        Specify a TOML, YAML or JSON config file from which parameters can be read
         """,
     )
     argparser.add_argument(
         "--config_mlflow",
         type=str,
         metavar="RUNID",
-        dest="mlflow_run_id",
         help="""
         Load configuration from a previous mlflow run.
-        Other flags will override this configuration
-        but neither will .ini config files nor environment variables.
+        This configuration overrides config files and environment variables.
+        Other explicit flags will override this configuration.
         """,
     )
     argparser.add_argument(
@@ -109,7 +115,7 @@ def simple_argparser():
     argparser.add_argument(
         "--markdown_split",
         default=True,
-        action=argparse.BooleanOptionalAction,
+        action=BooleanOptionalAction,
         help="""
         Should we use a markdown split ?
         --markdown_split yields True and --no-markdown_split yields False
@@ -118,7 +124,7 @@ def simple_argparser():
     argparser.add_argument(
         "--use_tokenizer_to_chunk",
         default=True,
-        action=argparse.BooleanOptionalAction,
+        action=BooleanOptionalAction,
         help="""
         Should we use the tokenizer of the embedding model to chunk ?
         --use_tokenizer_to_chunk yields True and --no-use_tokenizer_to_chunk yields False
@@ -171,7 +177,7 @@ def simple_argparser():
     argparser.add_argument(
         "--force_rebuild",
         default=True,
-        action=argparse.BooleanOptionalAction,
+        action=BooleanOptionalAction,
         help="""
         Should we reuse previously constructed database or rebuild
         """,
@@ -183,7 +189,7 @@ def llm_argparser():
     """LLM specific argument parser"""
     argparser = simple_argparser()
     argparser.add_argument(
-        "--llm_model",
+        "--rag_llm_model",
         type=str,
         help="""
         LLM used to generate chat.
@@ -192,9 +198,9 @@ def llm_argparser():
         """,
     )
     argparser.add_argument(
-        "--quantization",
+        "--rag_quantization",
         default=True,
-        action=argparse.BooleanOptionalAction,
+        action=BooleanOptionalAction,
         help="""
         Should we use a quantized version of "model" argument ?
         --quantization yields True and --no-quantization yields False
@@ -210,7 +216,7 @@ def llm_argparser():
         """,
     )
     argparser.add_argument(
-        "--model_temperature",
+        "--rag_model_temperature",
         type=int,
         default=0.2,
         help="""
@@ -220,7 +226,7 @@ def llm_argparser():
     )
     argparser.add_argument(
         "--return_full_text",
-        action=argparse.BooleanOptionalAction,
+        action=BooleanOptionalAction,
         default=True,
         help="""
         Should we return the full text ?
@@ -230,7 +236,7 @@ def llm_argparser():
     )
     argparser.add_argument(
         "--do_sample",
-        action=argparse.BooleanOptionalAction,
+        action=BooleanOptionalAction,
         default=True,
         help="""
         if set to True , this parameter enables decoding strategies such as multinomial
@@ -259,3 +265,23 @@ def llm_argparser():
         """,
     )
     return argparser
+
+
+def process_args(argparser: argparse.ArgumentParser | None = None) -> RAGConfig:
+    args = (argparser if argparser is not None else minimal_argparser()).parse_args()
+
+    # Configure logging with selected level
+    logging.basicConfig(
+        format="%(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %I:%M:%S %p",
+        level="DEBUG" if args.verbose else args.loggingLevel,
+    )
+
+    # Load configuration from config files, environment, command line arguments and/or mlflow run id
+    config = RAGConfig()
+    if args.export_config:
+        # If export_config is set, simply print out the loaded config and exit
+        toml.dump(vars(config), sys.stdout)
+        exit()
+    else:
+        return config

@@ -1,11 +1,16 @@
 [tool.ruff]
 line-length = 120
+indent-width = 4
 extend-include = ["*.ipynb"]
 extend-exclude = ["notebooks/*"]
 target-version = "py312"
 
 [[tool.mypy.overrides]]
 module = "s3fs"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "transformers"
 ignore_missing_imports = true
 
 [tool.ruff.lint]
@@ -24,3 +29,6 @@ select = [
     "I",
 ]
 ignore  = ["B024"]
+
+[tool.ruff.format]
+indent-style = "space"

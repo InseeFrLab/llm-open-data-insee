@@ -12,7 +12,7 @@ import pandas as pd
 import s3fs
 import yaml
 
-from src.config import default_config, load_config, simple_argparser
+from src.config import default_config, process_args, simple_argparser
 from src.db_building import build_vector_database
 
 # Logging configuration
@@ -115,12 +115,8 @@ def run_build_database(config: Mapping[str, Any] = default_config) -> None:
 
 
 if __name__ == "__main__":
-    argparser = simple_argparser()
-    load_config(argparser)
+    config = process_args(simple_argparser())
     assert (
-        "MLFLOW_TRACKING_URI" in default_config
+        "MLFLOW_TRACKING_URI" in config
     ), "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
-    # Note: other configuration sections could also be used for specific parts of the process
-    # config = load_config(argparser)
-    # config['DEFAULT'] (= default_config)  /  config['OTHER_SECTION']
-    run_build_database(default_config)
+    run_build_database(config)

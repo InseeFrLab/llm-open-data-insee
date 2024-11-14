@@ -6,7 +6,8 @@ from typing import Any
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-from langchain_community.vectorstores import Chroma, VectorStoreRetriever
+from langchain_community.vectorstores import Chroma
+from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from src.config import default_config
