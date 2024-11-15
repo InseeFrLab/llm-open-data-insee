@@ -10,14 +10,52 @@ logging.basicConfig(
 )
 
 
-def get_file_system() -> s3fs.S3FileSystem:
+def get_file_system(token=None) -> s3fs.S3FileSystem:
     """
-    Return the s3 file system.
+    Creates and returns an S3 file system instance using the s3fs library.
+
+    This function configures the S3 file system with endpoint URL and credentials 
+    obtained from environment variables, enabling interactions with the specified 
+    S3-compatible storage. Optionally, a security token can be provided for session-based 
+    authentication.
+
+    Parameters:
+    -----------
+    token : str, optional
+        A temporary security token for session-based authentication. This is optional and 
+        should be provided when using session-based credentials.
+
+    Returns:
+    --------
+    s3fs.S3FileSystem
+        An instance of the S3 file system configured with the specified endpoint and 
+        credentials, ready to interact with S3-compatible storage.
+
+    Environment Variables:
+    ----------------------
+    AWS_S3_ENDPOINT : str
+        The S3 endpoint URL for the storage provider, typically in the format `https://{endpoint}`.
+    AWS_ACCESS_KEY_ID : str
+        The access key ID for authentication.
+    AWS_SECRET_ACCESS_KEY : str
+        The secret access key for authentication.
+
+    Example:
+    --------
+    fs = get_file_system(token="your_temporary_token")
     """
+
+    options = {
+        "client_kwargs": {"endpoint_url": f"https://{os.environ['AWS_S3_ENDPOINT']}"},
+        "key": os.environ["AWS_ACCESS_KEY_ID"],
+        "secret": os.environ["AWS_SECRET_ACCESS_KEY"]
+    }
+
+    if token is not None:
+        options['token'] = token
+
     return s3fs.S3FileSystem(
-        client_kwargs={"endpoint_url": f"https://{os.environ['AWS_S3_ENDPOINT']}"},
-        key=os.environ["AWS_ACCESS_KEY_ID"],
-        secret=os.environ["AWS_SECRET_ACCESS_KEY"],
+        **options
     )
 
 
@@ -25,6 +63,8 @@ def cache_model_from_hf_hub(
     model_name,
     s3_bucket="models-hf",
     s3_cache_dir="hf_hub",
+    s3_token=None,
+    hf_token=None
 ):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.
 
@@ -43,7 +83,7 @@ def cache_model_from_hf_hub(
     dir_model_local = os.path.join(LOCAL_HF_CACHE_DIR, model_name_hf_cache)
 
     # Remote cache config
-    fs = get_file_system()
+    fs = get_file_system(token=s3_token)
     available_models_s3 = [
         os.path.basename(path) for path in fs.ls(os.path.join(s3_bucket, s3_cache_dir))
     ]
@@ -68,6 +108,7 @@ def cache_model_from_hf_hub(
             AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype="auto",
+                token=hf_token
             )
             print(f"Putting model {model_name} on S3.")
             cmd = [
@@ -75,7 +116,7 @@ def cache_model_from_hf_hub(
                 "cp",
                 "-r",
                 f"{dir_model_local}/",
-                f"s3/{dir_model_s3}",            
+                f"s3/{dir_model_s3}",       
             ]
             with open("/dev/null", "w") as devnull:
                 subprocess.run(cmd, check=True, stdout=devnull, stderr=devnull)

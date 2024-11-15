@@ -162,15 +162,16 @@ def _preprocess_data(
     # Fill NaN values with empty strings (for compatibility with Chroma metadata)
     df = df.fillna(value="")
 
-    # Chunk the documents (using tokenizer if specified in kwargs)
-    all_splits = chunk_documents(
-        data=df,
-        **kwargs)
-
-    return df, all_splits
+    try:
+        all_splits = chunk_documents(data=df, **kwargs)
+        return df, all_splits
+    except Exception as e:
+        logging.error(f"Error in chunk_documents: {e}")
+        return df
 
 
 # RECHUNKING OR LOADING FROM DATA STORE --------------------------
+
 
 def build_or_use_from_cache(
     model_id: str,
