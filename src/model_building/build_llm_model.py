@@ -13,7 +13,7 @@ from transformers import (
     pipeline,
 )
 
-from src.config import default_config
+from src.config import RAGConfig
 
 # from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
@@ -29,7 +29,7 @@ def build_llm_model(
     load_LLM_config: bool = False,
     streaming: bool = False,
     hf_token: str | None = None,
-    config: Mapping[str, Any] = default_config,
+    config: Mapping[str, Any] = vars(RAGConfig()),
 ) -> tuple[HuggingFacePipeline, Any]:
     """
     Create the LLM model

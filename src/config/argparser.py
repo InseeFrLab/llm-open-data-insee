@@ -4,8 +4,9 @@ import sys
 from argparse import ArgumentParser, BooleanOptionalAction
 
 import toml
+from confz import validate_all_configs
 
-from .configz import RAGConfig
+from .config import RAGConfig
 
 # PARSER FOR USER LEVEL ARGUMENTS --------------------------------
 
@@ -161,17 +162,15 @@ def simple_argparser():
     argparser.add_argument(
         "--chunk_overlap",
         type=str,
-        default=None,
         help="""
         Chunk overlap
         """,
     )
     argparser.add_argument(
-        "--embedding_device",
+        "--emb_device",
         type=str,
-        dest="emb_device",
         help="""
-        Embedding device
+        Embedding device (cpu, cuda, etc.)
         """,
     )
     argparser.add_argument(
@@ -179,7 +178,7 @@ def simple_argparser():
         default=True,
         action=BooleanOptionalAction,
         help="""
-        Should we reuse previously constructed database or rebuild
+        Should we reuse previously constructed database (--no-force_rebuild, default)  or rebuild (--force_rebuild)?
         """,
     )
     return argparser
@@ -189,7 +188,7 @@ def llm_argparser():
     """LLM specific argument parser"""
     argparser = simple_argparser()
     argparser.add_argument(
-        "--rag_llm_model",
+        "--llm_model",
         type=str,
         help="""
         LLM used to generate chat.
@@ -198,7 +197,7 @@ def llm_argparser():
         """,
     )
     argparser.add_argument(
-        "--rag_quantization",
+        "--quantization",
         default=True,
         action=BooleanOptionalAction,
         help="""
@@ -216,7 +215,7 @@ def llm_argparser():
         """,
     )
     argparser.add_argument(
-        "--rag_model_temperature",
+        "--model_temperature",
         type=int,
         default=0.2,
         help="""
@@ -267,7 +266,7 @@ def llm_argparser():
     return argparser
 
 
-def process_args(argparser: argparse.ArgumentParser | None = None) -> RAGConfig:
+def process_args(argparser: argparse.ArgumentParser | None = None) -> argparse.Namespace:
     args = (argparser if argparser is not None else minimal_argparser()).parse_args()
 
     # Configure logging with selected level
@@ -277,11 +276,10 @@ def process_args(argparser: argparse.ArgumentParser | None = None) -> RAGConfig:
         level="DEBUG" if args.verbose else args.loggingLevel,
     )
 
-    # Load configuration from config files, environment, command line arguments and/or mlflow run id
-    config = RAGConfig()
+    # Immediately load all configuration from config files, environment, command line arguments and/or mlflow run id
+    validate_all_configs()
     if args.export_config:
         # If export_config is set, simply print out the loaded config and exit
-        toml.dump(vars(config), sys.stdout)
+        toml.dump(vars(RAGConfig()), sys.stdout)
         exit()
-    else:
-        return config
+    return args

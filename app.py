@@ -7,21 +7,19 @@ from langchain_community.llms import VLLM
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
-from src.config import load_config, simple_argparser
+from src.config import RAGConfig, process_args
 from src.db_building import load_retriever
 from src.model_building import cache_model_from_hf_hub
 from utils import create_prompt_from_instructions, format_docs, retrieve_db_from_cache
 
 # Logging configuration
+process_args()
 logger = logging.getLogger(__name__)
-
-config = load_config(simple_argparser())["chainlit.app"]
-
-fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
+fs = s3fs.S3FileSystem(endpoint_url=RAGConfig().s3_endpoint_url)
 
 # PARAMETERS --------------------------------------
 
-CLI_MESSAGE_SEPARATOR = (int(config.get("CLI_MESSAGE_SEPARATOR_LENGTH")) * "-") + " \n"
+CLI_MESSAGE_SEPARATOR = (RAGConfig().cli_message_separator_length * "-") + " \n"
 
 # PROMPT -------------------------------------
 
@@ -79,20 +77,19 @@ async def on_chat_start():
     init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
     await init_msg.send()
 
-    logger.info(f"------ downloading {config["LLM_MODEL"]} or using from cache")
+    logger.info(f"------ downloading {RAGConfig().llm_model} or using from cache")
 
-    cache_model_from_hf_hub(model_id=config["LLM_MODEL"])
+    cache_model_from_hf_hub(model_id=RAGConfig().llm_model)
 
     logger.info("------ database loaded")
 
-    db = retrieve_db_from_cache(filesystem=fs, run_id=config["DATABASE_RUN_ID"])
+    db = retrieve_db_from_cache(filesystem=fs, run_id=RAGConfig().mlflow_run_id)
 
     logger.info("------ database loaded")
 
     retriever, vectorstore = await cl.make_async(load_retriever)(
         vectorstore=db,
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 10}},
-        config=config,
     )
 
     logger.info(f"Ma base de connaissance du site Insee comporte {len(db.get()["documents"])} documents")
@@ -100,11 +97,11 @@ async def on_chat_start():
     logger.info("------ retriever ready for use")
 
     llm = VLLM(
-        model=config["LLM_MODEL"],
-        max_new_tokens=config["MAX_NEW_TOKEN"],
-        top_p=config["TOP_P"],
-        temperature=config["TEMPERATURE"],
-        rep_penalty=config["REP_PENALTY"],
+        model=RAGConfig().llm_model,
+        max_new_tokens=RAGConfig().max_new_token,
+        top_p=RAGConfig().top_p,
+        temperature=RAGConfig().temperature,
+        rep_penalty=RAGConfig().rep_penalty,
     )
 
     logger.info("------ VLLM object ready")

@@ -1,4 +1,5 @@
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -13,7 +14,7 @@ from langchain_core.prompts import PromptTemplate
 
 from src.chain_building import build_chain_validator
 from src.chain_building.build_chain import build_chain
-from src.config import default_config, llm_argparser, load_config
+from src.config import RAGConfig, llm_argparser, load_config
 from src.db_building import chroma_topk_to_df, load_retriever, load_vector_database
 from src.evaluation import (
     answer_faq_by_bot,
@@ -28,7 +29,7 @@ from src.utils.formatting_utilities import get_chatbot_template
 logger = logging.getLogger(__name__)
 
 
-def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> None:
+def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())) -> None:
     mlflow.set_tracking_uri(config["mlflow_tracking_uri"])
     mlflow.set_experiment(config["experiment_name"])
 
@@ -201,7 +202,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = de
 if __name__ == "__main__":
     argparser = llm_argparser()
     load_config(argparser)
-    assert "MLFLOW_TRACKING_URI" in default_config, "Please set the MLFLOW_TRACKING_URI environment variable."
-    assert "HF_TOKEN" in default_config, "Please set the HF_TOKEN environment variable."
-    filesystem = s3fs.S3FileSystem(endpoint_url=default_config["s3_endpoint_url"])
-    run_evaluation(filesystem, default_config)
+    assert RAGConfig().mlflow_tracking_uri is not None, "Please set the mlflow_tracking_uri parameter."
+    assert os.environ.get("HF_TOKEN"), "Please set the HF_TOKEN environment variable."
+    filesystem = s3fs.S3FileSystem(endpoint_url=RAGConfig().s3_endpoint_url)
+    run_evaluation(filesystem)

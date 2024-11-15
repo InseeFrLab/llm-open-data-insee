@@ -8,7 +8,7 @@ import pandas as pd
 import s3fs
 from langchain.schema import Document
 
-from src.config import default_config
+from src.config import RAGConfig
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def preprocess_and_store_data(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process data from S3, chunk the documents, and store them in an intermediate location.
@@ -44,7 +44,7 @@ def preprocess_and_store_data(
     """
 
     # Handle data loading, parsing, and splitting
-    df, all_splits = _preprocess_data(config, filesystem)
+    df, all_splits = _preprocess_data(filesystem, config)
 
     logger.info("Saving chunked documents in an intermediate location")
 
@@ -64,7 +64,7 @@ def preprocess_and_store_data(
 
 
 def _preprocess_data(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process and merge data from multiple parquet sources, parse XML content,
@@ -144,12 +144,13 @@ def _preprocess_data(
 
 
 def build_or_use_from_cache(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Either load the chunked documents and DataFrame from cache or process and store the data.
 
     Parameters:
+    - filesystem (s3fs.S3FileSystem): object for interacting with S3
     - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
         - s3_bucket: the name of the S3 bucket.
         - force_rebuild (bool): force data processing and storage even if cache exists.
@@ -157,7 +158,6 @@ def build_or_use_from_cache(
         - chunk_overlap (int): the chunk overlap value (can be None).
         - chunk_size (int): the chunk size (can be None).
         - max_pages (int): the maximum number of pages (can be None).
-    - filesystem (s3fs.S3FileSystem): object for interacting with S3
 
     Returns:
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
@@ -190,14 +190,14 @@ def build_or_use_from_cache(
     # If force_rebuild is True or cache is not found, process and store the data
     logger.info("Processing data and storing chunked documents and DataFrame")
 
-    df, all_splits = preprocess_and_store_data(config, filesystem)
+    df, all_splits = preprocess_and_store_data(filesystem, config)
     return df, all_splits
 
 
 # PATH BUILDER FOR S3 STORAGE ------------------------------------
 
 
-def _s3_path_intermediate_collection(config: Mapping[str, Any] = default_config) -> str:
+def _s3_path_intermediate_collection(config: Mapping[str, Any] = vars(RAGConfig())) -> str:
     """
     Build the intermediate storage path for chunked documents on S3.
 

@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 import s3fs
 
-from src.config import default_config
+from src.config import RAGConfig
 
 
 def load_dataframe_from_parquet(path: str, engine: str = "fastparquet") -> pd.DataFrame:
@@ -14,7 +14,7 @@ def load_dataframe_from_parquet(path: str, engine: str = "fastparquet") -> pd.Da
 
 
 def load_dataframe_from_parquet_using_S3(
-    filepath: str, engine: str = "fastparquet", config: Mapping[str, Any] = default_config
+    filepath: str, engine: str = "fastparquet", config: Mapping[str, Any] = vars(RAGConfig())
 ) -> pd.DataFrame:
     fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
     with fs.open(filepath, mode="rb") as file_in:

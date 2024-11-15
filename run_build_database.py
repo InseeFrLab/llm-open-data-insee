@@ -3,51 +3,50 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
 from pathlib import Path, PosixPath
-from typing import Any
 
 import mlflow
 import pandas as pd
 import s3fs
 import yaml
 
-from src.config import default_config, process_args, simple_argparser
+from src.config import RAGConfig, process_args, simple_argparser
 from src.db_building import build_vector_database
 
 # Logging configuration
 logger = logging.getLogger(__name__)
 
 
-def run_build_database(config: Mapping[str, Any] = default_config) -> None:
-    mlflow.set_tracking_uri(config["mlflow_tracking_uri"])
-    mlflow.set_experiment(config["experiment_name"])
+def run_build_database() -> None:
+    config = RAGConfig()
+    mlflow.set_tracking_uri(config.mlflow_tracking_uri)
+    mlflow.set_experiment(config.experiment_name)
 
     with mlflow.start_run():
         # Logging the full configuration to mlflow
         mlflow.log_params(dict(config))
 
-        filesystem = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
+        filesystem = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
         # Log the parameters in a yaml file
-        with open(f"{config['chroma_db_local_dir']}/parameters.yaml", "w") as f:
+        with open(f"{config.chroma_db_local_path}/parameters.yaml", "w") as f:
             yaml.dump(config, f, default_flow_style=False)
 
         # Build database
-        db, df_raw = build_vector_database(filesystem=filesystem, config=config)
+        db, df_raw = build_vector_database(filesystem=filesystem, config=vars(config))
 
         # Move ChromaDB in a specific path in s3
         hash_chroma = next(
             entry
-            for entry in os.listdir(config["chroma_db_local_dir"])
-            if os.path.isdir(os.path.join(config["chroma_db_local_dir"], entry))
+            for entry in os.listdir(config.chroma_db_local_path)
+            if os.path.isdir(os.path.join(config.chroma_db_local_path, entry))
         )
         cmd = [
             "mc",
             "cp",
             "-r",
-            f"{config['chroma_db_local_dir']}/",
-            f"{config['chroma_db_s3_dir']}/{hash_chroma}/",
+            f"{config.chroma_db_local_path}/",
+            f"{config.chroma_db_s3_dir}/{hash_chroma}/",
         ]
         subprocess.run(cmd, check=True)
 
@@ -56,15 +55,15 @@ def run_build_database(config: Mapping[str, Any] = default_config) -> None:
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
             df_raw.head(10),
-            source=config["raw_dataset_uri"],
+            source=config.raw_dataset_uri,
             name="web4g_data",
         )
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=df_raw.head(10), artifact_file="web4g_data.json")
 
         # Log the vector database unless it was already loaded from an other run ID
-        if not (config["mlflow_run_id"] and config["mlflow_load_artifacts"]):
-            mlflow.log_artifacts(Path(config["chroma_db_local_dir"]), artifact_path="chroma")
+        if not (config.mlflow_run_id and config.mlflow_load_artifacts):
+            mlflow.log_artifacts(Path(config.chroma_db_local_path), artifact_path="chroma")
 
         # Log the first chunks of the vector database
         db_docs = db.get()["documents"]
@@ -115,8 +114,6 @@ def run_build_database(config: Mapping[str, Any] = default_config) -> None:
 
 
 if __name__ == "__main__":
-    config = process_args(simple_argparser())
-    assert (
-        "MLFLOW_TRACKING_URI" in config
-    ), "Please set the MLFLOW_TRACKING_URI parameter (env variable or config file)."
-    run_build_database(config)
+    process_args(simple_argparser())
+    assert RAGConfig().mlflow_tracking_uri is not None, "Please set the MLFLOW_TRACKING_URI parameter"
+    run_build_database()

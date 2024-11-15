@@ -33,3 +33,4 @@ pipreqs
 markdownify
 langchain-chroma
 bs4
+types-toml

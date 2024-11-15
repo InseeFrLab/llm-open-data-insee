@@ -10,7 +10,7 @@ import s3fs
 import yaml
 from langchain_community.vectorstores import Chroma
 
-from src.config import default_config
+from src.config import RAGConfig
 
 from .build_database import reload_database_from_local_dir
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_vector_database(
-    filesystem: s3fs.S3FileSystem, mlflow_run_id: str | None = None, config: Mapping[str, Any] = default_config
+    filesystem: s3fs.S3FileSystem, mlflow_run_id: str | None = None, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> Chroma | None:
     """
     Loads a vector database from S3 or a local path based on the provided parameters.
@@ -80,7 +80,7 @@ def _download_mlflow_artifacts_if_exists(run_id: str, dst_path: str | None = Non
 # LOADING FROM S3 ----------------------------------------
 
 
-def _load_database_from_s3(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = default_config) -> Chroma:
+def _load_database_from_s3(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())) -> Chroma:
     """Helper function to load database from S3 based on provided parameters."""
     required_keys = [
         "data_raw_s3_path",
@@ -125,7 +125,7 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, config: Mapping[str, A
 
 
 def _reload_database_from_s3(
-    filesystem: s3fs.S3FileSystem, db_path: str, config: Mapping[str, Any] = default_config
+    filesystem: s3fs.S3FileSystem, db_path: str, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> Chroma:
     """Helper function to reload database from S3 to a local temporary directory."""
     with tempfile.TemporaryDirectory() as temp_dir:

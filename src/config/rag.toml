@@ -2,19 +2,21 @@
 # S3 CONFIG -------------------------------------------------------------------
 
 experiment_name = "default"
-aws_s3_endpoint = "minio.lab.sspcloud.fr"
+# aws_s3_endpoint = "minio.lab.sspcloud.fr"
 s3_bucket = "projet-llm-insee-open-data"
+s3_endpoint_url = "https://{aws_s3_endpoint}" # (templated)
 
 # LOCAL FILES -----------------------------------------------------------------
 
 relative_data_dir = "data"
 relative_log_dir = "logs"
+log_file_path = "{relative_log_dir}/conversation_logs.json" # (templated)
 
 # ML FLOW LOGGING -------------------------------------------------------------
 
 mlflow_tracking_uri = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
 
-# MLflow run ID to load parameters from
+# MLflow run ID to override all parameters with
 # mlflow_run_id = ""
 # Should artifacts (Chroma DB) also be loaded from MLflow
 mlflow_load_artifacts = true
@@ -22,13 +24,15 @@ mlflow_load_artifacts = true
 # RAW DATA PROCESSING  --------------------------------------------------------
 
 data_raw_s3_path = "data/raw_data/applishare_solr_joined.parquet"
+raw_dataset_uri = "s3://{s3_bucket}/{data_raw_s3_path}" # (templated)
 markdown_split = true
 use_tokenizer_to_chunk = true
 separators = ['\n\n', '\n', '.', ' ', '']
 
 rawdata_web4g = "data/raw_data/applishare_solr_joined.parquet"
 rawdata_rmes = "data/raw_data/applishare_solr_joined.parquet"
-
+rawdata_web4g_uri = "s3://{s3_bucket}/{rawdata_web4g}" # (templated)
+rawdata_rmes_uri = "s3://{s3_bucket}/{rawdata_rmes}" # (templated)
 
 # CORPUS BUILDING  ------------------------------------------------------------
 
@@ -36,15 +40,15 @@ rawdata_rmes = "data/raw_data/applishare_solr_joined.parquet"
 
 # Limits the number of rows
 # max_pages = 20
-
 chunk_size = 1000
 chunk_overlap = 100
 
 # VECTOR DATABASE -------------------------------------------------------------
 
 chroma_db_local_dir = "chroma_db"
-chroma_db_s3_dir = "s3/${s3_bucket}/data/chroma_database/"
-
+chroma_db_local_path = "{relative_data_dir}/{chroma_db_local_dir}" # (templated)
+chroma_db_s3_dir = "data/chroma_database/"
+chroma_db_s3_path = "s3/{s3_bucket}/{chroma_db_s3_dir}" # (templated)
 collection_name = "insee_data"
 force_rebuild = true
 
@@ -66,6 +70,7 @@ max_new_tokens = 2000
 # EVALUATION ------------------------------------------------------------------
 
 faq_s3_path = "data/FAQ_site/faq.parquet"
+faq_s3_uri = "s3://{s3_bucket}/{faq_s3_path}" # (templated)
 
 # INSTRUCTION PROMPT ----------------------------------------------------------
 
@@ -130,3 +135,21 @@ temperature = 0.2
 rep_penalty  = 1.1
 top_p = 0.8
 # reranking_method =
+
+# Only perform the retrieval (no LLM generation)
+retriever_only = false
+
+
+
+# Parameters (str only) to be templated using the other parameters.
+# The order matters: templates may include previously templated parameters
+__templated_params__ = [
+    "s3_endpoint_url",
+    "log_file_path",
+    "raw_dataset_uri",
+    "rawdata_web4g_uri",
+    "rawdata_rmes_uri",
+    "chroma_db_s3_path",
+    "chroma_db_local_path",
+    "faq_s3_uri",
+]

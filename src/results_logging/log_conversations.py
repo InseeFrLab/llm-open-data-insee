@@ -7,7 +7,7 @@ from typing import Any
 import s3fs
 from langchain_core.documents.base import Document
 
-from src.config import default_config
+from src.config import RAGConfig
 
 
 def log_qa_to_s3(
@@ -21,7 +21,7 @@ def log_qa_to_s3(
     embedding_model_name: str | None = None,
     LLM_name: str | None = None,
     reranker: str | None = None,
-    config: Mapping[str, Any] = default_config,
+    config: Mapping[str, Any] = vars(RAGConfig()),
 ):
     retrieved_documents_text = [d.page_content for d in retrieved_documents] if retrieved_documents else None
     retrieved_documents_metadata = [d.metadata for d in retrieved_documents] if retrieved_documents else None
@@ -63,7 +63,7 @@ def log_feedback_to_s3(
     message_id: str,
     feedback_value: int,
     feedback_comment: str | None = None,
-    config: Mapping[str, Any] = default_config,
+    config: Mapping[str, Any] = vars(RAGConfig()),
 ):
     today_date = datetime.now().strftime("%Y-%m-%d")
     target_path_s3 = os.path.join(config["s3_bucket"], "data", "chatbot_logs", today_date, f"{thread_id}.json")

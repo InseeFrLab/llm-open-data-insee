@@ -4,10 +4,10 @@ from typing import Any
 import pandas as pd
 import s3fs
 
-from src.config import default_config, load_config, minimal_argparser
+from src.config import RAGConfig, load_config, minimal_argparser
 
 
-def process_insee_contact_data(path: str, config: Mapping[str, Any] = default_config):
+def process_insee_contact_data(path: str, config: Mapping[str, Any] = vars(RAGConfig())):
     """
     Process raw Insee contact data.
     """
