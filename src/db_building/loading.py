@@ -1,7 +1,6 @@
 import logging
 import os
 import tempfile
-import warnings
 from collections.abc import Mapping
 from typing import Any
 
@@ -93,17 +92,13 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, config: Mapping[str, A
         "chunk_overlap",
     ]
 
-    missing_keys = [key for key in required_keys if key not in config]
+    missing_keys = [key for key in required_keys if not config.get(key)]
     if missing_keys:
-        warnings.warn(
-            f"Missing possibly required arguments: {', '.join(missing_keys)}",
-            stacklevel=2,
-        )
+        logger.warn(f"Missing possibly required arguments: {', '.join(missing_keys)}")
 
     logger.info("Searching for database with the following parameters:")
     for key in required_keys:
-        if key in config:
-            logger.info(f"  {key}: {config[key]}")
+        logger.info(f"  {key}: {config.get(key)}")
 
     db_path_prefix = f"{config['s3_bucket']}/data/chroma_database/{config['emb_model']}"
 
@@ -121,7 +116,7 @@ def _load_database_from_s3(filesystem: s3fs.S3FileSystem, config: Mapping[str, A
         if not different_params:
             return _reload_database_from_s3(filesystem, db_path, config)
 
-    raise FileNotFoundError(f"Database with parameters { { k:config[k] for k in required_keys } } not found")
+    raise FileNotFoundError(f"Database with parameters { { k: config[k] for k in required_keys } } not found")
 
 
 def _reload_database_from_s3(
