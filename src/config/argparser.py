@@ -68,12 +68,12 @@ def minimal_argparser():
 def models_only_argparser():
     argparser = minimal_argparser()
     argparser.add_argument(
-        "--llm_model",
+        "--emb_model",
         type=str,
         help="""
-        LLM used to generate chat.
+        Embedding model for information retrieval.
         Should be a huggingface model.
-        Defaults to mistralai/Mistral-7B-Instruct-v0.2
+        Defaults to OrdalieTech/Solon-embeddings-large-0.1
         """,
     )
     argparser.add_argument(
@@ -90,6 +90,13 @@ def models_only_argparser():
 
 def simple_argparser():
     argparser = minimal_argparser()
+    argparser.add_argument(
+        "--work_dir",
+        type=str,
+        help="""
+        Work directory in which the "data" folder will be created.
+        """,
+    )
     argparser.add_argument(
         "--experiment_name",
         type=str,

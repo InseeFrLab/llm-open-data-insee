@@ -8,9 +8,10 @@ s3_endpoint_url = "https://{aws_s3_endpoint}" # (templated)
 
 # LOCAL FILES -----------------------------------------------------------------
 
+work_dir = "."
 relative_data_dir = "data"
 relative_log_dir = "logs"
-log_file_path = "{relative_log_dir}/conversation_logs.json" # (templated)
+log_file_path = "{work_dir}/{relative_log_dir}/conversation_logs.json" # (templated)
 
 # ML FLOW LOGGING -------------------------------------------------------------
 
@@ -46,23 +47,23 @@ chunk_overlap = 100
 # VECTOR DATABASE -------------------------------------------------------------
 
 chroma_db_local_dir = "chroma_db"
-chroma_db_local_path = "{relative_data_dir}/{chroma_db_local_dir}" # (templated)
+chroma_db_local_path = "{work_dir}/{relative_data_dir}/{chroma_db_local_dir}" # (templated)
 chroma_db_s3_dir = "data/chroma_database/"
 chroma_db_s3_path = "s3/{s3_bucket}/{chroma_db_s3_dir}" # (templated)
 collection_name = "insee_data"
 force_rebuild = true
 
-# MODELS USED   ---------------------------------------------------------------
+# IR MODEL    -----------------------------------------------------------------
 
 # Embedding model for IR
 emb_device = "cuda"
 emb_model = "OrdalieTech/Solon-embeddings-large-0.1"
 
+# LLM -------------------------------------------------------------------------
+
 # LLM Model
 llm_model = "mistralai/Mistral-7B-Instruct-v0.2"
 quantization = false
-
-# LLM -------------------------------------------------------------------------
 
 s3_model_cache_dir = "models/hf_hub"
 max_new_tokens = 2000

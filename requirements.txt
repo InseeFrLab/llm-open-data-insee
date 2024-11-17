@@ -24,3 +24,4 @@ vllm
 lxml
 jsonlines
 langchain_chroma
+confz

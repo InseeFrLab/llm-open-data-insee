@@ -5,7 +5,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter, TextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer  # type: ignore
 
 HEADERS_TO_SPLIT_ON = [
     ("#", "Header 1"),
@@ -127,9 +127,7 @@ def get_text_splitter(
         )
     else:
         if chunk_size is None or chunk_overlap is None:
-            raise ValueError(
-                "chunk_size and chunk_overlap must be specified" "if use_tokenizer_to_chunk is set to True"
-            )
+            raise ValueError("chunk_size and chunk_overlap must be specified if use_tokenizer_to_chunk is set to False")
         else:
             return RecursiveCharacterTextSplitter(
                 chunk_size=chunk_size,

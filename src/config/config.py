@@ -60,6 +60,7 @@ class BaseRAGConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     s3_endpoint_url: str  # (Templated)
 
     # LOCAL FILES
+    work_dir: str
     relative_data_dir: str
     log_file_path: str  # (Templated)
     relative_log_dir: str
@@ -153,7 +154,7 @@ class RAGConfig(BaseRAGConfig, metaclass=BaseConfigMetaclass):
         # Set parameters from config file from env
         FileSource(file_from_env="RAG_CONFIG_FILE", optional=True),
         # Set parameter xxxx directly with the XXXX env variable
-        EnvSource(allow=["AWS_S3_ENDPOINT"]),
+        EnvSource(allow=["AWS_S3_ENDPOINT", "WORK_DIR"]),
         # Set parameter xxxx using the RAG_XXXX (case insensitive) env variable
         EnvSource(allow_all=True, prefix="RAG_"),
         # Set parameters from config file from command line argument

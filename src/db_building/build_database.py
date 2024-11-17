@@ -93,10 +93,11 @@ def build_vector_database(
 
     max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
+    nb_chunks = (len(all_splits) + 1) // max_batch_size
 
     # Loop through the chunks and build the Chroma database
     try:
-        for split_docs_chunk in split_docs_chunked:
+        for chunk_count, split_docs_chunk in enumerate(split_docs_chunked):
             db = Chroma.from_documents(
                 collection_name=config["collection_name"],
                 documents=list(split_docs_chunk),
@@ -104,6 +105,9 @@ def build_vector_database(
                 embedding=emb_model,
                 client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
             )
+            ratio_docs_processed = min(1.0, max_batch_size * chunk_count / len(all_splits))
+            logger.info(f"Chunk: {chunk_count}/{nb_chunks} ({100*ratio_docs_processed:.0f}%)")
+
     except Exception as e:
         logger.error(f"An error occurred while building the Chroma database: {e}")
 

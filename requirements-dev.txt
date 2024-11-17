@@ -33,4 +33,6 @@ pipreqs
 markdownify
 langchain-chroma
 bs4
+toml
+pandas-stubs
 types-toml
