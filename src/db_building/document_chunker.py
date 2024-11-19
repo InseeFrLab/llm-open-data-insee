@@ -42,7 +42,7 @@ def chunk_documents(
     - list[Document]: The list of processed unique document chunks
     """
 
-    logging.info("Building the list of Document objects")
+    logging.info("Building the list of document objects")
 
     # advantage of using a loader
     # No need to know which metadata are stored in the dataframe

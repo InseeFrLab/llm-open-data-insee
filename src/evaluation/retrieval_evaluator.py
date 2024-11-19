@@ -1,69 +1,18 @@
 import logging
-import os
 import time
 
-import chromadb
 import numpy as np
 import pandas as pd
-from langchain_community.vectorstores.chroma import Chroma
+from db_building import build_or_reload_vector_database
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
-
-from src.config import EMB_DEVICE, EMB_MODEL_NAME
-from src.db_building import build_vector_database
 
 from .eval_configuration import RetrievalConfiguration
 from .retrieval_evaluation_measures import RetrievalEvaluationMeasure
 from .utils import build_chain_reranker_test
 
 ## Utility function ##
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-
-def _build_vector_database(path_data: str, config: RetrievalConfiguration) -> Chroma:
-    """
-    Building vector database based on a given embedding model
-    """
-    from db_building import reload_database_from_local_dir
-
-    embedding_model_name = config.get("embedding_model_name", EMB_MODEL_NAME)
-    persist_directory = "./data/chroma_db"
-
-    # Ensure the persist directory exists
-    if not os.path.exists(persist_directory):
-        os.makedirs(persist_directory)
-        logging.info(f"Created persist directory: {persist_directory}")
-
-    client = chromadb.PersistentClient(path=persist_directory)
-
-    collection_name = config.collection
-    list_collections = [c.name for c in client.list_collections()]
-
-    logging.info(f"collection name : {collection_name}")
-    logging.info(f"The available collections : {list_collections}")
-
-    if collection_name in list_collections:
-        vector_db = reload_database_from_local_dir(
-            embed_model_name=embedding_model_name,
-            collection_name=collection_name,
-            persist_directory=persist_directory,
-            embed_device=EMB_DEVICE,
-            config=config,
-        )
-        logging.info("The database already exists")
-    else:
-        logging.info("The database will be created")
-        raw_ref_database = pd.read_csv(path_data)
-        vector_db = build_vector_database(
-            df=raw_ref_database,
-            persist_directory=persist_directory,
-            embedding_model_name=embedding_model_name,
-            collection_name=collection_name,
-            config=config,
-        )
-
-    return vector_db
-
+logger = logging.getLogger(__name__)
 
 ## Main class ###########
 
@@ -78,7 +27,7 @@ class RetrievalEvaluator:
         Goal : Evaluate the retrieval performance of a series of configurations.
         eval_dict : dictionary containing a DataFrame with at least a question and source columns.
         """
-        results = {}
+        results: dict = {}
         ir_measures = RetrievalEvaluationMeasure()
 
         for df_name, df in eval_dict.items():
@@ -90,7 +39,7 @@ class RetrievalEvaluator:
                 results[df_name][config_name] = {}
 
                 # Load ref Corpus
-                vector_db = _build_vector_database(path_data=configuration.database_path, config=configuration)
+                vector_db = build_or_reload_vector_database(path_data=configuration.database_path, config=configuration)
 
                 # create a retriever
                 # note : define the type of search "similarity", "mmr", "similarity_score_threshold"

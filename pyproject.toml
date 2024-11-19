@@ -30,5 +30,10 @@ select = [
 ]
 ignore  = ["B024"]
 
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "src.config.RAGConfig"
+]
+
 [tool.ruff.format]
 indent-style = "space"

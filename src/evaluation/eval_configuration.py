@@ -3,7 +3,7 @@ from abc import ABC
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.config import EMB_MODEL_NAME
+from src.config import RAGConfig
 
 
 @dataclass
@@ -28,7 +28,7 @@ class EvalConfiguration(ABC):
 @dataclass
 class RetrievalConfiguration(EvalConfiguration):
     # Embedding model
-    embedding_model_name: str = field(default=EMB_MODEL_NAME, metadata={"description": "embedding model"})
+    embedding_model_name: str = field(default=RAGConfig().emb_model, metadata={"description": "embedding model"})
     collection: str = field(default=None)
     chunk_size: int = field(default=None, metadata={"description": "chunk size"})
     overlap_size: int = field(default=None, metadata={"description": "overlap size"})

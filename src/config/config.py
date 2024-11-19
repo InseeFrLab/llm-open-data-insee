@@ -46,6 +46,7 @@ class TemplatePassLoader(Loader):
         if templated_params:
             for p in templated_params:
                 if config.get(p):
+                    print(config)
                     cls.update_dict_recursively(config, {p: config[p].format(**config)})
 
 
@@ -84,8 +85,11 @@ class BaseRAGConfig(BaseConfig, metaclass=BaseConfigMetaclass):
 
     # PARSING, PROCESSING and CHUNKING
     max_pages: int | None = None
-    chunk_size: int | None
-    chunk_overlap: int | None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    documents_s3_dir: str  # (Templated)
+    documents_jsonl_s3_path: str  # (Templated)
+    documents_parquet_s3_path: str  # (Templated)
 
     # VECTOR DATABASE
     chroma_db_local_dir: str

@@ -42,24 +42,19 @@ def preprocess_and_store_data(
     Returns:
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
     """
-
     # Handle data loading, parsing, and splitting
+    logger.info("Processing input data and storing chunked documents and DataFrame")
     df, all_splits = _preprocess_data(filesystem, config)
 
-    logger.info("Saving chunked documents in an intermediate location")
-
-    # Create the storage path for intermediate data
-    data_intermediate_storage = _s3_path_intermediate_collection(config)
-
-    # Save chunked documents to JSONL using S3 and s3fs
-    save_docs_to_jsonl(all_splits, data_intermediate_storage, filesystem)
+    logger.info(f"Saving chunked documents in JSONL format to {config['documents_jsonl_s3_path']}")
+    save_docs_to_jsonl(all_splits, config["documents_jsonl_s3_path"], filesystem)
 
     # Save the DataFrame as a Parquet file in the same directory
-    parquet_file_path = data_intermediate_storage.replace("docs.jsonl", "corpus.parquet")
+    logger.info(f"Saving DataFrame as a Parquet file to {config['documents_parquet_s3_path']}")
     df.loc[:, ~df.columns.isin(["dateDiffusion"])] = df.loc[:, ~df.columns.isin(["dateDiffusion"])].astype(str)
-    df.to_parquet(parquet_file_path, filesystem=filesystem, index=False)
-    logger.info(f"DataFrame saved to {parquet_file_path}")
+    df.to_parquet(config["documents_parquet_s3_path"], filesystem=filesystem, index=False)
 
+    logger.info("Document chunking successful.")
     return df, all_splits
 
 
@@ -88,9 +83,8 @@ def _preprocess_data(
     - all_splits: list or DataFrame containing the processed and chunked documents.
     """
 
-    logger.info(f"Input data extracted from s3://{config['s3_bucket']}")
-
     # Load main data from parquet file
+    logger.info(f"Reading web4g data from {config['rawdata_web4g_uri']}")
     data = pd.read_parquet(config["rawdata_web4g_uri"], filesystem=filesystem)
 
     # Limit the number of pages if specified
@@ -98,6 +92,7 @@ def _preprocess_data(
         data = data.head(config.get("max_pages"))
 
     # Parse the XML content
+    logger.info("Parsing XML content")
     parsed_pages = parse_xmls(data)
 
     # Merge parsed XML data with the original data
@@ -118,6 +113,7 @@ def _preprocess_data(
     ]
 
     # Load additional RMES data
+    logger.info(f"Reading rmes data from {config['rawdata_rmes_uri']}")
     data_rmes = pd.read_parquet(config["rawdata_rmes_uri"], filesystem=filesystem)
 
     # Concatenate the original data with the RMES data
@@ -162,24 +158,20 @@ def build_or_use_from_cache(
     Returns:
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
     """
-
-    # Create the storage path for intermediate data
-    data_intermediate_storage = _s3_path_intermediate_collection(config)
-
-    # Create the Parquet file path (corpus.parquet)
-    parquet_file_path = data_intermediate_storage.replace("docs.jsonl", "corpus.parquet")
+    logger.info("Generating dataframe of chunked documents")
+    logger.info(f"The database will temporarily be stored in {config['chroma_db_local_path']}")
 
     # Check if we should use the cached data
     if not config.get("force_rebuild"):
         try:
             # Attempt to load the cached documents from S3
-            logger.info(f"Attempting to load chunked documents from {data_intermediate_storage}")
-            all_splits = load_docs_from_jsonl(data_intermediate_storage, filesystem)
+            logger.info(f"Attempting to load chunked documents from {config['documents_jsonl_s3_path']}")
+            all_splits = load_docs_from_jsonl(config["documents_jsonl_s3_path"], filesystem)
             logger.info("Loaded chunked documents from cache")
 
             # Attempt to load the cached DataFrame from S3
-            logger.info(f"Attempting to load DataFrame from {parquet_file_path}")
-            df = pd.read_parquet(parquet_file_path, filesystem=filesystem)
+            logger.info(f"Attempting to load DataFrame from {config['documents_parquet_s3_path']}")
+            df = pd.read_parquet(config["documents_parquet_s3_path"], filesystem=filesystem)
             logger.info("Loaded DataFrame from cache")
 
             return df, all_splits
@@ -188,39 +180,8 @@ def build_or_use_from_cache(
             logger.warning("No cached data found, rebuilding data...")
 
     # If force_rebuild is True or cache is not found, process and store the data
-    logger.info("Processing data and storing chunked documents and DataFrame")
-
-    df, all_splits = preprocess_and_store_data(filesystem, config)
-    return df, all_splits
-
-
-# PATH BUILDER FOR S3 STORAGE ------------------------------------
-
-
-def _s3_path_intermediate_collection(config: Mapping[str, Any] = vars(RAGConfig())) -> str:
-    """
-    Build the intermediate storage path for chunked documents on S3.
-
-    Parameters:
-    - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
-        - s3_bucket: the name of the S3 bucket.
-        - chunk_overlap (int): the chunk overlap value (can be None).
-        - chunk_size (int): the chunk size (can be None).
-        - max_pages (int): the maximum number of pages (can be None).
-
-    Returns:
-    - str: The constructed S3 path for saving the chunked documents.
-    """
-
-    model_id = config["emb_model"]
-    return (
-        f"s3://{config['s3_bucket']}/data/chunked_documents/"
-        f"{model_id=}/"
-        f"chunk_overlap={config['chunk_overlap']}/"
-        f"chunk_size={config['chunk_size']}/"
-        f"max_pages={config['max_pages']}/"
-        "docs.jsonl"
-    )
+    logger.info("Processing input data and storing chunked documents and DataFrame")
+    return preprocess_and_store_data(filesystem, config)
 
 
 # SAVE AND LOAD DOCUMENTS AS JSON ---------------------------------

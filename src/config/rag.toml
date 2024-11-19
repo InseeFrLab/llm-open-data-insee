@@ -35,14 +35,15 @@ rawdata_rmes = "data/raw_data/applishare_solr_joined.parquet"
 rawdata_web4g_uri = "s3://{s3_bucket}/{rawdata_web4g}" # (templated)
 rawdata_rmes_uri = "s3://{s3_bucket}/{rawdata_rmes}" # (templated)
 
-# CORPUS BUILDING  ------------------------------------------------------------
+# PARSING, PROCESSING and CHUNKING CORPUS -------------------------------------
 
-# PARSING, PROCESSING and CHUNKING  -------------------------------------------
-
-# Limits the number of rows
-# max_pages = 20
-chunk_size = 1000
-chunk_overlap = 100
+max_pages     = "None"  # int but the "None" string is allowed and interpreted as None
+chunk_size    = "None"  # int but the "None" string is allowed and interpreted as None
+chunk_overlap = "None"  # int but the "None" string is allowed and interpreted as None
+# Templated S3 path to save and load documents collection from
+documents_s3_dir = "s3://{s3_bucket}/data/chunked_documents/model_id={emb_model}/chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}"
+documents_jsonl_s3_path = "{documents_s3_dir}/docs.jsonl"
+documents_parquet_s3_path = "{documents_s3_dir}/corpus.parquet"
 
 # VECTOR DATABASE -------------------------------------------------------------
 
@@ -51,7 +52,7 @@ chroma_db_local_path = "{work_dir}/{relative_data_dir}/{chroma_db_local_dir}" # 
 chroma_db_s3_dir = "data/chroma_database/"
 chroma_db_s3_path = "s3/{s3_bucket}/{chroma_db_s3_dir}" # (templated)
 collection_name = "insee_data"
-force_rebuild = true
+force_rebuild = false
 
 # IR MODEL    -----------------------------------------------------------------
 
@@ -150,6 +151,9 @@ __templated_params__ = [
     "raw_dataset_uri",
     "rawdata_web4g_uri",
     "rawdata_rmes_uri",
+    "documents_s3_dir",
+    "documents_jsonl_s3_path",
+    "documents_parquet_s3_path",
     "chroma_db_s3_path",
     "chroma_db_local_path",
     "faq_s3_uri",

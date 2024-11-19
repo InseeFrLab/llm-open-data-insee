@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -52,7 +52,7 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 
 
 def build_vector_database(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig()), return_none_on_fail=False
 ) -> tuple[Chroma | None, pd.DataFrame]:
     """
     Build vector database from documents.
@@ -66,71 +66,77 @@ def build_vector_database(
         - emb_model (str):
         - collection_name (str): langchain collection name
         - chroma_db_local_path (str):
+
+    Returns:
+        (chrome_database, documents_dataframe)
     """
-    logger.info(f"The database will temporarily be stored in {config['chroma_db_local_path']}")
-
-    # Building embedding model using parameters from kwargs
-    embedding_device = config["emb_device"]
-    embedding_model = config["emb_model"]
-
-    logger.info("Start building the database")
+    logger.info("Starting to build the database")
 
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = build_or_use_from_cache(filesystem, config)
 
-    logger.info("Document chunking is over, starting to embed them")
-
-    logger.info("Loading embedding model")
-
+    logger.info(f"Loading embedding model: {config['emb_model']} on {config['emb_device']}")
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=embedding_model,
-        model_kwargs={"device": embedding_device},
+        model_name=config["emb_model"],
+        model_kwargs={"device": config["emb_device"]},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )
 
-    logger.info(f"Building embedding model: {embedding_model} on {embedding_device}")
+    logger.info("Building the Chroma vector database from model and chunked docs")
+    logger.info(f"The database will temporarily be stored in {config['chroma_db_local_path']}")
 
     max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
-    nb_chunks = (len(all_splits) + 1) // max_batch_size
+    nb_chunks = 1 + (len(all_splits) - 1) // max_batch_size
 
     # Loop through the chunks and build the Chroma database
     try:
+        db = Chroma(
+            collection_name=config["collection_name"],
+            persist_directory=config["chroma_db_local_path"],
+            embedding_function=emb_model,
+            client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
+        )
         for chunk_count, split_docs_chunk in enumerate(split_docs_chunked):
-            db = Chroma.from_documents(
-                collection_name=config["collection_name"],
-                documents=list(split_docs_chunk),
-                persist_directory=config["chroma_db_local_path"],
-                embedding=emb_model,
-                client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
-            )
-            ratio_docs_processed = min(1.0, max_batch_size * chunk_count / len(all_splits))
-            logger.info(f"Chunk: {chunk_count}/{nb_chunks} ({100*ratio_docs_processed:.0f}%)")
-
+            db.add_documents(list(split_docs_chunk))
+            ratio_docs_processed = min(1.0, max_batch_size * (chunk_count + 1) / len(all_splits))
+            logger.info(f"Chunk: {chunk_count+1}/{nb_chunks} ({100*ratio_docs_processed:.0f}%)")
     except Exception as e:
-        logger.error(f"An error occurred while building the Chroma database: {e}")
-
-        # Returns None along with the dataframe in case of failure
-        return None, df
+        if return_none_on_fail:
+            # Returns None along with the dataframe in case of failure
+            logger.error(f"An error occurred while building the Chroma database: {e}")
+            return None, df
+        else:
+            raise
 
     # Cleanup after successful execution
     del emb_model
     gc.collect()
 
-    logger.info("The database has been built")
+    logger.info("Database build successful!")
     return db, df
 
 
-# RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
+# LOAD VECTOR DATABASE FROM LOCAL DIRECTORY --------------------
 
 
-def reload_database_from_local_dir(
+def load_vector_database_from_local(
     persist_directory: str | None = None, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> Chroma:
     """
-    Reload Chroma vector database from local directory.
+    Load Chroma vector database from local directory.
+
+    Assumes, without checking, that the embedding function matches `config["emb_model"]`
+
+    Args:
+    persist_directory: path to the directory from. If empty, `config["chroma_db_local_path"]` is used
+    config: configuration
+
+    Returns:
+    The loaded Chroma vector database
     """
+    logger.info("Loading Chroma vector database from local session")
     if persist_directory is None:
         persist_directory = config["chroma_db_local_path"]
     emb_model = HuggingFaceEmbeddings(
@@ -157,14 +163,8 @@ def load_retriever(
     retriever_params: dict | None = None,
     config: Mapping[str, Any] = vars(RAGConfig()),
 ) -> tuple[VectorStoreRetriever, Chroma]:
-    # Load vector database
     if vectorstore is None:
-        logger.info("Reloading database in session")
-
-        vectorstore = reload_database_from_local_dir(persist_directory=None, config=config)
-    else:
-        logger.info("vectorstore being provided, skipping the reloading")
-
+        vectorstore = load_vector_database_from_local(persist_directory=None, config=config)
     if retriever_params is None:
         retriever_params = {"search_type": "similarity", "search_kwargs": {"k": 30}}
 

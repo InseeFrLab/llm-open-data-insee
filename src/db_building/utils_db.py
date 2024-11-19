@@ -9,6 +9,8 @@ from bs4.element import Tag
 from markdownify import MarkdownConverter
 from tqdm import tqdm
 
+logger = logging.getLogger(__name__)
+
 TAGS_TO_IGNORE = [
     "sage",
     "numero",
@@ -159,11 +161,11 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
     """
     parsed_pages: dict[str, list] = {"id": [], "content": []}
 
-    logstep = 1 + (len(data) // 200)
+    logstep = 1 + (len(data) // 10)
     for i, row in data.iterrows():
         page_id = row[id]
         if i % logstep == 0:
-            logging.info(f"Processing page {page_id} -- {i}/{len(data)} ({100*i/len(data):.2f}%)")
+            logger.info(f"Parsing XML from page {page_id} -- {i}/{len(data)} ({100*i/len(data):.2f}%)")
 
         if not row[xml_column]:
             # When xml_content is empty, we skip the page

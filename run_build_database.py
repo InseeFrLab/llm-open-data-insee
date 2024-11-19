@@ -41,17 +41,17 @@ def run_build_database() -> None:
             for entry in os.listdir(config.chroma_db_local_path)
             if os.path.isdir(os.path.join(config.chroma_db_local_path, entry))
         )
-        cmd = [
+        logger.info(f"Uploading Chroma database ({hash_chroma}) to s3: {config.chroma_db_local_path}")
+        cmd = (
             "mc",
             "cp",
             "-r",
             f"{config.chroma_db_local_path}/",
             f"{config.chroma_db_s3_dir}/{hash_chroma}/",
-        ]
+        )
         subprocess.run(cmd, check=True)
 
-        # Build database ------------------------------
-
+        logger.info(f"Logging to MLFlow ({hash_chroma}) to s3: {config.chroma_db_local_path}")
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
             df_raw.head(10),
@@ -63,7 +63,7 @@ def run_build_database() -> None:
 
         # Log the vector database unless it was already loaded from an other run ID
         if not (config.mlflow_run_id and config.mlflow_load_artifacts):
-            mlflow.log_artifacts(Path(config.chroma_db_local_path), artifact_path="chroma")
+            mlflow.log_artifacts(config.chroma_db_local_path, artifact_path="chroma")
 
         # Log the first chunks of the vector database
         db_docs = db.get()["documents"]
