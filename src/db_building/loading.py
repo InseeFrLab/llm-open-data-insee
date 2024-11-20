@@ -6,8 +6,10 @@ from typing import Any, Protocol
 
 import chromadb
 import mlflow
+import pandas as pd
 import s3fs
 import yaml
+from langchain.schema import Document
 from langchain_chroma import Chroma
 
 from src.config import RAGConfig
@@ -46,7 +48,7 @@ def vector_database_available_from_local(
     """
     if persist_directory is None:
         persist_directory = config.chroma_db_local_path
-    if not os.path.exists(persist_directory):
+    if not os.path.exists(os.path.join(persist_directory, "chroma.sqlite3")):
         return False
     client = chromadb.PersistentClient(path=persist_directory)
     return config.collection_name in [c.name for c in client.list_collections()]
@@ -172,9 +174,10 @@ def vector_database_available_from_s3(
         with filesystem.open(f"{db_path}/parameters.yaml") as f:
             params = yaml.safe_load(f)
             different_params = compare_params(config, params)
-            logger.info(params)
         if not different_params:
+            logger.info("Found database with matching parameters!")
             return db_path
+        logger.info(f"Non matching parameters {different_params}: {params}")
     return None
 
 
@@ -216,8 +219,7 @@ def load_vector_database(
     allow_s3: bool = True,
 ) -> Chroma | None:
     """
-    Loads a vector database from either local session, MLFlow or S3.
-    If no database is available, builds it from documents.
+    Load a vector database from either a local session, MLFlow artifacts or S3 storage.
 
     Args:
     filesystem: The filesystem object for interacting with S3.
@@ -225,10 +227,9 @@ def load_vector_database(
     allow_local: Allow to load database from an existing local session
     allow_mlflow: Allow to load database from a previous MLFlow run
     allow_s3: Allow to load database from an S3 parquet file
-    allow_build: Allow to rebuild the database from the documents
 
     Returns:
-    The loaded database object or None if an error occurred
+    The loaded database object or None if an error occurred or no database could be found
     """
     if allow_local and vector_database_available_from_local(config=config):
         logging.info("Loading database from local session")
@@ -247,6 +248,9 @@ def load_vector_database(
             logger.info("Loading database from S3")
             return _load_vector_database_from_s3(s3path, filesystem, vars(config))
 
+    logger.info("No database found")
+    return None
+
 
 def build_or_load_vector_database(
     filesystem: s3fs.S3FileSystem,
@@ -254,9 +258,23 @@ def build_or_load_vector_database(
     allow_local: bool = True,
     allow_mlflow: bool = True,
     allow_s3: bool = True,
+    document_database: tuple[pd.DataFrame, list[Document]] | None = None,
 ) -> Chroma | None:
-    chroma_db = load_vector_database(filesystem, config, allow_local, allow_mlflow, allow_s3)
-    if chroma_db is None:
-        logger.info("No vector database found, building from documents")
-        chroma_db, _ = build_vector_database(filesystem, config=vars(config))
-    return chroma_db
+    """
+    Load a vector database from either a local session, MLFlow artifacts or S3 storage.
+    If no database is available, builds it from documents.
+
+    Args:
+    filesystem: The filesystem object for interacting with S3.
+    config: Extra configuration for the database loading
+    allow_local: Allow to load database from an existing local session
+    allow_mlflow: Allow to load database from a previous MLFlow run
+    allow_s3: Allow to load database from an S3 parquet file
+    allow_build: Allow to rebuild the database from the documents
+
+    Returns:
+    The loaded Chroma database object or None if no database could be found and an error occurred during build
+    """
+    return load_vector_database(filesystem, config, allow_local, allow_mlflow, allow_s3) or build_vector_database(
+        filesystem, config=vars(config), return_none_on_fail=True, document_database=document_database
+    )

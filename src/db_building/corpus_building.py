@@ -1,6 +1,5 @@
 import logging
-import typing as t
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import jsonlines
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 # CHUNKING ALL DATASET ---------------------------------------------------
 
 
-def preprocess_and_store_data(
+def build_document_database(
     filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
@@ -89,7 +88,7 @@ def _preprocess_data(
 
     # Limit the number of pages if specified
     if config.get("max_pages") is not None:
-        data = data.head(config.get("max_pages"))
+        data = data.head(int(config.get("max_pages")))
 
     # Parse the XML content
     logger.info("Parsing XML content")
@@ -139,15 +138,45 @@ def _preprocess_data(
 # RECHUNKING OR LOADING FROM DATA STORE --------------------------
 
 
-def build_or_use_from_cache(
+def load_document_database(
     filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
-    Either load the chunked documents and DataFrame from cache or process and store the data.
+    Load the document database from local cache.
 
-    Parameters:
-    - filesystem (s3fs.S3FileSystem): object for interacting with S3
-    - config (Mapping[str, Any]): main run configuration. The following variables are accessed:
+    Args:
+    filesystem: object for interacting with S3
+    config: main run configuration. The following variables are accessed:
+
+    Returns:
+    Tuple containing the processed DataFrame and chunked documents (list of Document objects).
+
+    Raises:
+    FileNotFoundError: In case no database could be found in local cache
+    """
+    # Attempt to load the cached documents from S3
+    logger.info(f"Attempting to load chunked documents from {config['documents_jsonl_s3_path']}")
+    all_splits = load_docs_from_jsonl(config["documents_jsonl_s3_path"], filesystem)
+    logger.info("Loaded chunked documents from cache")
+
+    # Attempt to load the cached DataFrame from S3
+    logger.info(f"Attempting to load DataFrame from {config['documents_parquet_s3_path']}")
+    df = pd.read_parquet(config["documents_parquet_s3_path"], filesystem=filesystem)
+    logger.info("Loaded DataFrame from cache")
+
+    return df, all_splits
+
+
+def build_or_load_document_database(
+    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+) -> tuple[pd.DataFrame, list[Document]]:
+    """
+    Load the document database from local cache
+    or download all documents from S3, process them and store the result in local cache.
+
+    Args:
+    filesystem: object for interacting with S3
+    config: main run configuration. The following variables are accessed:
         - s3_bucket: the name of the S3 bucket.
         - force_rebuild (bool): force data processing and storage even if cache exists.
         - max_pages
@@ -159,35 +188,24 @@ def build_or_use_from_cache(
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
     """
     logger.info("Generating dataframe of chunked documents")
-    logger.info(f"The database will temporarily be stored in {config['chroma_db_local_path']}")
+    logger.info(f"The document database will temporarily be stored in {config['data_dir_path']}")
 
     # Check if we should use the cached data
     if not config.get("force_rebuild"):
         try:
-            # Attempt to load the cached documents from S3
-            logger.info(f"Attempting to load chunked documents from {config['documents_jsonl_s3_path']}")
-            all_splits = load_docs_from_jsonl(config["documents_jsonl_s3_path"], filesystem)
-            logger.info("Loaded chunked documents from cache")
-
-            # Attempt to load the cached DataFrame from S3
-            logger.info(f"Attempting to load DataFrame from {config['documents_parquet_s3_path']}")
-            df = pd.read_parquet(config["documents_parquet_s3_path"], filesystem=filesystem)
-            logger.info("Loaded DataFrame from cache")
-
-            return df, all_splits
-
+            return load_document_database(filesystem, config)
         except FileNotFoundError:
             logger.warning("No cached data found, rebuilding data...")
 
     # If force_rebuild is True or cache is not found, process and store the data
     logger.info("Processing input data and storing chunked documents and DataFrame")
-    return preprocess_and_store_data(filesystem, config)
+    return build_document_database(filesystem, config)
 
 
 # SAVE AND LOAD DOCUMENTS AS JSON ---------------------------------
 
 
-def save_docs_to_jsonl(documents: t.Iterable[Document], file_path: str, fs: s3fs.S3FileSystem) -> None:
+def save_docs_to_jsonl(documents: Iterable[Document], file_path: str, fs: s3fs.S3FileSystem) -> None:
     """
     Save a list of Document objects to a JSONL file on S3 using s3fs.
 

@@ -1,11 +1,18 @@
-def compare_params(big_dict, small_dict):
-    # Initialize a list to hold keys with different values
-    different_keys = []
+from typing import Any, TypeVar
 
-    # Iterate over the keys in the smaller dictionary
-    for key in small_dict:
-        # Check if the key exists in the bigger dictionary and if the values are different
-        if key in big_dict and big_dict[key] != small_dict[key]:
-            different_keys.append(key)
+T = TypeVar("T")
 
-    return different_keys
+
+def compare_params(big_dict: dict[T, Any], small_dict: dict[T, Any]) -> list[T]:
+    """
+    Checks whether the parameters from `small_dict` are compatible from those in `big_dict`.
+
+    Args:
+    big_dict: a dict
+    small_dict: a dict
+
+    Returns:
+    The keys of `small_dict` that are either missing from `big_dict`
+    or that have different values in each input dict
+    """
+    return [key for key in small_dict if key not in big_dict or (big_dict[key] != small_dict[key])]

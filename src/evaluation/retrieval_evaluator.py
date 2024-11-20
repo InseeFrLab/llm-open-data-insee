@@ -3,9 +3,10 @@ import time
 
 import numpy as np
 import pandas as pd
-from db_building import build_or_reload_vector_database
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
+
+from src.db_building import build_or_load_vector_database
 
 from .eval_configuration import RetrievalConfiguration
 from .retrieval_evaluation_measures import RetrievalEvaluationMeasure
@@ -39,7 +40,7 @@ class RetrievalEvaluator:
                 results[df_name][config_name] = {}
 
                 # Load ref Corpus
-                vector_db = build_or_reload_vector_database(path_data=configuration.database_path, config=configuration)
+                vector_db = build_or_load_vector_database(path_data=configuration.database_path, config=configuration)
 
                 # create a retriever
                 # note : define the type of search "similarity", "mmr", "similarity_score_threshold"

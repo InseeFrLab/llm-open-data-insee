@@ -46,7 +46,6 @@ class TemplatePassLoader(Loader):
         if templated_params:
             for p in templated_params:
                 if config.get(p):
-                    print(config)
                     cls.update_dict_recursively(config, {p: config[p].format(**config)})
 
 
@@ -63,8 +62,9 @@ class BaseRAGConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     # LOCAL FILES
     work_dir: str
     relative_data_dir: str
-    log_file_path: str  # (Templated)
-    relative_log_dir: str
+    relative_logs_dir: str
+    data_dir_path: str  # (Templated)
+    logs_dir_path: str  # (Templated)
 
     # ML FLOW LOGGING
     mlflow_run_id: str | None = None

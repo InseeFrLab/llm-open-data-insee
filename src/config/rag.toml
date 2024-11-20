@@ -1,4 +1,3 @@
-
 # S3 CONFIG -------------------------------------------------------------------
 
 experiment_name = "default"
@@ -10,8 +9,9 @@ s3_endpoint_url = "https://{aws_s3_endpoint}" # (templated)
 
 work_dir = "."
 relative_data_dir = "data"
-relative_log_dir = "logs"
-log_file_path = "{work_dir}/{relative_log_dir}/conversation_logs.json" # (templated)
+relative_logs_dir = "logs"
+data_dir_path = "{work_dir}/{relative_data_dir}" # (templated)
+logs_dir_path = "{work_dir}/{relative_logs_dir}" # (templated)
 
 # ML FLOW LOGGING -------------------------------------------------------------
 
@@ -48,7 +48,7 @@ documents_parquet_s3_path = "{documents_s3_dir}/corpus.parquet"
 # VECTOR DATABASE -------------------------------------------------------------
 
 chroma_db_local_dir = "chroma_db"
-chroma_db_local_path = "{work_dir}/{relative_data_dir}/{chroma_db_local_dir}" # (templated)
+chroma_db_local_path = "{data_dir_path}/{chroma_db_local_dir}" # (templated)
 chroma_db_s3_dir = "data/chroma_database/"
 chroma_db_s3_path = "s3/{s3_bucket}/{chroma_db_s3_dir}" # (templated)
 collection_name = "insee_data"
@@ -147,7 +147,8 @@ retriever_only = false
 # The order matters: templates may include previously templated parameters
 __templated_params__ = [
     "s3_endpoint_url",
-    "log_file_path",
+    "data_dir_path",
+    "logs_dir_path",
     "raw_dataset_uri",
     "rawdata_web4g_uri",
     "rawdata_rmes_uri",

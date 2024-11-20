@@ -6,13 +6,14 @@ from typing import Any
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
+from langchain.schema import Document
 from langchain_chroma import Chroma
 from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from src.config import RAGConfig
 
-from .corpus_building import build_or_use_from_cache
+from .corpus_building import build_or_load_document_database
 from .utils_db import split_list
 
 logger = logging.getLogger(__name__)
@@ -52,28 +53,30 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 
 
 def build_vector_database(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig()), return_none_on_fail=False
-) -> tuple[Chroma | None, pd.DataFrame]:
+    filesystem: s3fs.S3FileSystem,
+    config: Mapping[str, Any] = vars(RAGConfig()),
+    return_none_on_fail=False,
+    document_database: tuple[pd.DataFrame, list[Document]] | None = None,
+) -> Chroma | None:
     """
-    Build vector database from documents.
+    Build vector database from documents database
 
-    Parameters:
-    filesystem: s3fs.S3FileSystem
-        The filesystem object for interacting with S3.
-    config: Mapping[str, Any]
-        Keyword arguments for building the vector database:
+    Args:
+    filesystem: The filesystem object for interacting with S3.
+    config: Keyword arguments for building the vector database:
         - emb_device (str):
         - emb_model (str):
         - collection_name (str): langchain collection name
         - chroma_db_local_path (str):
+    document_database: the document database. Will be build_or_loaded if unspecified.
 
     Returns:
-        (chrome_database, documents_dataframe)
+    The built Chroma vector database
     """
-    logger.info("Starting to build the database")
+    logger.info("Building the vector database from documents")
 
     # Call the process_data function to handle data loading, parsing, and splitting
-    df, all_splits = build_or_use_from_cache(filesystem, config)
+    df, all_splits = document_database or build_or_load_document_database(filesystem, config)
 
     logger.info(f"Loading embedding model: {config['emb_model']} on {config['emb_device']}")
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
@@ -103,10 +106,9 @@ def build_vector_database(
             ratio_docs_processed = min(1.0, max_batch_size * (chunk_count + 1) / len(all_splits))
             logger.info(f"Chunk: {chunk_count+1}/{nb_chunks} ({100*ratio_docs_processed:.0f}%)")
     except Exception as e:
+        logger.error(f"An error occurred while building the Chroma database: {e}")
         if return_none_on_fail:
-            # Returns None along with the dataframe in case of failure
-            logger.error(f"An error occurred while building the Chroma database: {e}")
-            return None, df
+            return None
         else:
             raise
 
@@ -114,8 +116,8 @@ def build_vector_database(
     del emb_model
     gc.collect()
 
-    logger.info("Database build successful!")
-    return db, df
+    logger.info("Vector database built successfully!")
+    return db
 
 
 # LOAD VECTOR DATABASE FROM LOCAL DIRECTORY --------------------
