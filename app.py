@@ -53,7 +53,7 @@ RETURN_FULL_TEXT = os.getenv("RETURN_FULL_TEXT", True)
 DO_SAMPLE = os.getenv("DO_SAMPLE", True)
 
 DATABASE_RUN_ID = "32d4150a14fa40d49b9512e1f3ff9e8c"
-LLM_MODEL = "meta-llama/Llama-3.2-3B-Instruct"
+LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 MAX_NEW_TOKEN = 8192
 TEMPERATURE = 0.2
 REP_PENALTY = 1.1
