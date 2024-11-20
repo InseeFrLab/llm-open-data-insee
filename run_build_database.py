@@ -117,7 +117,7 @@ def run_build_database() -> None:
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
         logger.info("Program ended with success.")
-        logger.info(f"ChromaDB stored at location {config['path_chroma_stored_s3']}")
+        logger.info(f"ChromaDB stored at location {config.path_chroma_stored_s3}")
 
 
 if __name__ == "__main__":
