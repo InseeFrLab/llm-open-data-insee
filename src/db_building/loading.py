@@ -1,4 +1,5 @@
 import logging
+import os
 import tempfile
 import warnings
 
@@ -35,24 +36,53 @@ def load_vector_database(filesystem: s3fs.S3FileSystem, **kwargs) -> Chroma:
     return None
 
 
-def _load_database_from_mlflow(run_id: str) -> Chroma:
+# LOADING FROM MLFLOW ----------------------------------------
+
+
+def _load_database_from_mlflow(run_id: str, dst_path: str = None, force: bool = False) -> Chroma:
     """Helper function to load database from MLflow artifacts."""
-    local_path = mlflow.artifacts.download_artifacts(
-        run_id=run_id, artifact_path="chroma"
-    )
+
+    local_path = _download_mlflow_artifacts_if_exists(run_id=run_id, dst_path=dst_path, force=force)
+
     run_params = mlflow.get_run(run_id).data.params
+
     db = reload_database_from_local_dir(
         embed_model_name=run_params["embedding_model"],
         collection_name=run_params["collection_name"],
         persist_directory=local_path,
         embed_device=run_params["embedding_device"],
     )
+
     return db
 
 
-def _load_database_from_s3(
-    filesystem: s3fs.S3FileSystem, kwargs: dict[str, str]
-) -> Chroma:
+def _download_mlflow_artifacts_if_exists(run_id, dst_path=None, force=False):
+    # Construct the destination path
+    if dst_path is None:
+        tmpdir = tempfile.gettempdir()
+        dst_path = os.path.join(tmpdir, "mlflow", run_id, "chroma")
+
+    # Check if dst_path exists and force is False
+    if os.path.exists(dst_path) and not force:
+        logging.info(f"Destination path {dst_path} exists. Skipping download because force is set to False.")
+        local_path = f"{dst_path}/chroma"
+    else:
+        # If dst_path doesn't exist or force is True,
+        # ensure the directory exists and download artifacts
+        os.makedirs(dst_path, exist_ok=True)
+
+        # Download artifacts to the specific dst_path
+        local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path="chroma", dst_path=dst_path)
+
+        logging.info(f"Artifacts downloaded to: {local_path}")
+
+    return local_path
+
+
+# LOADING FROM S3 ----------------------------------------
+
+
+def _load_database_from_s3(filesystem: s3fs.S3FileSystem, kwargs: dict[str, str]) -> Chroma:
     """Helper function to load database from S3 based on provided parameters."""
     required_keys = [
         "data_raw_s3_path",
@@ -74,21 +104,20 @@ def _load_database_from_s3(
             stacklevel=2,
         )
 
-    logging.info(
-        f"Searching for database with the following parameters: {kwargs_subset}"
-    )
+    logging.info(f"Searching for database with the following parameters: {kwargs_subset}")
 
     db_path_prefix = f"{S3_BUCKET}/data/chroma_database/{kwargs.get('embedding_model')}"
 
+    logging.info(f"Checking if a database has been stored at location '{db_path_prefix}'")
+
     if not filesystem.exists(db_path_prefix):
-        raise FileNotFoundError(
-            f"Database with model '{kwargs.get('embedding_model')}' not found"
-        )
+        raise FileNotFoundError(f"Database with model '{kwargs.get('embedding_model')}' not found")
 
     for db_path in filesystem.ls(db_path_prefix):
         with filesystem.open(f"{db_path}/parameters.yaml") as f:
             params = yaml.safe_load(f)
             different_params = compare_params(kwargs, params)
+            print(params)
 
         if not different_params:
             return _reload_database_from_s3(filesystem, db_path, kwargs)
@@ -96,9 +125,7 @@ def _load_database_from_s3(
     raise FileNotFoundError(f"Database with parameters {kwargs} not found")
 
 
-def _reload_database_from_s3(
-    filesystem: s3fs.S3FileSystem, db_path: str, kwargs: dict[str, str]
-) -> Chroma:
+def _reload_database_from_s3(filesystem: s3fs.S3FileSystem, db_path: str, kwargs: dict[str, str]) -> Chroma:
     """Helper function to reload database from S3 to a local temporary directory."""
     with tempfile.TemporaryDirectory() as temp_dir:
         filesystem.get(f"{db_path}", temp_dir, recursive=True)

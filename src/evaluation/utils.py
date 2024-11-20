@@ -50,9 +50,7 @@ def unique_by_key(iterable: Iterable[T], key: Callable[[T], H]) -> Iterator[T]:
             yield e
 
 
-def weighted_reciprocal_rank(
-    doc_lists: list[list[Document]], weights, c=60
-) -> list[Document]:
+def weighted_reciprocal_rank(doc_lists: list[list[Document]], weights, c=60) -> list[Document]:
     """
     This function comes from Langchain documentation.
     Perform weighted Reciprocal Rank Fusion on multiple rank lists.
@@ -127,9 +125,7 @@ def use_sbert_retrieval_evaluator(df: pd.DataFrame, model: SentenceTransformer) 
 
 
 # Define the compression function
-def compress_BM25_lambda(
-    documents: Sequence[Document], query: str, k: int = 5, **kwargs: dict[str, Any]
-) -> Sequence[Document]:
+def compress_BM25_lambda(documents: Sequence[Document], query: str, k: int = 5, **kwargs: dict[str, Any]) -> Sequence[Document]:
     """Compress retrieved documents given the query context."""
 
     # Initialize the retriever with the documents
@@ -138,9 +134,7 @@ def compress_BM25_lambda(
 
 
 # Define the compression function using Metadata
-def compress_metadata_lambda(
-    documents: Sequence[LangchainDocument], query: str, config: dict
-) -> Sequence[LangchainDocument]:
+def compress_metadata_lambda(documents: Sequence[LangchainDocument], query: str, config: dict) -> Sequence[LangchainDocument]:
     rerank_k = config.get("rerank_k", len(documents))
     metadata_field = config.get("use_metadata")
 
@@ -148,11 +142,7 @@ def compress_metadata_lambda(
         new_data = []
         for doc in documents:
             meta = doc.metadata
-            page_content = (
-                meta[metadata_field]
-                if metadata_field in meta and len(meta[metadata_field]) > 0
-                else doc.page_content
-            )
+            page_content = meta[metadata_field] if metadata_field in meta and len(meta[metadata_field]) > 0 else doc.page_content
             new_data.append(
                 LangchainDocument(
                     page_content=page_content,
@@ -161,21 +151,13 @@ def compress_metadata_lambda(
             )
 
         # Use BM25 to rerank the new data
-        new_retrieved_docs = compress_BM25_lambda(
-            documents=new_data, query=query, k=rerank_k
-        )
+        new_retrieved_docs = compress_BM25_lambda(documents=new_data, query=query, k=rerank_k)
 
         # Map sources to original documents
-        source_to_doc_map = {
-            doc.metadata.get("source", "unknown"): doc for doc in documents
-        }
+        source_to_doc_map = {doc.metadata.get("source", "unknown"): doc for doc in documents}
 
         # Return the reranked documents based on the source mapping
-        return [
-            source_to_doc_map[new_doc.metadata["source"]]
-            for new_doc in new_retrieved_docs
-            if new_doc.metadata["source"] in source_to_doc_map
-        ]
+        return [source_to_doc_map[new_doc.metadata["source"]] for new_doc in new_retrieved_docs if new_doc.metadata["source"] in source_to_doc_map]
     else:
         # If no metadata field specified, return top k documents
         return documents[:rerank_k]
@@ -196,38 +178,20 @@ def choosing_reranker_test(config: dict):
         retrieval_agent = RunnableLambda(lambda r: r["documents"])
     elif reranker_type == "BM25":
         # need to format {"documents" : ..., "query" : ...}
-        retrieval_agent = RunnableLambda(
-            lambda r: compress_BM25_lambda(
-                documents=r["documents"], query=r["query"], k=rerank_k
-            )
-        )
+        retrieval_agent = RunnableLambda(lambda r: compress_BM25_lambda(documents=r["documents"], query=r["query"], k=rerank_k))
     elif reranker_type == "Cross-encoder":
         # need to format {"documents" : ..., "query" : ...}
-        model = HuggingFaceCrossEncoder(
-            model_name=reranker_name, model_kwargs={"device": "cuda"}
-        )
+        model = HuggingFaceCrossEncoder(model_name=reranker_name, model_kwargs={"device": "cuda"})
         compressor = CrossEncoderReranker(model=model, top_n=rerank_k)
-        retrieval_agent = RunnableLambda(
-            func=lambda inputs: compressor.compress_documents(
-                documents=inputs["documents"], query=inputs["query"]
-            )
-        )
+        retrieval_agent = RunnableLambda(func=lambda inputs: compressor.compress_documents(documents=inputs["documents"], query=inputs["query"]))
     elif reranker_type == "ColBERT":
         # need to format {"documents" : ..., "query" : ...}
         colBERT = RAGPretrainedModel.from_pretrained(reranker_name)
         compressor = colBERT.as_langchain_document_compressor(k=rerank_k)
-        retrieval_agent = RunnableLambda(
-            func=lambda r: compressor.compress_documents(
-                documents=r["documents"], query=r["query"], top_n=rerank_k
-            )
-        )
+        retrieval_agent = RunnableLambda(func=lambda r: compressor.compress_documents(documents=r["documents"], query=r["query"], top_n=rerank_k))
     elif reranker_type == "Metadata":
         # need to format {"documents" : ..., "query" : ...}
-        retrieval_agent = RunnableLambda(
-            func=lambda r: compress_metadata_lambda(
-                documents=r["documents"], query=r["query"], config=config
-            )
-        )
+        retrieval_agent = RunnableLambda(func=lambda r: compress_metadata_lambda(documents=r["documents"], query=r["query"], config=config))
     return retrieval_agent
 
 
@@ -270,16 +234,12 @@ def build_chain_reranker_test(config=RetrievalConfiguration):
             results[f"model_{i}"] = reranker_model
             weights.append(r_w)
 
-        weights = (
-            [1 / len(weights) for _ in weights] if np.sum(weights) != 1 else weights
-        )  # uniform weights.
+        weights = [1 / len(weights) for _ in weights] if np.sum(weights) != 1 else weights  # uniform weights.
 
         retrieval_agent = (
             results
             | RunnableLambda(func=lambda d: aggregate_ensemble_reranker(d))
-            | RunnableLambda(
-                func=lambda d: weighted_reciprocal_rank(doc_lists=d, weights=weights)
-            )
+            | RunnableLambda(func=lambda d: weighted_reciprocal_rank(doc_lists=d, weights=weights))
         )
 
     return retrieval_agent
@@ -399,11 +359,7 @@ def hist_results(
         for j, config in enumerate(eval_configs):
             config_results = results.get(config.name, {})
             metric_values = config_results.get(metric, {})
-            value = (
-                metric_values.get(k)
-                if isinstance(metric_values, dict)
-                else metric_values
-            )
+            value = metric_values.get(k) if isinstance(metric_values, dict) else metric_values
 
             if value is not None:
                 values.append(value)

@@ -48,13 +48,7 @@ def build_chain_validator(evaluator_llm=None, tokenizer=None):
     defining a chain to check if a given query is related to INSEE expertise.
     """
 
-    prompt_template = tokenizer.apply_chat_template(
-        EVAL_TEMPLATE, tokenize=False, add_generation_prompt=True
-    )
+    prompt_template = tokenizer.apply_chat_template(EVAL_TEMPLATE, tokenize=False, add_generation_prompt=True)
     prompt = PromptTemplate(template=prompt_template, input_variables=["query"])
 
-    return (
-        prompt
-        | evaluator_llm
-        | RunnableLambda(func=lambda generation: generation.lower().find("oui") != -1)
-    )
+    return prompt | evaluator_llm | RunnableLambda(func=lambda generation: generation.lower().find("oui") != -1)

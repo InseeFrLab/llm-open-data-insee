@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 from constants import LS_ANNOTATIONS_PATH
+
 from utils import fs
 
 
@@ -28,10 +29,7 @@ def create_insee_contact_eval_dataset():
             entry_urls = []
             # Parse annotations
             for result_element in annotation_data["result"]:
-                if (
-                    result_element["from_name"] == "keep_pair"
-                    and "O" in result_element["value"]["choices"]
-                ):
+                if result_element["from_name"] == "keep_pair" and "O" in result_element["value"]["choices"]:
                     keep_pair = True
                 elif result_element["from_name"] == "urls":
                     entry_urls += result_element["value"]["text"]
@@ -43,12 +41,8 @@ def create_insee_contact_eval_dataset():
                 answers.append(answer)
                 urls.append("|".join(entry_urls))
 
-    with fs.open(
-        "projet-llm-insee-open-data/data/eval_data/eval_dataset_insee_contact.csv", "w"
-    ) as f:
-        pd.DataFrame({"questions": questions, "answers": answers, "urls": urls}).to_csv(
-            f, index=False
-        )
+    with fs.open("projet-llm-insee-open-data/data/eval_data/eval_dataset_insee_contact.csv", "w") as f:
+        pd.DataFrame({"questions": questions, "answers": answers, "urls": urls}).to_csv(f, index=False)
 
 
 if __name__ == "__main__":

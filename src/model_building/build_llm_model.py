@@ -11,7 +11,7 @@ from transformers import (
     pipeline,
 )
 
-# from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
+# from legacy.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
 
 # Add the project root directory to sys.path
@@ -55,18 +55,12 @@ def build_llm_model(
             else None
         ),
         # Load LLM config
-        "config": (
-            AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token)
-            if config
-            else None
-        ),
+        "config": (AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=token) if config else None),
         "token": token,
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, use_fast=True, device_map="auto", token=configs["token"]
-    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=configs["token"])
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)

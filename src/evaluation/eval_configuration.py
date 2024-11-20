@@ -28,9 +28,7 @@ class EvalConfiguration(ABC):
 @dataclass
 class RetrievalConfiguration(EvalConfiguration):
     # Embedding model
-    embedding_model_name: str = field(
-        default=EMB_MODEL_NAME, metadata={"description": "embedding model"}
-    )
+    embedding_model_name: str = field(default=EMB_MODEL_NAME, metadata={"description": "embedding model"})
     collection: str = field(default=None)
     chunk_size: int = field(default=None, metadata={"description": "chunk size"})
     overlap_size: int = field(default=None, metadata={"description": "overlap size"})
@@ -38,26 +36,18 @@ class RetrievalConfiguration(EvalConfiguration):
     # Reranker model
     reranker_type: str = field(
         default=None,
-        metadata={
-            "description": """Reranker type, choose among: ["BM25", "Cross-encoder", "ColBERT", "Metadata"]"""
-        },
+        metadata={"description": """Reranker type, choose among: ["BM25", "Cross-encoder", "ColBERT", "Metadata"]"""},
     )
     reranker_name: str = field(
         default=None,
         metadata={"description": "Reranker model name (when it exists)"},
     )
-    param_ensemble: dict[str, str | None] = field(
-        default_factory=dict, metadata={"description": "list of reranker configs"}
-    )
-    use_metadata: str | None = field(
-        default=None, metadata={"description": "field metadata"}
-    )
+    param_ensemble: dict[str, str | None] = field(default_factory=dict, metadata={"description": "list of reranker configs"})
+    use_metadata: str | None = field(default=None, metadata={"description": "field metadata"})
     rerank_k: int = field(default=None, metadata={"description": "field metadata"})
 
     # Retrieval parameters
     k_values: list[int] = field(default_factory=lambda: [5, 10, 15, 20, 25, 30, 40, 50])
 
     # Parsing metadata
-    markdown_separator: list[str] = field(
-        default_factory=lambda: ["\n\n", "\n", ".", " ", ""]
-    )
+    markdown_separator: list[str] = field(default_factory=lambda: ["\n\n", "\n", ".", " ", ""])
