@@ -35,7 +35,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = va
 
     with mlflow.start_run():
         # Logging the full configuration to mlflow
-        mlflow.log_params(dict(config))
+        mlflow.log_params(vars(config))
 
         # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
         faq = pd.read_parquet(config["faq_s3_uri"], filesystem=filesystem)
@@ -46,7 +46,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = va
         # I - LOAD VECTOR DATABASE
 
         # Ensure correct database is used
-        db = load_vector_database(filesystem, config=config)
+        db = load_vector_database(filesystem, config)
 
         # ------------------------
         # II - CREATING RETRIEVER

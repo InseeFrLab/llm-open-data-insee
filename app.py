@@ -8,9 +8,9 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
 from src.config import RAGConfig, process_args
-from src.db_building import load_retriever
+from src.db_building import load_retriever, load_vector_database
 from src.model_building import cache_model_from_hf_hub
-from utils import create_prompt_from_instructions, format_docs, retrieve_db_from_cache
+from src.utils import create_prompt_from_instructions, format_docs
 
 # Logging configuration
 process_args()
@@ -77,14 +77,12 @@ async def on_chat_start():
     init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
     await init_msg.send()
 
-    logger.info(f"------ downloading {RAGConfig().llm_model} or using from cache")
-
+    logger.info(f"------ downloading model `{RAGConfig().llm_model}` or using from cache")
     cache_model_from_hf_hub(model_id=RAGConfig().llm_model)
+    logger.info("------ model loaded")
 
-    logger.info("------ database loaded")
-
-    db = retrieve_db_from_cache(filesystem=fs, run_id=RAGConfig().mlflow_run_id)
-
+    logger.info("------ loading database")
+    db = load_vector_database(filesystem=fs)
     logger.info("------ database loaded")
 
     retriever, vectorstore = await cl.make_async(load_retriever)(

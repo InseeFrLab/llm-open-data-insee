@@ -101,6 +101,7 @@ def build_vector_database(
             embedding_function=emb_model,
             client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
         )
+        logger.info(f"Empty new database created. Adding {len(all_splits)} documents...")
         for chunk_count, split_docs_chunk in enumerate(split_docs_chunked):
             db.add_documents(list(split_docs_chunk))
             ratio_docs_processed = min(1.0, max_batch_size * (chunk_count + 1) / len(all_splits))

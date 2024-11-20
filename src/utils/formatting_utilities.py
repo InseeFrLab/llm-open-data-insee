@@ -1,6 +1,8 @@
 from collections.abc import Mapping
 from typing import Any
 
+from langchain_core.prompts import PromptTemplate
+
 from src.config import RAGConfig
 
 
@@ -47,3 +49,28 @@ def add_sources_to_messages(message: str, sources: list, titles: list, topk: int
         message += "\n\nNo Sources available"
 
     return message
+
+
+def format_docs(docs: list):
+    return "\n\n".join(
+        [
+            f"""
+            Doc {i + 1}:\nTitle: {doc.metadata.get("Header 1")}\n
+            Source: {doc.metadata.get("url")}\n
+            Content:\n{doc.page_content}
+            """
+            for i, doc in enumerate(docs)
+        ]
+    )
+
+
+def create_prompt_from_instructions(system_instructions: str, question_instructions: str) -> PromptTemplate:
+    template = f"""
+    {system_instructions}
+
+    {question_instructions}
+    """
+
+    custom_rag_prompt = PromptTemplate.from_template(template)
+
+    return custom_rag_prompt
