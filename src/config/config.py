@@ -107,10 +107,6 @@ def custom_config(defaults: dict | None = None, overrides: dict | None = None):
     )
 
 
-if __name__ == "__main__":
-    print(toml.dumps(vars(FullRAGConfig())))
-
-
 class Configurable:
     """ """
 
@@ -131,14 +127,16 @@ class Configurable:
 
         # The returned function
         def new_f(*args, **kwargs):
-            # Get config from kwargs (and remove it) or default
+            # Get original config argument from kwargs (and remove it) or use default
             orig_config = kwargs.pop(self.config_param, config_default)
-            # Overridable configuration fields that are specified in the keyword arguments
-            overriding_kwargs = [k for k in kwargs if k in overridable_params]
-            # Create a dict with the partial config to override the original with (and remove them from the kwargs)
-            overriding_config = {k: kwargs.pop(k) for k in overriding_kwargs}
-            # Create an updated config object by passing overriden parameters to the config_class constructor
-            new_config = config_class(**{**vars(orig_config), **overriding_config})
+            # Dict with the original config overriden with keyword args (which are removed from the kwargs dict)
+            new_config_params = {
+                k: kwargs.pop(k) if k in kwargs and k in overridable_params else getattr(orig_config, k)
+                for k in config_parameters
+            }
+            # Updated config object buily by passing overriden parameters to the config_class constructor
+            # NOTE: this only works if the class annotation of config can be built this way (e.g. pydantic BaseModel)
+            new_config = config_class(**new_config_params)
             # Set the config_param to the updated object
             kwargs[self.config_param] = new_config
             # Call the original function with the updated config object
@@ -159,3 +157,7 @@ def config_test(blabla: FullRAGConfig = RAGConfig()) -> str:  # noqa: B008
     test
     """
     return blabla.experiment_name
+
+
+if __name__ == "__main__":
+    print(toml.dumps(vars(FullRAGConfig())))
