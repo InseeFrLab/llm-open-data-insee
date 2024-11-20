@@ -58,7 +58,11 @@ def run_build_database() -> None:
             )
             subprocess.run(cmd, check=True)
 
-        logger.info(f"Logging to MLFlow ({hash_chroma}) to s3: {config.chroma_db_local_path}")
+            # Log the newly generated vector database unless it was already loaded from an other run ID
+            logger.info(f"Logging to MLFlow ({hash_chroma}) to s3: {config.chroma_db_local_path}")
+            if not (config.mlflow_run_id and config.mlflow_load_artifacts):
+                mlflow.log_artifacts(config.chroma_db_local_path, artifact_path="chroma")
+
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
             df.head(10),
@@ -67,10 +71,6 @@ def run_build_database() -> None:
         )
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=df.head(10), artifact_file="web4g_data.json")
-
-        # Log the vector database unless it was already loaded from an other run ID
-        if not (config.mlflow_run_id and config.mlflow_load_artifacts):
-            mlflow.log_artifacts(config.chroma_db_local_path, artifact_path="chroma")
 
         # Log the first chunks of the vector database
         db_docs = db.get()["documents"]
