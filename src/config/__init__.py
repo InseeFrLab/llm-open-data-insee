@@ -1,5 +1,6 @@
-from .argparser import llm_argparser, minimal_argparser, models_only_argparser, process_args, simple_argparser
-from .config import BaseRAGConfig, RAGConfig, custom_config
+from .argparsers import llm_argparser, minimal_argparser, models_only_argparser, process_args, simple_argparser
+from .config import RAGConfig, custom_config
+from .models import FullRAGConfig
 
 __all__ = [
     "minimal_argparser",
@@ -7,7 +8,9 @@ __all__ = [
     "models_only_argparser",
     "llm_argparser",
     "process_args",
+    # Configuration models
+    "FullRAGConfig",
+    # Loadable configuration objects
     "RAGConfig",
-    "BaseRAGConfig",
     "custom_config",
 ]

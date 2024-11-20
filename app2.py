@@ -5,7 +5,7 @@ from typing import Any
 import chainlit as cl
 import s3fs
 from langchain.schema.runnable.config import RunnableConfig
-from langchain_community.vectorstores import Chroma
+from langchain_chroma.vectorstores import Chroma
 from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFacePipeline
 

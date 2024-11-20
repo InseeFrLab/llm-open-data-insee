@@ -79,14 +79,12 @@ def vector_database_available_from_mlflow(
         return None
 
 
-def load_vector_database_from_mlflow(
-    run_id: str | None = None, config: Mapping[str, Any] = vars(RAGConfig())
-) -> Chroma:
+def load_vector_database_from_mlflow(run_id: str | None = None, config: MLFlowLoadingConfig = RAGConfig()) -> Chroma:
     """ """
-    run_id = vector_database_available_from_mlflow(run_id, config=vars(config))
+    run_id = vector_database_available_from_mlflow(run_id, config=config)
     if run_id is None:
         raise FileNotFoundError("No database found in S3 storage")
-    return _load_vector_database_from_mlflow(run_id, config)
+    return _load_vector_database_from_mlflow(run_id, vars(config))
 
 
 def _load_vector_database_from_mlflow(run_id: str, config: Mapping[str, Any] = vars(RAGConfig())) -> Chroma:

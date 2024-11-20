@@ -1,14 +1,14 @@
-import ast
+import inspect
 import os
 from dataclasses import dataclass
-from typing import Any
 
 import mlflow
 import toml
-from confz import BaseConfig, CLArgSource, ConfigSource, DataSource, EnvSource, FileSource
+from confz import CLArgSource, ConfigSource, DataSource, EnvSource, FileSource
 from confz.base_config import BaseConfigMetaclass
 from confz.loaders import Loader, register_loader
-from pydantic import validator
+
+from .models import FullRAGConfig
 
 default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag.toml")
 
@@ -52,106 +52,15 @@ class TemplatePassLoader(Loader):
 register_loader(TemplatePassSource, TemplatePassLoader)
 
 
-class BaseRAGConfig(BaseConfig, metaclass=BaseConfigMetaclass):
-    # S3 CONFIG
-    experiment_name: str
-    aws_s3_endpoint: str
-    s3_bucket: str
-    s3_endpoint_url: str  # (Templated)
+class RAGConfig(FullRAGConfig, metaclass=BaseConfigMetaclass):
+    """
+    Configuration class for the FullRAGConfigModel model with preconfigured sources.
 
-    # LOCAL FILES
-    work_dir: str
-    relative_data_dir: str
-    relative_logs_dir: str
-    data_dir_path: str  # (Templated)
-    logs_dir_path: str  # (Templated)
+    Singleton mechanism:
+    - RAGConfig cannot be instantiated with custom keyword arguments
+    - Calls to the constructor RAGConfig() are cached and basically free: the config is not reloaded
+    """
 
-    # ML FLOW LOGGING
-    mlflow_run_id: str | None = None
-    mlflow_tracking_uri: str
-    mlflow_load_artifacts: bool
-
-    # RAW DATA PROCESSING
-    data_raw_s3_path: str
-    raw_dataset_uri: str  # (Templated)
-    markdown_split: bool
-    use_tokenizer_to_chunk: bool
-    separators: list[str]
-
-    rawdata_web4g: str
-    rawdata_web4g_uri: str  # (Templated)
-    rawdata_rmes: str
-    rawdata_rmes_uri: str  # (Templated)
-
-    # PARSING, PROCESSING and CHUNKING
-    max_pages: int | None = None
-    chunk_size: int | None = None
-    chunk_overlap: int | None = None
-    documents_s3_dir: str  # (Templated)
-    documents_jsonl_s3_path: str  # (Templated)
-    documents_parquet_s3_path: str  # (Templated)
-
-    # VECTOR DATABASE
-    chroma_db_local_dir: str
-    chroma_db_local_path: str  # (Templated)
-    chroma_db_s3_dir: str
-    collection_name: str
-    force_rebuild: bool
-    chroma_db_s3_path: str  # (Templated)
-
-    # EMBEDDING MODEL
-    emb_device: str
-    emb_model: str
-
-    # LLM
-    llm_model: str
-    quantization: bool
-    s3_model_cache_dir: str
-    max_new_tokens: int
-
-    # EVALUATION
-    faq_s3_path: str
-    faq_s3_uri: str  # (Templated)
-
-    # INSTRUCTION PROMPT
-    BASIC_RAG_PROMPT_TEMPLATE: str
-    RAG_PROMPT_TEMPLATE: str
-
-    # CHATBOT TEMPLATE
-    CHATBOT_SYSTEM_INSTRUCTION: str
-
-    # DATA
-    RAW_DATA: str
-    LS_DATA_PATH: str
-    LS_ANNOTATIONS_PATH: str
-
-    # CHAINLIT
-    uvicorn_timeout_keep_alive: int
-    cli_message_separator_length: int
-    llm_temperature: float
-    return_full_text: bool
-    do_sample: bool
-    temperature: float
-    rep_penalty: float
-    top_p: float
-    reranking_method: str | None = None
-    retriever_only: bool | None = None
-
-    # Allow the 'None' string to represent None values for all optional parameters (MLFlow import requires this)
-    @validator("chunk_size", "chunk_overlap", "max_pages", "reranking_method", "retriever_only", pre=True)
-    def allow_none(cls, data: Any) -> int | None:
-        return None if data == "None" else data
-
-    # AST-parsing of separator list
-    @validator("separators", pre=True)
-    def json_serialize(cls, data: Any) -> int | None:
-        return ast.literal_eval(data) if isinstance(data, str) else data
-
-
-# Singleton mechanism:
-# - RAGConfig cannot be initialised with custom keyword arguments
-# - Calls to the constructor RAGConfig() are cached (and basically free), the config is not reloaded
-class RAGConfig(BaseRAGConfig, metaclass=BaseConfigMetaclass):
     CONFIG_SOURCES = [
         # Set default parameters from default config file
         FileSource(file=default_config_path),
@@ -185,7 +94,7 @@ def custom_config(defaults: dict | None = None, overrides: dict | None = None):
     """
     defaults = {k.lower(): v for k, v in defaults.items()} if defaults else {}
     overrides = {k.lower(): v for k, v in overrides.items()} if overrides else {}
-    return BaseRAGConfig(
+    return FullRAGConfig(
         config_sources=[
             FileSource(file=default_config_path),  # Load defaults
             DataSource(data=defaults),  # Override default with custom defaults
@@ -199,4 +108,54 @@ def custom_config(defaults: dict | None = None, overrides: dict | None = None):
 
 
 if __name__ == "__main__":
-    print(toml.dumps(vars(RAGConfig())))
+    print(toml.dumps(vars(FullRAGConfig())))
+
+
+class Configurable:
+    """ """
+
+    # The decorator is initialised with the configuration argument name
+    def __init__(self, config_param: str = "config"):
+        self.config_param = config_param
+
+    def __call__(self, f):
+        # The original arguments from the annotated function
+        declared_parameters = inspect.signature(f).parameters
+        # The configuration argument's annotation (required) and default value (optional)
+        config_default = declared_parameters[self.config_param].default
+        config_class = declared_parameters[self.config_param].annotation
+        # All fields from the config's class
+        config_parameters = config_class.model_fields.keys()
+        # All config fields without the ones already explicitely specified in the decorated function's arguments
+        overridable_params = set(config_parameters) - set(declared_parameters.keys())
+
+        # The returned function
+        def new_f(*args, **kwargs):
+            # Get config from kwargs (and remove it) or default
+            orig_config = kwargs.pop(self.config_param, config_default)
+            # Overridable configuration fields that are specified in the keyword arguments
+            overriding_kwargs = [k for k in kwargs if k in overridable_params]
+            # Create a dict with the partial config to override the original with (and remove them from the kwargs)
+            overriding_config = {k: kwargs.pop(k) for k in overriding_kwargs}
+            # Create an updated config object by passing overriden parameters to the config_class constructor
+            new_config = config_class(**{**vars(orig_config), **overriding_config})
+            # Set the config_param to the updated object
+            kwargs[self.config_param] = new_config
+            # Call the original function with the updated config object
+            return f(*args, **kwargs)
+
+        return new_f
+
+
+# Example:
+# from src.config.config import config_test
+# config_test() # Return the default 'default' unless env variable (or others) set it otherwise
+# config_test(experiment_name="test") # Returns 'test'
+# config_test(experiment_name=3) # Fails, as it should, since the config_class cannot build using ill-typed arguments
+# config_test(toto=3)            # Fails, as it should, with "unexpected keyword argument"
+@Configurable("blabla")
+def config_test(blabla: FullRAGConfig = RAGConfig()) -> str:  # noqa: B008
+    """
+    test
+    """
+    return blabla.experiment_name

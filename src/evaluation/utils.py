@@ -15,9 +15,7 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_community.retrievers import BM25Retriever
 
 # langchain packages
-from langchain_core.runnables import (
-    RunnableLambda,
-)
+from langchain_core.runnables import RunnableLambda
 
 # reranking
 from ragatouille import RAGPretrainedModel
