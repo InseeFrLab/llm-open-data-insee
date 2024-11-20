@@ -18,9 +18,10 @@ import chainlit as cl
 
 from src.config import CHATBOT_TEMPLATE, EMB_MODEL_NAME
 from utils import (
-    format_docs, create_prompt_from_instructions,
-    retrieve_llm_from_cache,
-    retrieve_db_from_cache
+    format_docs,
+    create_prompt_from_instructions,
+    # retrieve_llm_from_cache,
+    retrieve_db_from_cache,
 )
 
 # Logging configuration
@@ -32,12 +33,8 @@ logging.basicConfig(
 )
 
 # Remote file configuration
-os.environ["MLFLOW_TRACKING_URI"] = (
-    "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
-)
-fs = s3fs.S3FileSystem(
-    client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
-)
+os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
 
 # PARAMETERS --------------------------------------
 
@@ -92,28 +89,14 @@ Réponse:
 """
 
 
-prompt = create_prompt_from_instructions(
-    system_instructions, question_instructions
-)
+prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
 
 # CHAT START -------------------------------
 
-def format_docs2(docs: list):
-    return "\n\n".join(
-        [
-            f"""
-            Doc {i + 1}:\nTitle: {doc.metadata.get("Header 1")}\n
-            Source: {doc.metadata.get("url")}\n
-            Content:\n{doc.page_content}
-            """
-            for i, doc in enumerate(docs)
-        ]
-    )
 
 @cl.on_chat_start
 async def on_chat_start():
-
     # Initial message
     init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
     await init_msg.send()
@@ -124,10 +107,7 @@ async def on_chat_start():
 
     logging.info("------ database loaded")
 
-    db = retrieve_db_from_cache(
-        filesystem=fs,
-        run_id=DATABASE_RUN_ID
-    )
+    db = retrieve_db_from_cache(filesystem=fs, run_id=DATABASE_RUN_ID)
 
     logging.info("------ database loaded")
 
@@ -153,12 +133,7 @@ async def on_chat_start():
 
     logging.info("------ VLLM object ready")
 
-    rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
+    rag_chain = {"context": retriever | format_docs, "question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
 
     cl.user_session.set("rag_chain", rag_chain)
 
@@ -168,16 +143,12 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
-
     rag_chain = cl.user_session.get("rag_chain")
 
     answer_msg = cl.Message(content="")
 
     async for chunk in rag_chain.astream(
-        message.content,
-        config=RunnableConfig(
-                callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]
-        )
+        message.content, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
     ):
         await answer_msg.send()
         await cl.sleep(1)
