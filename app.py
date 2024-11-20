@@ -4,6 +4,7 @@ import s3fs
 import logging
 
 from src.db_building import load_retriever, load_vector_database
+from src.model_building.fetch_llm_model import cache_model_from_hf_hub
 
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_core.runnables import RunnablePassthrough
@@ -16,7 +17,7 @@ from langchain_core.runnables import (
 )
 import chainlit as cl
 
-from src.config import CHATBOT_TEMPLATE, EMB_MODEL_NAME
+from src.config import CHATBOT_TEMPLATE
 from utils import (
     format_docs,
     create_prompt_from_instructions,
@@ -33,12 +34,20 @@ logging.basicConfig(
 )
 
 # Remote file configuration
-os.environ["MLFLOW_TRACKING_URI"] = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
-fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""})
+os.environ["MLFLOW_TRACKING_URI"] = (
+    "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr/"
+)
+fs = s3fs.S3FileSystem(
+    client_kwargs={"endpoint_url": f"""https://{os.environ["AWS_S3_ENDPOINT"]}"""}
+)
 
 # PARAMETERS --------------------------------------
 
 os.environ["UVICORN_TIMEOUT_KEEP_ALIVE"] = "0"
+
+EMB_MODEL_NAME = "OrdalieTech/Solon-embeddings-large-0.1"
+LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
+
 
 CLI_MESSAGE_SEPARATOR = f"{80*'-'} \n"
 quantization = True
@@ -53,7 +62,6 @@ RETURN_FULL_TEXT = os.getenv("RETURN_FULL_TEXT", True)
 DO_SAMPLE = os.getenv("DO_SAMPLE", True)
 
 DATABASE_RUN_ID = "32d4150a14fa40d49b9512e1f3ff9e8c"
-LLM_MODEL = "mistralai/Mistral-7B-Instruct-v0.2"
 MAX_NEW_TOKEN = 8192
 TEMPERATURE = 0.2
 REP_PENALTY = 1.1
@@ -91,6 +99,11 @@ Réponse:
 
 prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
+hf_token = os.environ["HF_TOKEN"]
+s3_token = os.environ["AWS_SESSION_TOKEN"]
+
+cache_model_from_hf_hub(EMB_MODEL_NAME, hf_token=hf_token, s3_token=s3_token)
+cache_model_from_hf_hub(LLM_MODEL, hf_token=hf_token, s3_token=s3_token)
 
 # CHAT START -------------------------------
 
@@ -133,7 +146,12 @@ async def on_chat_start():
 
     logging.info("------ VLLM object ready")
 
-    rag_chain = {"context": retriever | format_docs, "question": RunnablePassthrough()} | prompt | llm | StrOutputParser()
+    rag_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
 
     cl.user_session.set("rag_chain", rag_chain)
 
@@ -148,7 +166,10 @@ async def on_message(message: cl.Message):
     answer_msg = cl.Message(content="")
 
     async for chunk in rag_chain.astream(
-        message.content, config=RunnableConfig(callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)])
+        message.content,
+        config=RunnableConfig(
+            callbacks=[cl.AsyncLangchainCallbackHandler(stream_final_answer=True)]
+        ),
     ):
         await answer_msg.send()
         await cl.sleep(1)
