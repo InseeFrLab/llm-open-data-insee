@@ -6,6 +6,7 @@ import json
 import re
 
 import pandas as pd
+
 from utils import fs
 
 
@@ -86,9 +87,7 @@ def anonymize_insee_contact_message(message: str, message_ner: list[dict]) -> st
         if dictionary["entity_group"] == "PER":
             message = message.replace(dictionary["word"], "[PER]")
         elif dictionary["signature"]:
-            message = message.replace(
-                dictionary["word"], f"[{dictionary['entity_group']}]"
-            )
+            message = message.replace(dictionary["word"], f"[{dictionary['entity_group']}]")
 
     # Identification of email addresses
     email_regex = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"

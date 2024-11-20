@@ -1,11 +1,10 @@
-import logging
 import gc
+import logging
+
 import s3fs
-
 from chromadb.config import Settings
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from src.config import (
     CHROMA_DB_LOCAL_DIRECTORY,
@@ -15,47 +14,13 @@ from src.config import (
     S3_BUCKET,
 )
 
-
 from .corpus_building import (
-    build_or_use_from_cache, DEFAULT_LOCATIONS,
+    DEFAULT_LOCATIONS,
+    build_or_use_from_cache,
 )
 from .utils_db import split_list
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-
-def parse_collection_name(collection_name: str):
-    """
-    Parse a concatenated string to extract the embedding model name, chunk size, and overlap size.
-    :param concatenated_string: A string in the format 'embeddingmodelname_chunkSize_overlapSize'
-    :return: A dictionary with the parsed values
-    """
-    try:
-        # Split the string by the underscore delimiter
-        parts = collection_name.split("_")
-
-        # Ensure there are exactly three parts
-        if len(parts) != 3:
-            raise ValueError(
-                "String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'"
-            )
-
-        # Extract and assign the parts
-        model_name = parts[0]
-        chunk_size = int(parts[1])
-        overlap_size = int(parts[2])
-
-        # Return the parsed values in a dictionary
-        return {
-            "model_name": model_name,
-            "chunk_size": chunk_size,
-            "overlap_size": overlap_size,
-        }
-    except Exception as e:
-        print(f"Error parsing string: {e}")
-        return None
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
@@ -69,7 +34,6 @@ def build_vector_database(
     location_dataset: dict = DEFAULT_LOCATIONS,
     **kwargs,
 ) -> Chroma:
-
     logging.info(f"The database will temporarily be stored in {persist_directory}")
 
     logging.info("Start building the database")
@@ -82,7 +46,7 @@ def build_vector_database(
         s3_bucket=s3_bucket,
         location_dataset=location_dataset,
         model_id=model_id,
-        **kwargs
+        **kwargs,
     )
 
     logging.info("Document chunking is over, starting to embed them")
@@ -151,14 +115,12 @@ def reload_database_from_local_dir(
         embedding_function=emb_model,
     )
 
-    logging.info(
-        f"The database (collection {collection_name}) "
-        f"has been reloaded from directory {persist_directory}"
-    )
+    logging.info(f"The database (collection {collection_name}) " f"has been reloaded from directory {persist_directory}")
     return db
 
 
 # LOAD RETRIEVER -------------------------------
+
 
 def load_retriever(
     emb_model_name,
@@ -186,7 +148,5 @@ def load_retriever(
     search_kwargs = retriever_params.get("search_kwargs", {"k": 20})
 
     # Set up a retriever
-    retriever = vectorstore.as_retriever(
-        search_type="similarity", search_kwargs=search_kwargs
-    )
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
     return retriever, vectorstore

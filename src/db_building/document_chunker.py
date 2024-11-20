@@ -47,9 +47,7 @@ def chunk_documents(
     logging.info("Applying markdown spliter")
 
     if kwargs.get("markdown_split", False):
-        markdown_splitter = MarkdownHeaderTextSplitter(
-            headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False
-        )
+        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False)
         document_list = make_md_splits(document_list, markdown_splitter)
 
     logging.info("Initializing token splitter")
@@ -68,9 +66,7 @@ def chunk_documents(
             unique_texts.add(doc.page_content)
             docs_processed_unique.append(doc)
 
-    logging.info(
-        f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database"
-    )
+    logging.info(f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database")
 
     return docs_processed_unique
 
@@ -88,7 +84,7 @@ def compute_autokenizer_chunk_size(hf_tokenizer_name: str, **kwargs) -> tuple:
     """
 
     logging.info(f"Using model {hf_tokenizer_name} to tokenize text")
-    hf_token = kwargs.get("HF_token", os.environ.get("HF_token", None))
+    hf_token = kwargs.get("HF_TOKEN", os.environ.get("HF_TOKEN", None))
 
     # Load the tokenizer
     autokenizer = AutoTokenizer.from_pretrained(hf_tokenizer_name, token=hf_token)
@@ -118,9 +114,7 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
     """
 
     if kwargs.get("use_tokenizer_to_chunk", True):
-        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(
-            kwargs.get("embedding_model")
-        )
+        autokenizer, chunk_size, chunk_overlap = compute_autokenizer_chunk_size(kwargs.get("embedding_model"))
 
         text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
             autokenizer,
@@ -130,9 +124,7 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
         )
     else:
         if kwargs.get("chunk_size") is None or kwargs.get("chunk_overlap") is None:
-            raise ValueError(
-                "chunk_size and chunk_overlap must be specified if use_tokenizer_to_chunk is set to True"
-            )
+            raise ValueError("chunk_size and chunk_overlap must be specified if use_tokenizer_to_chunk is set to True")
 
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=kwargs.get("chunk_size"),
@@ -143,9 +135,7 @@ def get_text_splitter(**kwargs) -> tuple[RecursiveCharacterTextSplitter, dict]:
     return text_splitter
 
 
-def make_md_splits(
-    document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter
-) -> list[Document]:
+def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
     """
     Splits the content of each document in the document list based on Markdown headers,
     and preserves the original metadata in each split section.
