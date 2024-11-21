@@ -4,12 +4,15 @@ Script to anonymize Insee Contact data.
 
 import json
 import re
+from collections.abc import Sequence
 
 import pandas as pd
-from utils import fs
+import s3fs
+
+from src.config import DefaultFullConfig, FullConfig, process_args
 
 
-def detect_email_signature(message: str, message_ner: list[dict]):
+def detect_email_signature(message: str, message_ner: list[dict]) -> int:
     """
     Returns first position of email signature in message.
     For now take a `message` string as input and returns
@@ -40,7 +43,7 @@ def detect_email_signature(message: str, message_ner: list[dict]):
     return char_index
 
 
-def add_signature_key_to_ner(message: str, message_ner: list[dict]):
+def add_signature_key_to_ner(message: str, message_ner: Sequence[dict]) -> None:
     """
     Adds a key 'signature' to the named entities in the message
     which belong to the signature: entities after which there is no
@@ -48,7 +51,7 @@ def add_signature_key_to_ner(message: str, message_ner: list[dict]):
 
     Args:
         message (str): Message.
-        message_ner (List[Dict]): Message NER.
+        message_ner (Sequence[dict]): Message NER.
     """
     # Init at False
     for entity in message_ner:
@@ -62,7 +65,6 @@ def add_signature_key_to_ner(message: str, message_ner: list[dict]):
         else:
             entity["signature"] = False
             return
-    return
 
 
 def anonymize_insee_contact_message(message: str, message_ner: list[dict]) -> str:
@@ -86,9 +88,7 @@ def anonymize_insee_contact_message(message: str, message_ner: list[dict]) -> st
         if dictionary["entity_group"] == "PER":
             message = message.replace(dictionary["word"], "[PER]")
         elif dictionary["signature"]:
-            message = message.replace(
-                dictionary["word"], f"[{dictionary['entity_group']}]"
-            )
+            message = message.replace(dictionary["word"], f"[{dictionary['entity_group']}]")
 
     # Identification of email addresses
     email_regex = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
@@ -114,6 +114,10 @@ def anonymize_insee_contact_message(message: str, message_ner: list[dict]) -> st
 
 
 if __name__ == "__main__":
+    process_args()
+    config: FullConfig = DefaultFullConfig()
+    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
+
     # Anonymize evaluation data and export it to a .csv file
     # for manual evaluation
     path = "projet-llm-insee-open-data/data/insee_contact/data_2019_eval.csv"

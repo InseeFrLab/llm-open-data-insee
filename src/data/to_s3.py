@@ -5,19 +5,47 @@ question asked by the user and first response.
 """
 
 import json
+import logging
 
 import pandas as pd
+import s3fs
 from anonymize import anonymize_insee_contact_message
 from constants import LS_DATA_PATH, RAW_DATA
 from ner import ner_series
-from utils import create_ls_task, fs
+
+from src.config import Configurable, DefaultFullConfig, FullConfig, process_args
+
+# Configuration
+process_args()  # Strict minimal arguments processing
+logger = logging.getLogger(__name__)
 
 
-def insee_contact_to_s3():
+def create_ls_task(question: str, answer: str) -> dict[str, dict[str, str]]:
+    """
+    Create Label Studio task .json for a question/answer pair.
+
+    Args:
+        question (str): Question.
+        answer (str): Answer.
+
+    Returns:
+        Dict[str, str]: Label Studio json task.
+    """
+    return {
+        "data": {
+            "question": question,
+            "answer": answer,
+        }
+    }
+
+
+@Configurable("config")
+def insee_contact_to_s3(config: FullConfig = DefaultFullConfig()):
     """
     Start from raw Insee Contact data, anonymize
     and upload Label Studio json tasks to s3.
     """
+    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
     with fs.open(RAW_DATA) as f:
         df = pd.read_csv(f)
 
@@ -38,9 +66,7 @@ def insee_contact_to_s3():
         anonymized_answers.append(anonymize_insee_contact_message(message, ner))
 
     # Json tasks creation
-    for idx, (question, answer) in enumerate(
-        zip(anonymized_questions, anonymized_answers, strict=False)
-    ):
+    for idx, (question, answer) in enumerate(zip(anonymized_questions, anonymized_answers, strict=False)):
         ls_task = create_ls_task(question, answer)
         with fs.open(LS_DATA_PATH + f"{idx}.json", "w") as f:
             json.dump(ls_task, f)

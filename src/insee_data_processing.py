@@ -3,9 +3,10 @@ import logging
 
 import pandas as pd
 import s3fs
-from config import S3_BUCKET, S3_ENDPOINT_URL
-from db_building.utils_db import complete_url_builder
 from markdownify import markdownify as md
+
+from db_building.utils_db import complete_url_builder
+from src.config import DefaultFullConfig, process_args, simple_argparser
 
 FILES = [
     "applishare_extract",
@@ -13,6 +14,9 @@ FILES = [
     "rmes_extract_sources",
     # "applishare_extract_indicateurs",
 ]
+
+# Logging configuration
+logger = logging.getLogger(__name__)
 
 
 def get_content(data, *keys):
@@ -50,9 +54,7 @@ def extract_rmes_data(data: dict):
     """
     id = get_content(data, "id")
     titre = data.get("titre", "")
-    note_historique = md(
-        data.get("noteHistorique", [{}])[0].get("contenu", ""), bullets="-"
-    )
+    note_historique = md(data.get("noteHistorique", [{}])[0].get("contenu", ""), bullets="-")
     label = get_content(data, "label", 0)
     frequence_collecte = get_content(data, "frequenceCollecte", "label", 0)
     resume = md(data.get("resume", [{}])[0].get("contenu", ""), bullets="-")
@@ -72,16 +74,8 @@ def extract_rmes_data(data: dict):
 
     parts.append(f"### Historique\n{note_historique}\n") if note_historique else None
     parts.append(f"### Famille\n{famille}\n") if famille else None
-    (
-        parts.append(f"### Organisme responsable\n{organismes_responsables}\n")
-        if organismes_responsables
-        else None
-    )
-    (
-        parts.append(f"### Fréquence de collecte des données\n{frequence_collecte}\n")
-        if frequence_collecte
-        else None
-    )
+    (parts.append(f"### Organisme responsable\n{organismes_responsables}\n") if organismes_responsables else None)
+    (parts.append(f"### Fréquence de collecte des données\n{frequence_collecte}\n") if frequence_collecte else None)
     parts.append(f"### Partenaires\n{partenaires}\n") if partenaires else None
     formatted_page = "\n".join(parts).replace("\\.", ".").replace("\\-", "-")
 
@@ -93,29 +87,19 @@ def process_row(row):
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
-
-    fs = s3fs.S3FileSystem(client_kwargs={"endpoint_url": S3_ENDPOINT_URL})
+    config = DefaultFullConfig()
+    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
     tables = {
-        file: pd.read_parquet(
-            f"s3://{S3_BUCKET}/data/raw_data/{file}.parquet", filesystem=fs
-        )
-        for file in FILES
+        file: pd.read_parquet(f"s3://{config.s3_bucket}/data/raw_data/{file}.parquet", filesystem=fs) for file in FILES
     }
 
     for key, table in tables.items():
-        logging.info(f"Size of {key} : {len(table)}")
+        logger.info(f"Size of {key} : {len(table)}")
 
-    joined_table = tables["applishare_extract"].merge(
-        tables["solr_extract"], how="inner", on="id"
-    )
+    joined_table = tables["applishare_extract"].merge(tables["solr_extract"], how="inner", on="id")
     joined_table["url"] = complete_url_builder(joined_table)
-    joined_table["theme"] = [
-        x[0] if x is not None else x for x in joined_table["theme"]
-    ]
+    joined_table["theme"] = [x[0] if x is not None else x for x in joined_table["theme"]]
     subset_table = joined_table.reset_index(drop=True)[
         [
             "id",
@@ -132,22 +116,21 @@ def main():
             "xml_content",
         ]
     ]
-    subset_table["dateDiffusion"] = pd.to_datetime(
-        subset_table["dateDiffusion"], format="mixed"
-    ).dt.strftime("%Y-%m-%d %H:%M")
-    subset_table.to_parquet(
-        f"s3://{S3_BUCKET}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs
+    subset_table["dateDiffusion"] = pd.to_datetime(subset_table["dateDiffusion"], format="mixed").dt.strftime(
+        "%Y-%m-%d %H:%M"
     )
+    subset_table.to_parquet(f"s3://{config.s3_bucket}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs)
 
     rmes_sources_content = pd.DataFrame(
         tables["rmes_extract_sources"]["xml_content"].apply(process_row).to_list(),
         columns=["id", "titre", "url", "content"],
     )
     rmes_sources_content.set_index("id").to_parquet(
-        f"s3://{S3_BUCKET}/data/processed_data/rmes_sources_content.parquet",
+        f"s3://{config.s3_bucket}/data/processed_data/rmes_sources_content.parquet",
         filesystem=fs,
     )
 
 
 if __name__ == "__main__":
+    process_args(simple_argparser())
     main()

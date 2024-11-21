@@ -34,13 +34,13 @@ Le template Label Studio est le suivant :
   <HyperText name="p1" clickableLinks="true" inline="true" target="_blank">
     <a target="_blank" href="$source">$source</a>
   </HyperText>
-  
+
   <Header value="Posez une ou plusieurs questions sur le texte, en les séparant avec un pipe |. Vérifiez que le contenu correspondant à la question figure bien dans le texte suivant, qui est une extraction en général incomplète de la page."/>
   <TextArea name="questions" toName="text" showSubmitButton="true" maxSubmissions="1" editable="true" required="true"/>
-  
+
   <Header value="Ecrivez les réponses correspondantes, en les séparant avec un pipe |."/>
   <TextArea name="answers" toName="text" showSubmitButton="true" maxSubmissions="1" editable="true" required="true"/>
-  
+
   <Header value="Extraction"/>
   <Text name="text" value="$text"/>
 </View>

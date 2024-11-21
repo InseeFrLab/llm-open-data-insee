@@ -1,8 +1,6 @@
 -r requirements.txt
 beautifulsoup4
-bokeh
 collection
-datashader
 fastparquet
 holoviews
 ipykernel
@@ -25,7 +23,7 @@ scikit-learn
 scipy
 scrapy
 seaborn
-spacy
+#spacy # requires numpy>=2.0.0 which is incompatible with the langchain suite
 tensorboardX
 tqdm
 urllib3
@@ -35,3 +33,6 @@ pipreqs
 markdownify
 langchain-chroma
 bs4
+toml
+pandas-stubs
+types-toml

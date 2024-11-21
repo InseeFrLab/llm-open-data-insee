@@ -82,21 +82,15 @@ class CustomHuggingFacePipeline(BaseLLM):
             elif task in ("text2text-generation", "summarization"):
                 model = AutoModelForSeq2SeqLM.from_pretrained(model_id, **_model_kwargs)
             else:
-                raise ValueError(
-                    f"Got invalid task {task}, "
-                    f"currently only {VALID_TASKS} are supported"
-                )
+                raise ValueError(f"Got invalid task {task}, " f"currently only {VALID_TASKS} are supported")
         except ImportError as e:
-            raise ValueError(
-                f"Could not load the {task} model due to missing dependencies."
-            ) from e
+            raise ValueError(f"Could not load the {task} model due to missing dependencies.") from e
 
         if tokenizer.pad_token is None:
             tokenizer.pad_token_id = model.config.eos_token_id
 
         if (
-            getattr(model, "is_loaded_in_4bit", False)
-            or getattr(model, "is_loaded_in_8bit", False)
+            getattr(model, "is_loaded_in_4bit", False) or getattr(model, "is_loaded_in_8bit", False)
         ) and device is not None:
             logger.warning(
                 f"Setting the `device` argument to None from {device} to avoid "
@@ -111,10 +105,7 @@ class CustomHuggingFacePipeline(BaseLLM):
 
             cuda_device_count = torch.cuda.device_count()
             if device < -1 or (device >= cuda_device_count):
-                raise ValueError(
-                    f"Got device=={device}, "
-                    f"device is required to be within [-1, {cuda_device_count})"
-                )
+                raise ValueError(f"Got device=={device}, " f"device is required to be within [-1, {cuda_device_count})")
             if device_map is not None and device < 0:
                 device = None
             if device is not None and device < 0 and cuda_device_count > 0:
@@ -126,9 +117,7 @@ class CustomHuggingFacePipeline(BaseLLM):
                     cuda_device_count,
                 )
         if "trust_remote_code" in _model_kwargs:
-            _model_kwargs = {
-                k: v for k, v in _model_kwargs.items() if k != "trust_remote_code"
-            }
+            _model_kwargs = {k: v for k, v in _model_kwargs.items() if k != "trust_remote_code"}
         _pipeline_kwargs = pipeline_kwargs or {}
         pipeline = hf_pipeline(
             task=task,
@@ -141,10 +130,7 @@ class CustomHuggingFacePipeline(BaseLLM):
             **_pipeline_kwargs,
         )
         if pipeline.task not in VALID_TASKS:
-            raise ValueError(
-                f"Got invalid task {pipeline.task}, "
-                f"currently only {VALID_TASKS} are supported"
-            )
+            raise ValueError(f"Got invalid task {pipeline.task}, " f"currently only {VALID_TASKS} are supported")
         return cls(
             pipeline=pipeline,
             model_id=model_id,
@@ -192,14 +178,9 @@ class CustomHuggingFacePipeline(BaseLLM):
                     try:
                         from transformers.pipelines.text_generation import ReturnType
 
-                        remove_prompt = (
-                            self.pipeline._postprocess_params.get("return_type")
-                            != ReturnType.NEW_TEXT
-                        )
+                        remove_prompt = self.pipeline._postprocess_params.get("return_type") != ReturnType.NEW_TEXT
                     except Exception as e:
-                        logger.warning(
-                            f"Unable to extract pipeline return_type. Received error:\n\n{e}"
-                        )
+                        logger.warning(f"Unable to extract pipeline return_type. Received error:\n\n{e}")
                         remove_prompt = True
 
                     text = (
@@ -224,9 +205,7 @@ class CustomHuggingFacePipeline(BaseLLM):
                 # Append the processed text to results
                 text_generations.append(text)
 
-        return LLMResult(
-            generations=[[Generation(text=text)] for text in text_generations]
-        )
+        return LLMResult(generations=[[Generation(text=text)] for text in text_generations])
 
     async def _astream(
         self,
@@ -249,20 +228,13 @@ class CustomHuggingFacePipeline(BaseLLM):
             streamer = self.pipeline._forward_params["streamer"]
 
             if streamer is None:
-                raise ValueError(
-                    "Could not get TextIteratorStreamer from pipeline. "
-                    "Please check your pipeline."
-                )
+                raise ValueError("Could not get TextIteratorStreamer from pipeline. " "Please check your pipeline.")
             elif type(streamer) is not TextIteratorStreamer:
                 raise ValueError(
-                    "Passed Streamer is not supported. Please use TextIteratorStreamer."
-                    "Please check your pipeline."
+                    "Passed Streamer is not supported. Please use TextIteratorStreamer." "Please check your pipeline."
                 )
         except Exception as e:
-            raise ValueError(
-                "Could not get TextIteratorStreamer from pipeline. "
-                "Please check your pipeline."
-            ) from e
+            raise ValueError("Could not get TextIteratorStreamer from pipeline. " "Please check your pipeline.") from e
 
         # Prepare the inputs for the model
         tok = self.pipeline.tokenizer

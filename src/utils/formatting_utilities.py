@@ -1,3 +1,8 @@
+from langchain_core.prompts import PromptTemplate
+
+from src.config import Configurable, DefaultFullConfig, FullConfig
+
+
 def str_to_bool(value):
     value = value.lower()
     if value == "true":
@@ -6,6 +11,18 @@ def str_to_bool(value):
         return False
     else:
         raise ValueError(f"Invalid value: {value}")
+
+
+@Configurable()
+def get_chatbot_template(
+    system_instruction: str | None = None, config: FullConfig = DefaultFullConfig()
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": system_instruction or config.CHATBOT_SYSTEM_INSTRUCTION,
+        },
+    ]
 
 
 def add_sources_to_messages(message: str, sources: list, titles: list, topk: int = 5):
@@ -30,3 +47,28 @@ def add_sources_to_messages(message: str, sources: list, titles: list, topk: int
         message += "\n\nNo Sources available"
 
     return message
+
+
+def format_docs(docs: list):
+    return "\n\n".join(
+        [
+            f"""
+            Doc {i + 1}:\nTitle: {doc.metadata.get("Header 1")}\n
+            Source: {doc.metadata.get("url")}\n
+            Content:\n{doc.page_content}
+            """
+            for i, doc in enumerate(docs)
+        ]
+    )
+
+
+def create_prompt_from_instructions(system_instructions: str, question_instructions: str) -> PromptTemplate:
+    template = f"""
+    {system_instructions}
+
+    {question_instructions}
+    """
+
+    custom_rag_prompt = PromptTemplate.from_template(template)
+
+    return custom_rag_prompt

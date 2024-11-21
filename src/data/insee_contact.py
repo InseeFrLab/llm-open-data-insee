@@ -1,20 +1,15 @@
-"""
-Process raw Insee contact data.
-"""
-
-import os
-
 import pandas as pd
 import s3fs
 
+from src.config import Configurable, DefaultFullConfig, FullConfig, process_args
 
-def process_insee_contact_data(path: str):
+
+@Configurable()
+def process_insee_contact_data(path: str, config: FullConfig = DefaultFullConfig()):
     """
     Process raw Insee contact data.
     """
-    fs = s3fs.S3FileSystem(
-        client_kwargs={"endpoint_url": "https://" + os.environ["AWS_S3_ENDPOINT"]}
-    )
+    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
     with fs.open(path) as f:
         df = pd.read_csv(f)
@@ -26,12 +21,10 @@ def process_insee_contact_data(path: str):
     df_eval = df.sample(200, random_state=42)
 
     # Save to s3
-    with fs.open(
-        "projet-llm-insee-open-data/data/insee_contact/data_2019_eval.csv", "w"
-    ) as f:
+    with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval.csv", "w") as f:
         df_eval.to_csv(f, index=False)
 
 
 if __name__ == "__main__":
-    path = "projet-llm-insee-open-data/data/insee_contact/data_2019.csv"
-    process_insee_contact_data(path)
+    process_args()
+    process_insee_contact_data("projet-llm-insee-open-data/data/insee_contact/data_2019.csv")

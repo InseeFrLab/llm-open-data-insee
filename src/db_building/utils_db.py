@@ -1,6 +1,6 @@
 import logging
 import re
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from typing import Any
 
 import pandas as pd
@@ -8,6 +8,8 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 from markdownify import MarkdownConverter
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 TAGS_TO_IGNORE = [
     "sage",
@@ -36,7 +38,7 @@ def get_soup(xml_string: str) -> BeautifulSoup:
     return soup
 
 
-def url_builder(row: pd.Series) -> str:
+def url_builder(row: pd.Series) -> str | None:
     """
     Constructs a URL based on the category and id of a given pandas Series row.
 
@@ -77,7 +79,7 @@ def url_builder(row: pd.Series) -> str:
     return f"""{base_url}/{section}/{row["id"]}"""
 
 
-def url_builder_metadata(row: pd.Series) -> str:
+def url_builder_metadata(row: pd.Series) -> str | None:
     """
     Rebuilds a valid URL for metadata based on the id of a given pandas Series row.
 
@@ -143,25 +145,27 @@ def prepend_text_to_tag(tag, text):
         tag.string = text
 
 
-def parse_xmls(
-    data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content"
-) -> pd.DataFrame:
+def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
     """
-    Parses XML content from a DataFrame, extracts data, formats it, and returns a new DataFrame with the formatted content.
+    Parses XML content from a DataFrame, extracts data, formats it,
+    and returns a new DataFrame with the formatted content.
 
     Args:
-        data (pd.DataFrame): The input DataFrame containing XML data.
-        id (str, optional): The column name for the unique identifier of each row. Defaults to "id".
-        xml_column (str, optional): The column name containing the XML content. Defaults to "xml_content".
+    - data (pd.DataFrame): The input DataFrame containing XML data.
+    - id (str, optional): The column name for the unique identifier of each row. Defaults to "id".
+    - xml_column (str, optional): The column name containing the XML content.
+        Defaults to "xml_content".
 
     Returns:
-        pd.DataFrame: A DataFrame with 'id' as the index and formatted content in the 'content' column.
+    - pd.DataFrame: A DataFrame with 'id' as the index and formatted content in the 'content' column
     """
-    parsed_pages = {"id": [], "content": []}
+    parsed_pages: dict[str, list] = {"id": [], "content": []}
 
+    logstep = 1 + (len(data) // 10)
     for i, row in data.iterrows():
         page_id = row[id]
-        logging.info(f"Processing page {page_id} -- {i}/{len(data)}")
+        if i % logstep == 0:
+            logger.info(f"Parsing XML from page {page_id} -- {i}/{len(data)} ({100*i/len(data):.2f}%)")
 
         if not row[xml_column]:
             # When xml_content is empty, we skip the page
@@ -186,25 +190,25 @@ def parse_xmls(
     return pd.DataFrame(parsed_pages).set_index("id")
 
 
-def split_list(input_list: list[Any], chunk_size: int) -> Generator[list[Any]]:
+def split_list(input_list: Sequence[Any], chunk_size: int) -> Generator[Sequence[Any], None, None]:
     """
     Splits a list into smaller chunks of a specified size.
 
     Parameters:
-    ----------
-    input_list : list[Any]
+    -----------
+    input_list : Sequence[Any]
         The list to be split into chunks.
     chunk_size : int
         The size of each chunk.
 
     Yields:
     -------
-    Generator[list[Any]]
+    Generator[Sequence[Any]]
         A generator that yields chunks of the input list.
-
     """
-    if not isinstance(chunk_size, int) or chunk_size <= 0:
-        raise ValueError("chunk_size must be a positive integer.")
+
+    if not chunk_size > 0:
+        raise ValueError("chunk_size must be a strictly positive integer.")
 
     for i in range(0, len(input_list), chunk_size):
         yield input_list[i : i + chunk_size]
@@ -215,11 +219,16 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
     Formats the tags in the provided BeautifulSoup object according to specific HTML rules.
 
     Parameters:
-    soup (Tag): The BeautifulSoup tag object to format.
-    tags_to_ignore (list[str]): A list of tag names to ignore and remove.
+    ----------
+    soup : Tag
+        The BeautifulSoup tag object to format.
+    tags_to_ignore : list[str]
+        A list of tag names to ignore and remove.
 
     Returns:
-    Tag: The formatted BeautifulSoup tag object.
+    --------
+    Tag
+        The formatted BeautifulSoup tag object.
     """
     soup_copy = soup
     TAGS_FIGURE_CHILDREN = ["graphique", "tableau"]
@@ -234,15 +243,13 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
             continue
 
         # Remove figure tags when they contain tags to ignore
-        # We need to do that because some content (e.g titles, sources...) are in the figure tag and not
-        # in the children tags (graphique, tableau...)
+        # We need to do that because some content (e.g titles, sources...) are in the figure tag
+        # and not in the children tags (graphique, tableau...)
         # Maybe we still want to keep it ?
         if any(remove_figure) and tag.name == "figure":
             if all(
                 tag.find(child_tag) is None
-                for child_tag, remove in zip(
-                    TAGS_FIGURE_CHILDREN, remove_figure, strict=False
-                )
+                for child_tag, remove in zip(TAGS_FIGURE_CHILDREN, remove_figure, strict=False)
                 if not remove
             ):
                 tag.decompose()
@@ -291,11 +298,7 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
 
         # Rename intertitre tags
         if tag.name == "intertitre":
-            tag.name = (
-                f"h{int(tag.get("niveau")) + 2}"
-                if tag.get("niveau") is not None
-                else "h3"
-            )
+            tag.name = f"h{int(tag.get("niveau")) + 2}" if tag.get("niveau") is not None else "h3"
             continue
 
         ## TABLES

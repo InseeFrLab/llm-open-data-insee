@@ -1,28 +1,23 @@
+import gc
 import logging
 
 import pandas as pd
 import s3fs
 from chromadb.config import Settings
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain.schema import Document
+from langchain_chroma import Chroma
+from langchain_core.vectorstores.base import VectorStoreRetriever
+from langchain_huggingface import HuggingFaceEmbeddings
 
-from src.config import (
-    CHROMA_DB_LOCAL_DIRECTORY,
-    COLLECTION_NAME,
-    EMB_DEVICE,
-    EMB_MODEL_NAME,
-    S3_BUCKET,
-)
+from src.config import Configurable, DefaultFullConfig, FullConfig
 
-from .document_chunker import chunk_documents
-from .utils_db import parse_xmls, split_list
+from .corpus_building import build_or_load_document_database
+from .utils_db import split_list
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logger = logging.getLogger(__name__)
 
 
-def parse_collection_name(collection_name: str):
+def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
     """
     Parse a concatenated string to extract the embedding model name, chunk size, and overlap size.
     :param concatenated_string: A string in the format 'embeddingmodelname_chunkSize_overlapSize'
@@ -34,9 +29,7 @@ def parse_collection_name(collection_name: str):
 
         # Ensure there are exactly three parts
         if len(parts) != 3:
-            raise ValueError(
-                "String format is incorrect. Expected format: 'modelname_chunkSize_overlapSize'"
-            )
+            raise ValueError("String format is incorrect." "Expected format: 'modelname_chunkSize_overlapSize'")
 
         # Extract and assign the parts
         model_name = parts[0]
@@ -50,139 +43,135 @@ def parse_collection_name(collection_name: str):
             "overlap_size": overlap_size,
         }
     except Exception as e:
-        print(f"Error parsing string: {e}")
+        logger.error(f"Error parsing string: {e}")
         return None
 
 
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
 
 
+@Configurable()
 def build_vector_database(
-    data_path: str,
-    persist_directory: str,
-    collection_name: str,
     filesystem: s3fs.S3FileSystem,
-    **kwargs,
-) -> Chroma:
-    logging.info(f"The database will temporarily be stored in {persist_directory}")
-    logging.info("Start building the database")
+    config: FullConfig = DefaultFullConfig(),
+    return_none_on_fail=False,
+    document_database: tuple[pd.DataFrame, list[Document]] | None = None,
+) -> Chroma | None:
+    """
+    Build vector database from documents database
 
-    data = pd.read_parquet(f"s3://{S3_BUCKET}/{data_path}", filesystem=filesystem)
+    Args:
+    filesystem: The filesystem object for interacting with S3.
+    config: Keyword arguments for building the vector database:
+        - emb_device (str):
+        - emb_model (str):
+        - collection_name (str): langchain collection name
+        - chroma_db_local_path (str):
+    document_database: the document database. Will be build_or_loaded if unspecified.
 
-    if kwargs.get("max_pages") is not None:
-        data = data.head(kwargs.get("max_pages"))
+    Returns:
+    The built Chroma vector database
+    """
+    logger.info("Building the vector database from documents")
 
-    # Parse the XML content
-    parsed_pages = parse_xmls(data)
+    # Call the process_data function to handle data loading, parsing, and splitting
+    df, all_splits = document_database or build_or_load_document_database(filesystem, config)
 
-    df = data.set_index("id").merge(
-        pd.DataFrame(parsed_pages), left_index=True, right_index=True
-    )
-    df = df[
-        [
-            "titre",
-            "categorie",
-            "url",
-            "dateDiffusion",
-            "theme",
-            "collection",
-            "libelleAffichageGeo",
-            "content",
-        ]
-    ]
-
-    # Temporary solution to add the RMES data
-    data_path_rmes = "data/processed_data/rmes_sources_content.parquet"
-    data_rmes = pd.read_parquet(
-        f"s3://{S3_BUCKET}/{data_path_rmes}", filesystem=filesystem
-    )
-    df = pd.concat([df, data_rmes])
-
-    # fill NaN values with empty strings since metadata doesn't accept NoneType in Chroma
-    df = df.fillna(value="")
-
-    # chucking of documents
-    all_splits = chunk_documents(data=df, **kwargs)
-
+    logger.info(f"Loading embedding model: {config.emb_model} on {config.emb_device}")
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=kwargs.get("embedding_model"),
-        model_kwargs={"device": kwargs.get("embedding_device")},
+        model_name=config.emb_model,
+        model_kwargs={"device": config.emb_device},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )
 
+    logger.info("Building the Chroma vector database from model and chunked docs")
+    logger.info(f"The database will temporarily be stored in {config.chroma_db_local_path}")
+
     max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
+    nb_chunks = 1 + (len(all_splits) - 1) // max_batch_size
 
-    for split_docs_chunk in split_docs_chunked:
-        db = Chroma.from_documents(
-            collection_name=collection_name,
-            documents=split_docs_chunk,
-            persist_directory=persist_directory,
-            embedding=emb_model,
+    # Loop through the chunks and build the Chroma database
+    try:
+        db = Chroma(
+            collection_name=config.collection_name,
+            persist_directory=config.chroma_db_local_path,
+            embedding_function=emb_model,
             client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
         )
+        logger.info(f"Empty new database created. Adding {len(all_splits)} documents...")
+        for chunk_count, split_docs_chunk in enumerate(split_docs_chunked):
+            db.add_documents(list(split_docs_chunk))
+            ratio_docs_processed = min(1.0, max_batch_size * (chunk_count + 1) / len(all_splits))
+            logger.info(f"Chunk: {chunk_count+1}/{nb_chunks} ({100*ratio_docs_processed:.0f}%)")
+    except Exception as e:
+        logger.error(f"An error occurred while building the Chroma database: {e}")
+        if return_none_on_fail:
+            return None
+        else:
+            raise
 
-    logging.info("The database has been built")
-    return db, df
+    # Cleanup after successful execution
+    del emb_model
+    gc.collect()
+
+    logger.info("Vector database built successfully!")
+    return db
 
 
-# RELOAD VECTOR DATABASE FROM DIRECTORY -------------------------
+# LOAD VECTOR DATABASE FROM LOCAL DIRECTORY --------------------
 
 
-def reload_database_from_local_dir(
-    embed_model_name: str = EMB_MODEL_NAME,
-    collection_name: str = COLLECTION_NAME,
-    persist_directory: str = CHROMA_DB_LOCAL_DIRECTORY,
-    embed_device: str = EMB_DEVICE,
+@Configurable()
+def load_vector_database_from_local(
+    persist_directory: str | None = None, config: FullConfig = DefaultFullConfig()
 ) -> Chroma:
+    """
+    Load Chroma vector database from local directory.
+
+    Assumes, without checking, that the embedding function matches `config.emb_model`
+
+    Args:
+    persist_directory: path to the directory from. If empty, `config.chroma_db_local_path` is used
+    config: configuration
+
+    Returns:
+    The loaded Chroma vector database
+    """
+    logger.info("Loading Chroma vector database from local session")
+    if persist_directory is None:
+        persist_directory = config.chroma_db_local_path
     emb_model = HuggingFaceEmbeddings(
-        model_name=embed_model_name,
+        model_name=config.emb_model,
         multi_process=False,
-        model_kwargs={"device": embed_device, "trust_remote_code": True},
+        model_kwargs={"device": config.emb_device, "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},
         show_progress=True,
     )
     db = Chroma(
-        collection_name=collection_name,
+        collection_name=config.collection_name,
         persist_directory=persist_directory,
         embedding_function=emb_model,
     )
-
-    logging.info(
-        f"The database (collection {collection_name}) "
-        f"has been reloaded from directory {persist_directory}"
-    )
+    logger.info(f"Database (collection {config.collection_name}) reloaded from directory {persist_directory}")
     return db
 
 
-def load_retriever(
-    emb_model_name,
-    vectorstore=None,
-    persist_directory="data/chroma_db",
-    device="cuda",
-    collection_name: str = "insee_data",
-    retriever_params: dict = None,
-):
-    # Load vector database
-    if vectorstore is None:
-        logging.info("Reloading database in session")
-        vectorstore = reload_database_from_local_dir(
-            embed_model_name=emb_model_name,
-            collection_name=collection_name,
-            persist_directory=persist_directory,
-            embed_device=device,
-        )
-    else:
-        logging.info("vectorstore being provided, skipping the reloading")
+# LOAD RETRIEVER -------------------------------
 
+
+@Configurable()
+def load_retriever(
+    vectorstore: Chroma | None = None, retriever_params: dict | None = None, config: FullConfig = DefaultFullConfig()
+) -> tuple[VectorStoreRetriever, Chroma]:
+    if vectorstore is None:
+        vectorstore = load_vector_database_from_local(persist_directory=None, config=config)
     if retriever_params is None:
         retriever_params = {"search_type": "similarity", "search_kwargs": {"k": 30}}
 
     search_kwargs = retriever_params.get("search_kwargs", {"k": 20})
 
     # Set up a retriever
-    retriever = vectorstore.as_retriever(
-        search_type="similarity", search_kwargs=search_kwargs
-    )
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs=search_kwargs)
     return retriever, vectorstore
