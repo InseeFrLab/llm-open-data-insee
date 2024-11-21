@@ -10,7 +10,6 @@ import pandas as pd
 from anonymize import anonymize_insee_contact_message
 from constants import LS_DATA_PATH, RAW_DATA
 from ner import ner_series
-
 from utils import create_ls_task, fs
 
 
