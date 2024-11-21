@@ -1,13 +1,12 @@
 import copy
-from abc import ABC
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.config import RAGConfig
+from src.config import DefaultFullConfig
 
 
 @dataclass
-class EvalConfiguration(ABC):
+class EvalConfiguration:
     name: str = field(default="default_name")
     database: str = field(default="chromadb")
     database_path: str = field(default="")
@@ -28,7 +27,9 @@ class EvalConfiguration(ABC):
 @dataclass
 class RetrievalConfiguration(EvalConfiguration):
     # Embedding model
-    embedding_model_name: str = field(default=RAGConfig().emb_model, metadata={"description": "embedding model"})
+    embedding_model_name: str = field(
+        default=DefaultFullConfig().emb_model, metadata={"description": "embedding model"}
+    )
     collection: str | None = field(default=None)
     chunk_size: int | None = field(default=None, metadata={"description": "chunk size"})
     overlap_size: int | None = field(default=None, metadata={"description": "overlap size"})

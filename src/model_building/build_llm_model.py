@@ -1,6 +1,5 @@
 import os
 import sys
-from collections.abc import Mapping
 from typing import Any
 
 from langchain_huggingface import HuggingFacePipeline
@@ -13,7 +12,7 @@ from transformers import (
     pipeline,
 )
 
-from src.config import RAGConfig
+from src.config import Configurable, DefaultFullConfig, FullConfig
 
 # from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
@@ -24,12 +23,13 @@ if root_dir not in sys.path:
     sys.path.append(root_dir)
 
 
+@Configurable()
 def build_llm_model(
     model_name: str,
     load_LLM_config: bool = False,
     streaming: bool = False,
     hf_token: str | None = None,
-    config: Mapping[str, Any] = vars(RAGConfig()),
+    config: FullConfig = DefaultFullConfig(),
 ) -> tuple[HuggingFacePipeline, Any]:
     """
     Create the LLM model
@@ -38,9 +38,9 @@ def build_llm_model(
         hf_token = os.getenv("HF_TOKEN")
     cache_model_from_hf_hub(
         model_name,
-        s3_bucket=config["s3_bucket"],
-        s3_cache_dir=config["s3_model_cache_dir"],
-        s3_endpoint=config["s3_endpoint_url"],
+        s3_bucket=config.s3_bucket,
+        s3_cache_dir=config.s3_model_cache_dir,
+        s3_endpoint=config.s3_endpoint_url,
     )
 
     configs = {
@@ -52,7 +52,7 @@ def build_llm_model(
                 bnb_4bit_compute_dtype="float16",
                 bnb_4bit_use_double_quant=False,
             )
-            if config.get("quantization")
+            if config.quantization
             else None
         ),
         # Load LLM config
@@ -80,11 +80,11 @@ def build_llm_model(
         task="text-generation",  # TextGenerationPipeline HF pipeline
         model=model,
         tokenizer=tokenizer,
-        max_new_tokens=config.get("max_new_tokens", 2000),
-        return_full_text=config.get("return_full_text", False),
+        max_new_tokens=config.max_new_tokens,
+        return_full_text=config.return_full_text,
         device_map="auto",
-        do_sample=config.get("do_sample", True),
-        temperature=config.get("temperature", 0.2),
+        do_sample=config.do_sample,
+        temperature=config.temperature,
         streamer=streamer,
     )
     llm = HuggingFacePipeline(pipeline=pipeline_HF)

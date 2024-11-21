@@ -1,20 +1,24 @@
 import os
 import subprocess
-from collections.abc import Mapping
-from typing import Any
+from typing import Literal
 
 import pandas as pd
 import s3fs
 
-from src.config import RAGConfig
+from src.config import Configurable, DefaultFullConfig, FullConfig
 
 
-def load_dataframe_from_parquet(path: str, engine: str = "fastparquet") -> pd.DataFrame:
+def load_dataframe_from_parquet(
+    path: str, engine: Literal["auto", "pyarrow", "fastparquet"] = "fastparquet"
+) -> pd.DataFrame:
     return pd.read_parquet(path, engine)
 
 
+@Configurable()
 def load_dataframe_from_parquet_using_S3(
-    filepath: str, engine: str = "fastparquet", config: Mapping[str, Any] = vars(RAGConfig())
+    filepath: str,
+    engine: Literal["auto", "pyarrow", "fastparquet"] = "fastparquet",
+    config: FullConfig = DefaultFullConfig(),
 ) -> pd.DataFrame:
     fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
     with fs.open(filepath, mode="rb") as file_in:

@@ -1,6 +1,6 @@
 from .argparsers import llm_argparser, minimal_argparser, models_only_argparser, process_args, simple_argparser
-from .config import Configurable, RAGConfig, custom_config
-from .models import FullRAGConfig
+from .config import Configurable, DefaultFullConfig, custom_config
+from .models import FullConfig
 
 __all__ = [
     "minimal_argparser",
@@ -9,9 +9,9 @@ __all__ = [
     "llm_argparser",
     "process_args",
     # Configuration models
-    "FullRAGConfig",
+    "FullConfig",
     # Loadable configuration objects
-    "RAGConfig",
+    "DefaultFullConfig",
     "custom_config",
     # Decorator for function using config arguments
     "Configurable",

@@ -6,7 +6,7 @@ from argparse import ArgumentParser, BooleanOptionalAction
 import toml
 from confz import validate_all_configs
 
-from .config import RAGConfig
+from .config import DefaultFullConfig
 
 # PARSER FOR USER LEVEL ARGUMENTS --------------------------------
 
@@ -287,6 +287,6 @@ def process_args(argparser: argparse.ArgumentParser | None = None) -> argparse.N
     validate_all_configs()
     if args.export_config:
         # If export_config is set, simply print out the loaded config and exit
-        toml.dump(vars(RAGConfig()), sys.stdout)
+        toml.dump(vars(DefaultFullConfig()), sys.stdout)
         exit()
     return args

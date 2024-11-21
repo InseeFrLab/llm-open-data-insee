@@ -7,19 +7,20 @@ from langchain_community.llms import VLLM
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 
-from src.config import RAGConfig, process_args
+from src.config import DefaultFullConfig, process_args
 from src.db_building import load_retriever, load_vector_database
 from src.model_building import cache_model_from_hf_hub
 from src.utils import create_prompt_from_instructions, format_docs
 
-# Logging configuration
-process_args()
+# Configuration
+process_args()  # Strict minimal arguments processing
+config = DefaultFullConfig()
+fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 logger = logging.getLogger(__name__)
-fs = s3fs.S3FileSystem(endpoint_url=RAGConfig().s3_endpoint_url)
 
 # PARAMETERS --------------------------------------
 
-CLI_MESSAGE_SEPARATOR = (RAGConfig().cli_message_separator_length * "-") + " \n"
+CLI_MESSAGE_SEPARATOR = (config.cli_message_separator_length * "-") + " \n"
 
 # PROMPT -------------------------------------
 
@@ -77,8 +78,8 @@ async def on_chat_start():
     init_msg = cl.Message(content="Bienvenue sur le ChatBot de l'INSEE!")
     await init_msg.send()
 
-    logger.info(f"------ downloading model `{RAGConfig().llm_model}` or using from cache")
-    cache_model_from_hf_hub(model_id=RAGConfig().llm_model)
+    logger.info(f"------ downloading model `{config.llm_model}` or using from cache")
+    cache_model_from_hf_hub(model_id=config.llm_model)
     logger.info("------ model loaded")
 
     logger.info("------ loading database")
@@ -95,11 +96,11 @@ async def on_chat_start():
     logger.info("------ retriever ready for use")
 
     llm = VLLM(
-        model=RAGConfig().llm_model,
-        max_new_tokens=RAGConfig().max_new_token,
-        top_p=RAGConfig().top_p,
-        temperature=RAGConfig().temperature,
-        rep_penalty=RAGConfig().rep_penalty,
+        model=config.llm_model,
+        max_new_tokens=config.max_new_token,
+        top_p=config.top_p,
+        temperature=config.temperature,
+        rep_penalty=config.rep_penalty,
     )
 
     logger.info("------ VLLM object ready")

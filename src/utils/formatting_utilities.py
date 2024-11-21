@@ -1,9 +1,6 @@
-from collections.abc import Mapping
-from typing import Any
-
 from langchain_core.prompts import PromptTemplate
 
-from src.config import RAGConfig
+from src.config import Configurable, DefaultFullConfig, FullConfig
 
 
 def str_to_bool(value):
@@ -16,13 +13,14 @@ def str_to_bool(value):
         raise ValueError(f"Invalid value: {value}")
 
 
+@Configurable()
 def get_chatbot_template(
-    system_instruction: str | None = None, config: Mapping[str, Any] = vars(RAGConfig())
+    system_instruction: str | None = None, config: FullConfig = DefaultFullConfig()
 ) -> list[dict[str, str]]:
     return [
         {
             "role": "system",
-            "content": system_instruction or config["CHATBOT_SYSTEM_INSTRUCTION"],
+            "content": system_instruction or config.CHATBOT_SYSTEM_INSTRUCTION,
         },
     ]
 

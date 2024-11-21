@@ -1,7 +1,5 @@
 import gc
 import logging
-from collections.abc import Mapping
-from typing import Any
 
 import pandas as pd
 import s3fs
@@ -11,7 +9,7 @@ from langchain_chroma import Chroma
 from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from src.config import RAGConfig
+from src.config import Configurable, DefaultFullConfig, FullConfig
 
 from .corpus_building import build_or_load_document_database
 from .utils_db import split_list
@@ -52,9 +50,10 @@ def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
 
 
+@Configurable()
 def build_vector_database(
     filesystem: s3fs.S3FileSystem,
-    config: Mapping[str, Any] = vars(RAGConfig()),
+    config: FullConfig = DefaultFullConfig(),
     return_none_on_fail=False,
     document_database: tuple[pd.DataFrame, list[Document]] | None = None,
 ) -> Chroma | None:
@@ -78,16 +77,16 @@ def build_vector_database(
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = document_database or build_or_load_document_database(filesystem, config)
 
-    logger.info(f"Loading embedding model: {config['emb_model']} on {config['emb_device']}")
+    logger.info(f"Loading embedding model: {config.emb_model} on {config.emb_device}")
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=config["emb_model"],
-        model_kwargs={"device": config["emb_device"]},
+        model_name=config.emb_model,
+        model_kwargs={"device": config.emb_device},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
     )
 
     logger.info("Building the Chroma vector database from model and chunked docs")
-    logger.info(f"The database will temporarily be stored in {config['chroma_db_local_path']}")
+    logger.info(f"The database will temporarily be stored in {config.chroma_db_local_path}")
 
     max_batch_size = 41600
     split_docs_chunked = split_list(all_splits, max_batch_size)
@@ -124,16 +123,17 @@ def build_vector_database(
 # LOAD VECTOR DATABASE FROM LOCAL DIRECTORY --------------------
 
 
+@Configurable()
 def load_vector_database_from_local(
-    persist_directory: str | None = None, config: Mapping[str, Any] = vars(RAGConfig())
+    persist_directory: str | None = None, config: FullConfig = DefaultFullConfig()
 ) -> Chroma:
     """
     Load Chroma vector database from local directory.
 
-    Assumes, without checking, that the embedding function matches `config["emb_model"]`
+    Assumes, without checking, that the embedding function matches `config.emb_model`
 
     Args:
-    persist_directory: path to the directory from. If empty, `config["chroma_db_local_path"]` is used
+    persist_directory: path to the directory from. If empty, `config.chroma_db_local_path` is used
     config: configuration
 
     Returns:
@@ -141,30 +141,29 @@ def load_vector_database_from_local(
     """
     logger.info("Loading Chroma vector database from local session")
     if persist_directory is None:
-        persist_directory = config["chroma_db_local_path"]
+        persist_directory = config.chroma_db_local_path
     emb_model = HuggingFaceEmbeddings(
-        model_name=config["emb_model"],
+        model_name=config.emb_model,
         multi_process=False,
-        model_kwargs={"device": config["emb_device"], "trust_remote_code": True},
+        model_kwargs={"device": config.emb_device, "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},
         show_progress=True,
     )
     db = Chroma(
-        collection_name=config["collection_name"],
+        collection_name=config.collection_name,
         persist_directory=persist_directory,
         embedding_function=emb_model,
     )
-    logger.info(f"Database (collection {config['collection_name']}) reloaded from directory {persist_directory}")
+    logger.info(f"Database (collection {config.collection_name}) reloaded from directory {persist_directory}")
     return db
 
 
 # LOAD RETRIEVER -------------------------------
 
 
+@Configurable()
 def load_retriever(
-    vectorstore: Chroma | None = None,
-    retriever_params: dict | None = None,
-    config: Mapping[str, Any] = vars(RAGConfig()),
+    vectorstore: Chroma | None = None, retriever_params: dict | None = None, config: FullConfig = DefaultFullConfig()
 ) -> tuple[VectorStoreRetriever, Chroma]:
     if vectorstore is None:
         vectorstore = load_vector_database_from_local(persist_directory=None, config=config)

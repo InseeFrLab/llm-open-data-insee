@@ -10,21 +10,20 @@ import pandas as pd
 import s3fs
 import yaml
 
-from src.config import RAGConfig, process_args, simple_argparser
+from src.config import DefaultFullConfig, FullConfig, process_args, simple_argparser
 from src.db_building import build_or_load_document_database, build_vector_database, load_vector_database
 
 # Logging configuration
 logger = logging.getLogger(__name__)
 
 
-def run_build_database() -> None:
-    config = RAGConfig()
+def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
     mlflow.set_tracking_uri(config.mlflow_tracking_uri)
     mlflow.set_experiment(config.experiment_name)
 
     with mlflow.start_run():
         # Logging the full configuration to mlflow
-        mlflow.log_params(dict(config))
+        mlflow.log_params(vars(config))
 
         filesystem = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
@@ -34,13 +33,14 @@ def run_build_database() -> None:
             yaml.dump(config, f, default_flow_style=False)
 
         # Load or build the document database
-        df, all_splits = build_or_load_document_database(filesystem, vars(config))
+        df, all_splits = build_or_load_document_database(filesystem, config)
 
-        # Load or build the vector database
+        # Try to simply load the vector database
         db = load_vector_database(filesystem, config)
         if db is None:
+            # If no cached database found: rebuild from documents
             db = build_vector_database(
-                filesystem, config=vars(config), return_none_on_fail=True, document_database=(df, all_splits)
+                filesystem, config=config, return_none_on_fail=True, document_database=(df, all_splits)
             )
             # Move ChromaDB in a specific path in s3
             hash_chroma = next(
@@ -122,5 +122,5 @@ def run_build_database() -> None:
 
 if __name__ == "__main__":
     process_args(simple_argparser())
-    assert RAGConfig().mlflow_tracking_uri is not None, "Please set the MLFLOW_TRACKING_URI parameter"
+    assert DefaultFullConfig().mlflow_tracking_uri is not None, "Please set the MLFLOW_TRACKING_URI parameter"
     run_build_database()

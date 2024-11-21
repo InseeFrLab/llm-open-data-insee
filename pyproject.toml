@@ -28,11 +28,11 @@ select = [
     # isort
     "I",
 ]
-ignore  = ["B024"]
+#ignore  = ["B024"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [
-    "src.config.RAGConfig"
+    "src.config.DefaultFullConfig"
 ]
 
 [tool.ruff.format]

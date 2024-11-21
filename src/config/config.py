@@ -8,9 +8,9 @@ from confz import CLArgSource, ConfigSource, DataSource, EnvSource, FileSource
 from confz.base_config import BaseConfigMetaclass
 from confz.loaders import Loader, register_loader
 
-from .models import FullRAGConfig
+from .models import FullConfig
 
-default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rag.toml")
+default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default.toml")
 
 
 @dataclass
@@ -52,13 +52,14 @@ class TemplatePassLoader(Loader):
 register_loader(TemplatePassSource, TemplatePassLoader)
 
 
-class RAGConfig(FullRAGConfig, metaclass=BaseConfigMetaclass):
+class DefaultFullConfig(FullConfig, metaclass=BaseConfigMetaclass):
     """
-    Configuration class for the FullRAGConfigModel model with preconfigured sources.
+    Configuration class for the FullConfig model with preconfigured sources.
 
     Singleton mechanism:
-    - RAGConfig cannot be instantiated with custom keyword arguments
-    - Calls to the constructor RAGConfig() are cached and basically free: the config is not reloaded
+    - DefaultFullConfig cannot be instantiated with custom keyword arguments
+    - Calls to the constructor DefaultFullConfig() are cached and basically "free":
+      the config is not reloaded from sources
     """
 
     CONFIG_SOURCES = [
@@ -94,21 +95,25 @@ def custom_config(defaults: dict | None = None, overrides: dict | None = None):
     """
     defaults = {k.lower(): v for k, v in defaults.items()} if defaults else {}
     overrides = {k.lower(): v for k, v in overrides.items()} if overrides else {}
-    return FullRAGConfig(
+    return FullConfig(
         config_sources=[
             FileSource(file=default_config_path),  # Load defaults
             DataSource(data=defaults),  # Override default with custom defaults
         ]
-        + RAGConfig.CONFIG_SOURCES[1:-1]  # Load all other sources
+        + DefaultFullConfig.CONFIG_SOURCES[1:-1]  # Load all other sources
         + [
             DataSource(data=overrides),  # Override with custom overrides
             TemplatePassSource(),  # Final templating pass
-        ]
+        ],
+        experiment_name="test",
     )
 
 
 class Configurable:
-    """ """
+    """
+    Decorator for function with a special "configuration" argument.
+
+    """
 
     # The decorator is initialised with the configuration argument name
     def __init__(self, config_param: str = "config"):
@@ -129,6 +134,8 @@ class Configurable:
         def new_f(*args, **kwargs):
             # Get original config argument from kwargs (and remove it) or use default
             orig_config = kwargs.pop(self.config_param, config_default)
+            # TODO: do not hcange anything if no special overriding argument were provided!
+
             # Dict with the original config overriden with keyword args (which are removed from the kwargs dict)
             new_config_params = {
                 k: kwargs.pop(k) if k in kwargs and k in overridable_params else getattr(orig_config, k)
@@ -151,13 +158,10 @@ class Configurable:
 # config_test(experiment_name="test") # Returns 'test'
 # config_test(experiment_name=3) # Fails, as it should, since the config_class cannot build using ill-typed arguments
 # config_test(toto=3)            # Fails, as it should, with "unexpected keyword argument"
-@Configurable("blabla")
-def config_test(blabla: FullRAGConfig = RAGConfig()) -> str:  # noqa: B008
-    """
-    test
-    """
-    return blabla.experiment_name
+@Configurable("config_arg")
+def config_test(config_arg: FullConfig = DefaultFullConfig()) -> str:  # noqa: B008
+    return config_arg.experiment_name
 
 
 if __name__ == "__main__":
-    print(toml.dumps(vars(FullRAGConfig())))
+    print(toml.dumps(vars(FullConfig())))

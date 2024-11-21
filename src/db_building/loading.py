@@ -1,8 +1,6 @@
 import logging
 import os
 import tempfile
-from collections.abc import Mapping
-from typing import Any, Protocol
 
 import chromadb
 import mlflow
@@ -11,8 +9,9 @@ import s3fs
 import yaml
 from langchain.schema import Document
 from langchain_chroma import Chroma
+from pydantic import BaseModel
 
-from src.config import RAGConfig
+from src.config import Configurable, DefaultFullConfig, FullConfig
 from src.utils import compare_params
 
 from .build_database import build_vector_database, load_vector_database_from_local
@@ -20,17 +19,17 @@ from .build_database import build_vector_database, load_vector_database_from_loc
 logger = logging.getLogger(__name__)
 
 
-class LocalLoadingConfig(Protocol):
+class LocalLoadingConfig(BaseModel):
     chroma_db_local_path: str
     collection_name: str
 
 
-class MLFlowLoadingConfig(Protocol):
+class MLFlowLoadingConfig(BaseModel):
     mlflow_load_artifacts: bool
     mlflow_run_id: str | None
 
 
-class LoadingConfig(LocalLoadingConfig, MLFlowLoadingConfig, Protocol):
+class LoadingConfig(LocalLoadingConfig, MLFlowLoadingConfig, BaseModel):
     pass
 
 
@@ -38,7 +37,7 @@ class LoadingConfig(LocalLoadingConfig, MLFlowLoadingConfig, Protocol):
 
 
 def vector_database_available_from_local(
-    persist_directory: str | None = None, config: LocalLoadingConfig = RAGConfig()
+    persist_directory: str | None = None, config: LocalLoadingConfig = DefaultFullConfig()
 ) -> bool:
     """
     Args:
@@ -58,7 +57,7 @@ def vector_database_available_from_local(
 
 
 def vector_database_available_from_mlflow(
-    mlflow_run_id: str | None = None, config: MLFlowLoadingConfig = RAGConfig()
+    mlflow_run_id: str | None = None, config: MLFlowLoadingConfig = DefaultFullConfig()
 ) -> str | None:
     """
     Checks that the provided MLFlow run ID has a Chroma vector database in its artifacts.
@@ -79,15 +78,19 @@ def vector_database_available_from_mlflow(
         return None
 
 
-def load_vector_database_from_mlflow(run_id: str | None = None, config: MLFlowLoadingConfig = RAGConfig()) -> Chroma:
+@Configurable()
+def load_vector_database_from_mlflow(
+    run_id: str | None = None, config: MLFlowLoadingConfig = DefaultFullConfig()
+) -> Chroma:
     """ """
     run_id = vector_database_available_from_mlflow(run_id, config=config)
     if run_id is None:
         raise FileNotFoundError("No database found in S3 storage")
-    return _load_vector_database_from_mlflow(run_id, vars(config))
+    return _load_vector_database_from_mlflow(run_id, config)
 
 
-def _load_vector_database_from_mlflow(run_id: str, config: Mapping[str, Any] = vars(RAGConfig())) -> Chroma:
+@Configurable()
+def _load_vector_database_from_mlflow(run_id: str, config: MLFlowLoadingConfig = DefaultFullConfig()) -> Chroma:
     logger.info("Loading database from MLFlow artifacts")
     local_path = _download_mlflow_artifacts_if_exists(run_id=run_id)
     return load_vector_database_from_local(local_path, config)
@@ -128,8 +131,9 @@ def _download_mlflow_artifacts_if_exists(run_id: str, dst_path: str | None = Non
 # LOADING FROM S3 ----------------------------------------
 
 
+@Configurable()
 def vector_database_available_from_s3(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+    filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()
 ) -> str | None:
     """
     Finds a path in S3 storage containing a Chroma vector database.
@@ -152,36 +156,35 @@ def vector_database_available_from_s3(
         "chunk_size",
         "chunk_overlap",
     ]
-
-    missing_keys = [key for key in required_keys if not config.get(key)]
+    config_dict = vars(config)
+    missing_keys = [key for key in required_keys if not config_dict.get(key)]
     if missing_keys:
         logger.warn(f"Missing possibly required arguments: {', '.join(missing_keys)}")
 
     logger.info("Searching for database with the following parameters:")
     for key in required_keys:
-        logger.info(f"  {key}: {config.get(key)}")
+        logger.info(f"  {key}: {config_dict.get(key)}")
 
-    db_path_prefix = f"{config['s3_bucket']}/data/chroma_database/{config['emb_model']}"
+    s3_folder = f"{config.chroma_db_s3_path}/{config.emb_model}"
 
-    if not filesystem.exists(db_path_prefix):
-        logger.info(f"Expected S3 folder for database does not exist: {db_path_prefix}")
+    if not filesystem.exists(s3_folder):
+        logger.info(f"Expected S3 folder for database does not exist: {s3_folder}")
         return None
 
-    logger.info(f"Looking for database in S3 folder: {db_path_prefix}")
-    for db_path in filesystem.ls(db_path_prefix):
-        with filesystem.open(f"{db_path}/parameters.yaml") as f:
+    logger.info(f"Looking for database in S3 folder: {s3_folder}")
+    for s3_db_path in filesystem.ls(s3_folder):
+        with filesystem.open(f"{s3_db_path}/parameters.yaml") as f:
             params = yaml.safe_load(f)
             different_params = compare_params(config, params)
         if not different_params:
             logger.info("Found database with matching parameters!")
-            return db_path
+            return s3_db_path
         logger.info(f"Non matching parameters {different_params}: {params}")
     return None
 
 
-def load_vector_database_from_s3(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
-) -> Chroma:
+@Configurable()
+def load_vector_database_from_s3(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()) -> Chroma:
     """
     Load vector database from S3 storage.
 
@@ -198,8 +201,11 @@ def load_vector_database_from_s3(
     return _load_vector_database_from_s3(s3path, filesystem, config)
 
 
+@Configurable()
 def _load_vector_database_from_s3(
-    db_path: str, filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+    db_path: str,
+    filesystem: s3fs.S3FileSystem,
+    config: LoadingConfig = DefaultFullConfig(),
 ) -> Chroma:
     with tempfile.TemporaryDirectory() as temp_dir:
         filesystem.get(db_path, temp_dir, recursive=True)
@@ -209,9 +215,10 @@ def _load_vector_database_from_s3(
 # LOADING FROM ANY SOURCE AVAILABLE ----------------------------------------
 
 
+@Configurable()
 def load_vector_database(
     filesystem: s3fs.S3FileSystem,
-    config: LoadingConfig = RAGConfig(),
+    config: LoadingConfig = DefaultFullConfig(),
     allow_local: bool = True,
     allow_mlflow: bool = True,
     allow_s3: bool = True,
@@ -231,28 +238,29 @@ def load_vector_database(
     """
     if allow_local and vector_database_available_from_local(config=config):
         logging.info("Loading database from local session")
-        return load_vector_database_from_local(config=vars(config))
+        return load_vector_database_from_local(config=config)
 
     if allow_mlflow:
         mlflow_run_id = vector_database_available_from_mlflow(config=config)
         if mlflow_run_id:
             logger.info("Loading database from MLFlow artifacts")
             local_path = _download_mlflow_artifacts_if_exists(run_id=mlflow_run_id)
-            return load_vector_database_from_local(local_path, vars(config))
+            return load_vector_database_from_local(local_path, config)
 
     if allow_s3:
-        s3path = vector_database_available_from_s3(filesystem=filesystem, config=vars(config))
+        s3path = vector_database_available_from_s3(filesystem=filesystem, config=config)
         if s3path is not None:
             logger.info("Loading database from S3")
-            return _load_vector_database_from_s3(s3path, filesystem, vars(config))
+            return _load_vector_database_from_s3(s3path, filesystem, config)
 
     logger.info("No database found")
     return None
 
 
+@Configurable()
 def build_or_load_vector_database(
     filesystem: s3fs.S3FileSystem,
-    config: LoadingConfig = RAGConfig(),
+    config: LoadingConfig = DefaultFullConfig(),
     allow_local: bool = True,
     allow_mlflow: bool = True,
     allow_s3: bool = True,
@@ -274,5 +282,5 @@ def build_or_load_vector_database(
     The loaded Chroma database object or None if no database could be found and an error occurred during build
     """
     return load_vector_database(filesystem, config, allow_local, allow_mlflow, allow_s3) or build_vector_database(
-        filesystem, config=vars(config), return_none_on_fail=True, document_database=document_database
+        filesystem, config, return_none_on_fail=True, document_database=document_database
     )

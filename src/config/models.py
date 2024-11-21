@@ -6,7 +6,7 @@ from confz.base_config import BaseConfigMetaclass
 from pydantic import validator
 
 
-class FullRAGConfig(BaseConfig, metaclass=BaseConfigMetaclass):
+class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     """
     Full configuration model.
 

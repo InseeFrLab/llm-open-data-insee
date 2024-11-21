@@ -1,13 +1,12 @@
 import logging
-from collections.abc import Iterable, Mapping
-from typing import Any
+from collections.abc import Iterable
 
 import jsonlines
 import pandas as pd
 import s3fs
 from langchain.schema import Document
 
-from src.config import RAGConfig
+from src.config import Configurable, DefaultFullConfig, FullConfig
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls
@@ -18,8 +17,9 @@ logger = logging.getLogger(__name__)
 # CHUNKING ALL DATASET ---------------------------------------------------
 
 
+@Configurable()
 def build_document_database(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+    filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process data from S3, chunk the documents, and store them in an intermediate location.
@@ -57,8 +57,9 @@ def build_document_database(
     return df, all_splits
 
 
+@Configurable()
 def _preprocess_data(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+    filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process and merge data from multiple parquet sources, parse XML content,
@@ -138,8 +139,9 @@ def _preprocess_data(
 # RECHUNKING OR LOADING FROM DATA STORE --------------------------
 
 
+@Configurable()
 def load_document_database(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+    filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Load the document database from local cache.
@@ -167,8 +169,9 @@ def load_document_database(
     return df, all_splits
 
 
+@Configurable()
 def build_or_load_document_database(
-    filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())
+    filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Load the document database from local cache
@@ -205,31 +208,35 @@ def build_or_load_document_database(
 # SAVE AND LOAD DOCUMENTS AS JSON ---------------------------------
 
 
-def save_docs_to_jsonl(documents: Iterable[Document], file_path: str, fs: s3fs.S3FileSystem) -> None:
+def save_docs_to_jsonl(documents: Iterable[Document], file_path: str, filesystem: s3fs.S3FileSystem) -> None:
     """
     Save a list of Document objects to a JSONL file on S3 using s3fs.
 
-    :param documents: Iterable of Document objects to be saved.
-    :param file_path: The S3 path where the JSONL file will be saved
+    Args:
+    documents: Document objects to be saved
+    file_path: the S3 path where the JSONL file will be saved
       (e.g., "s3://bucket-name/path/to/file.jsonl").
-    :param fs: s3fs.S3FileSystem object for handling S3 file operations.
+    filesystem: s3fs.S3FileSystem object for handling S3 file operations.
     """
-    with fs.open(file_path, mode="w") as f, jsonlines.Writer(f) as writer:
+    with filesystem.open(file_path, mode="w") as f, jsonlines.Writer(f) as writer:
         for doc in documents:
             writer.write(doc.dict())  # Assuming Document has a .dict() method
 
 
-def load_docs_from_jsonl(file_path: str, fs: s3fs.S3FileSystem) -> list[Document]:
+def load_docs_from_jsonl(file_path: str, filesystem: s3fs.S3FileSystem) -> list[Document]:
     """
     Load Document objects from a JSONL file on S3 using s3fs.
 
-    :param file_path: The S3 path where the JSONL file is stored
+    Args:
+    file_path: The S3 path where the JSONL file is stored
         (e.g., "s3://bucket-name/path/to/file.jsonl").
-    :param fs: s3fs.S3FileSystem object for handling S3 file operations.
-    :return: Iterable of Document objects loaded from the JSONL file.
+    filesystem: s3fs.S3FileSystem object for handling S3 file operations.
+
+    Returns:
+    List of Document objects loaded from the JSONL file.
     """
     documents = []
-    with fs.open(file_path, mode="r") as f, jsonlines.Reader(f) as reader:
+    with filesystem.open(file_path, mode="r") as f, jsonlines.Reader(f) as reader:
         for doc in reader:
             documents.append(Document(**doc))
             # Assuming Document can be instantiated from a dict

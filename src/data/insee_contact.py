@@ -1,17 +1,15 @@
-from collections.abc import Mapping
-from typing import Any
-
 import pandas as pd
 import s3fs
 
-from src.config import RAGConfig, load_config, minimal_argparser
+from src.config import Configurable, DefaultFullConfig, FullConfig, process_args
 
 
-def process_insee_contact_data(path: str, config: Mapping[str, Any] = vars(RAGConfig())):
+@Configurable()
+def process_insee_contact_data(path: str, config: FullConfig = DefaultFullConfig()):
     """
     Process raw Insee contact data.
     """
-    fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
+    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
     with fs.open(path) as f:
         df = pd.read_csv(f)
@@ -28,6 +26,5 @@ def process_insee_contact_data(path: str, config: Mapping[str, Any] = vars(RAGCo
 
 
 if __name__ == "__main__":
-    path = "projet-llm-insee-open-data/data/insee_contact/data_2019.csv"
-    config = load_config(minimal_argparser())["data"]
-    process_insee_contact_data(path)
+    process_args()
+    process_insee_contact_data("projet-llm-insee-open-data/data/insee_contact/data_2019.csv")

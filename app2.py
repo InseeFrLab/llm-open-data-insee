@@ -11,7 +11,7 @@ from langchain_huggingface import HuggingFacePipeline
 
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
-from src.config import RAGConfig, process_args
+from src.config import DefaultFullConfig, process_args
 from src.db_building import load_retriever, load_vector_database
 from src.model_building import build_llm_model
 from src.results_logging.log_conversations import log_qa_to_s3
@@ -20,11 +20,11 @@ from src.utils.formatting_utilities import add_sources_to_messages, get_chatbot_
 # Logging, configuration and S3
 args = process_args()
 logger = logging.getLogger(__name__)
-fs = s3fs.S3FileSystem(endpoint_url=RAGConfig().s3_endpoint_url)
+fs = s3fs.S3FileSystem(endpoint_url=DefaultFullConfig().s3_endpoint_url)
 
 # PARAMETERS --------------------------------------
 
-CLI_MESSAGE_SEPARATOR = (RAGConfig().cli_message_separator_length * "-") + " \n"
+CLI_MESSAGE_SEPARATOR = (DefaultFullConfig().cli_message_separator_length * "-") + " \n"
 
 # APPLICATION -----------------------------------------
 
@@ -35,7 +35,7 @@ def retrieve_model_tokenizer_and_db(filesystem=fs, with_db=True) -> tuple[Huggin
 
     # Load LLM in session
     llm, tokenizer = build_llm_model(
-        model_name=RAGConfig().llm_model,
+        model_name=DefaultFullConfig().llm_model,
         streaming=False,
     )
     return (
@@ -75,7 +75,7 @@ async def on_chat_start():
     # I - CREATING RETRIEVER AND IMPORTING DATABASE
 
     # Build chat model
-    RETRIEVER_ONLY = RAGConfig().retriever_only
+    RETRIEVER_ONLY = DefaultFullConfig().retriever_only
     cl.user_session.set("RETRIEVER_ONLY", RETRIEVER_ONLY)
 
     # Log on CLI to follow the configuration

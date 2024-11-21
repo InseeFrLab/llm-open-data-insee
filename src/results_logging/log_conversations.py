@@ -1,15 +1,14 @@
 import json
 import os
-from collections.abc import Mapping
 from datetime import datetime
-from typing import Any
 
 import s3fs
 from langchain_core.documents.base import Document
 
-from src.config import RAGConfig
+from src.config import Configurable, DefaultFullConfig, FullConfig
 
 
+@Configurable()
 def log_qa_to_s3(
     filesystem: s3fs.S3FileSystem,
     thread_id: str,
@@ -21,7 +20,7 @@ def log_qa_to_s3(
     embedding_model_name: str | None = None,
     LLM_name: str | None = None,
     reranker: str | None = None,
-    config: Mapping[str, Any] = vars(RAGConfig()),
+    config: FullConfig = DefaultFullConfig(),
 ):
     retrieved_documents_text = [d.page_content for d in retrieved_documents] if retrieved_documents else None
     retrieved_documents_metadata = [d.metadata for d in retrieved_documents] if retrieved_documents else None
@@ -41,7 +40,7 @@ def log_qa_to_s3(
     }
 
     today_date = datetime.now().strftime("%Y-%m-%d")
-    target_path_s3 = os.path.join(config["s3_bucket"], "data", "chatbot_logs", today_date, f"{thread_id}.json")
+    target_path_s3 = os.path.join(config.s3_bucket, "data", "chatbot_logs", today_date, f"{thread_id}.json")
 
     # Log to S3
     if filesystem.exists(target_path_s3):
@@ -57,16 +56,17 @@ def log_qa_to_s3(
             json.dump(log_entry, file_out, indent=4)
 
 
+@Configurable()
 def log_feedback_to_s3(
     filesystem: s3fs.S3FileSystem,
     thread_id: str,
     message_id: str,
     feedback_value: int,
     feedback_comment: str | None = None,
-    config: Mapping[str, Any] = vars(RAGConfig()),
+    config: FullConfig = DefaultFullConfig(),
 ):
     today_date = datetime.now().strftime("%Y-%m-%d")
-    target_path_s3 = os.path.join(config["s3_bucket"], "data", "chatbot_logs", today_date, f"{thread_id}.json")
+    target_path_s3 = os.path.join(config.s3_bucket, "data", "chatbot_logs", today_date, f"{thread_id}.json")
 
     # Add feedback to existing log
     with filesystem.open(target_path_s3, "r") as file_in:

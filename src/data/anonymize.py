@@ -7,7 +7,9 @@ import re
 from collections.abc import Sequence
 
 import pandas as pd
-from utils import fs
+import s3fs
+
+from src.config import DefaultFullConfig, FullConfig, process_args
 
 
 def detect_email_signature(message: str, message_ner: list[dict]) -> int:
@@ -112,6 +114,10 @@ def anonymize_insee_contact_message(message: str, message_ner: list[dict]) -> st
 
 
 if __name__ == "__main__":
+    process_args()
+    config: FullConfig = DefaultFullConfig()
+    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
+
     # Anonymize evaluation data and export it to a .csv file
     # for manual evaluation
     path = "projet-llm-insee-open-data/data/insee_contact/data_2019_eval.csv"

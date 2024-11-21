@@ -3,10 +3,10 @@ import logging
 
 import pandas as pd
 import s3fs
-from db_building.utils_db import complete_url_builder
 from markdownify import markdownify as md
 
-from src.config import RAGConfig, process_args, simple_argparser
+from db_building.utils_db import complete_url_builder
+from src.config import DefaultFullConfig, process_args, simple_argparser
 
 FILES = [
     "applishare_extract",
@@ -87,7 +87,7 @@ def process_row(row):
 
 
 def main():
-    config = RAGConfig()
+    config = DefaultFullConfig()
     fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
     tables = {

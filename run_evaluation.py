@@ -3,9 +3,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 import mlflow
 import pandas as pd
@@ -14,7 +12,7 @@ from langchain_core.prompts import PromptTemplate
 
 from src.chain_building import build_chain_validator
 from src.chain_building.build_chain import build_chain
-from src.config import RAGConfig, llm_argparser, load_config
+from src.config import Configurable, DefaultFullConfig, FullConfig, llm_argparser, load_config
 from src.db_building import chroma_topk_to_df, load_retriever, load_vector_database
 from src.evaluation import (
     answer_faq_by_bot,
@@ -29,16 +27,17 @@ from src.utils.formatting_utilities import get_chatbot_template
 logger = logging.getLogger(__name__)
 
 
-def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = vars(RAGConfig())) -> None:
-    mlflow.set_tracking_uri(config["mlflow_tracking_uri"])
-    mlflow.set_experiment(config["experiment_name"])
+@Configurable()
+def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()) -> None:
+    mlflow.set_tracking_uri(config.mlflow_tracking_uri)
+    mlflow.set_experiment(config.experiment_name)
 
     with mlflow.start_run():
         # Logging the full configuration to mlflow
         mlflow.log_params(vars(config))
 
         # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
-        faq = pd.read_parquet(config["faq_s3_uri"], filesystem=filesystem)
+        faq = pd.read_parquet(config.faq_s3_uri, filesystem=filesystem)
         # Extract all URLs from the 'sources' column
         faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
@@ -53,11 +52,11 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = va
 
         logger.info(f"Training retriever {80*'='}")
 
-        mlflow.log_text(config["RAG_PROMPT_TEMPLATE"], "rag_prompt.md")
+        mlflow.log_text(config.RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
         # Load LLM in session
         llm, tokenizer = build_llm_model(
-            model_name=config["llm_model"],
+            model_name=config.llm_model,
             load_LLM_config=True,
             streaming=False,
             config=config,
@@ -202,7 +201,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: Mapping[str, Any] = va
 if __name__ == "__main__":
     argparser = llm_argparser()
     load_config(argparser)
-    assert RAGConfig().mlflow_tracking_uri is not None, "Please set the mlflow_tracking_uri parameter."
+    assert DefaultFullConfig().mlflow_tracking_uri is not None, "Please set the mlflow_tracking_uri parameter."
     assert os.environ.get("HF_TOKEN"), "Please set the HF_TOKEN environment variable."
-    filesystem = s3fs.S3FileSystem(endpoint_url=RAGConfig().s3_endpoint_url)
+    filesystem = s3fs.S3FileSystem(endpoint_url=DefaultFullConfig().s3_endpoint_url)
     run_evaluation(filesystem)

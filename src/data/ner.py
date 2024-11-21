@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 from transformers import TokenClassificationPipeline, pipeline
+
 from utils import fs
 
 ner = pipeline(
