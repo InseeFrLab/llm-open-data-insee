@@ -45,13 +45,13 @@ def build_document_database(
     logger.info("Processing input data and storing chunked documents and DataFrame")
     df, all_splits = _preprocess_data(filesystem, config)
 
-    logger.info(f"Saving chunked documents in JSONL format to {config['documents_jsonl_s3_path']}")
-    save_docs_to_jsonl(all_splits, config["documents_jsonl_s3_path"], filesystem)
+    logger.info(f"Saving chunked documents in JSONL format to {config.documents_jsonl_s3_path}")
+    save_docs_to_jsonl(all_splits, config.documents_jsonl_s3_path, filesystem)
 
     # Save the DataFrame as a Parquet file in the same directory
-    logger.info(f"Saving DataFrame as a Parquet file to {config['documents_parquet_s3_path']}")
+    logger.info(f"Saving DataFrame as a Parquet file to {config.documents_parquet_s3_path}")
     df.loc[:, ~df.columns.isin(["dateDiffusion"])] = df.loc[:, ~df.columns.isin(["dateDiffusion"])].astype(str)
-    df.to_parquet(config["documents_parquet_s3_path"], filesystem=filesystem, index=False)
+    df.to_parquet(config.documents_parquet_s3_path, filesystem=filesystem, index=False)
 
     logger.info("Document chunking successful.")
     return df, all_splits
@@ -84,12 +84,12 @@ def _preprocess_data(
     """
 
     # Load main data from parquet file
-    logger.info(f"Reading web4g data from {config['rawdata_web4g_uri']}")
-    data = pd.read_parquet(config["rawdata_web4g_uri"], filesystem=filesystem)
+    logger.info(f"Reading web4g data from {config.rawdata_web4g_uri}")
+    data = pd.read_parquet(config.rawdata_web4g_uri, filesystem=filesystem)
 
     # Limit the number of pages if specified
-    if config.get("max_pages") is not None:
-        data = data.head(int(config.get("max_pages")))
+    if config.max_pages is not None:
+        data = data.head(config.max_pages)
 
     # Parse the XML content
     logger.info("Parsing XML content")
@@ -113,8 +113,8 @@ def _preprocess_data(
     ]
 
     # Load additional RMES data
-    logger.info(f"Reading rmes data from {config['rawdata_rmes_uri']}")
-    data_rmes = pd.read_parquet(config["rawdata_rmes_uri"], filesystem=filesystem)
+    logger.info(f"Reading rmes data from {config.rawdata_rmes_uri}")
+    data_rmes = pd.read_parquet(config.rawdata_rmes_uri, filesystem=filesystem)
 
     # Concatenate the original data with the RMES data
     df = pd.concat([df, data_rmes])
@@ -125,12 +125,12 @@ def _preprocess_data(
     # Chunk the documents (using tokenizer if specified in kwargs)
     all_splits = chunk_documents(
         data=df,
-        embedding_model=config["emb_model"],
-        markdown_split=config["markdown_split"],
-        use_tokenizer_to_chunk=config["use_tokenizer_to_chunk"],
-        chunk_size=config.get("chunk_size"),
-        chunk_overlap=config.get("chunk_overlap"),
-        separators=config.get("separators"),
+        embedding_model=config.emb_model,
+        markdown_split=config.markdown_split,
+        use_tokenizer_to_chunk=config.use_tokenizer_to_chunk,
+        chunk_size=config.chunk_size,
+        chunk_overlap=config.chunk_overlap,
+        separators=config.separators,
     )
 
     return df, all_splits
@@ -157,13 +157,13 @@ def load_document_database(
     FileNotFoundError: In case no database could be found in local cache
     """
     # Attempt to load the cached documents from S3
-    logger.info(f"Attempting to load chunked documents from {config['documents_jsonl_s3_path']}")
-    all_splits = load_docs_from_jsonl(config["documents_jsonl_s3_path"], filesystem)
+    logger.info(f"Attempting to load chunked documents from {config.documents_jsonl_s3_path}")
+    all_splits = load_docs_from_jsonl(config.documents_jsonl_s3_path, filesystem)
     logger.info("Loaded chunked documents from cache")
 
     # Attempt to load the cached DataFrame from S3
-    logger.info(f"Attempting to load DataFrame from {config['documents_parquet_s3_path']}")
-    df = pd.read_parquet(config["documents_parquet_s3_path"], filesystem=filesystem)
+    logger.info(f"Attempting to load DataFrame from {config.documents_parquet_s3_path}")
+    df = pd.read_parquet(config.documents_parquet_s3_path, filesystem=filesystem)
     logger.info("Loaded DataFrame from cache")
 
     return df, all_splits
@@ -191,12 +191,12 @@ def build_or_load_document_database(
     - Tuple containing the processed DataFrame and chunked documents (list of Document objects).
     """
     logger.info("Generating dataframe of chunked documents")
-    logger.info(f"The document database will temporarily be stored in {config['data_dir_path']}")
+    logger.info(f"The document database will temporarily be stored in {config.data_dir_path}")
 
     # Check if we should use the cached data
-    if not config.get("force_rebuild"):
+    if not config.force_rebuild:
         try:
-            return load_document_database(filesystem, config)
+            return load_document_database(filesystem, config=config)
         except FileNotFoundError:
             logger.warning("No cached data found, rebuilding data...")
 

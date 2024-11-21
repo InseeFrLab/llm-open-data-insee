@@ -8,16 +8,17 @@ from langchain_core.prompts import PromptTemplate
 
 from src.chain_building.build_chain import build_chain
 from src.chain_building.build_chain_validator import build_chain_validator
-from src.config import load_config
+from src.config import DefaultFullConfig, FullConfig, process_args
 from src.db_building import load_retriever, load_vector_database
 from src.model_building import build_llm_model
 from src.results_logging.log_conversations import log_qa_to_s3
 from src.utils.formatting_utilities import add_sources_to_messages, get_chatbot_template, str_to_bool
 
 # Configuration and initial setup
-config = load_config()["DEFAULT"]
+process_args()
+config: FullConfig = DefaultFullConfig()
 logger = logging.getLogger(__name__)
-fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
+fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
 # APPLICATION -----------------------------------------
 
@@ -53,7 +54,7 @@ async def on_chat_start():
 
     db = await cl.make_async(load_vector_database)(filesystem=fs, config=config)
     llm, tokenizer = await cl.make_async(build_llm_model)(
-        model_name=config["llm_model"],
+        model_name=config.llm_model,
         streaming=False,
         config=config,
     )
@@ -79,11 +80,7 @@ async def on_chat_start():
 
     # Build chain
     chain = build_chain(
-        retriever=retriever,
-        prompt=prompt,
-        llm=llm,
-        bool_log=IS_LOGGING_ON,
-        reranker=config.get("RERANKING_METHOD") or None,
+        retriever=retriever, prompt=prompt, llm=llm, bool_log=IS_LOGGING_ON, reranker=config.reranking_method or None
     )
     cl.user_session.set("chain", chain)
     logger.info("------chain built")
@@ -138,9 +135,7 @@ async def on_message(message: cl.Message):
                 user_query=message.content,
                 generated_answer=None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer,
                 retrieved_documents=docs,
-                embedding_model_name=config["emb_model"],
-                LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else config["LLM_MODEL_NAME"],
-                reranker=config.get("RERANKING_METHOD"),
+                LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else config.llm_model,
                 config=config,
             )
     else:

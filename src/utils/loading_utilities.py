@@ -20,7 +20,7 @@ def load_dataframe_from_parquet_using_S3(
     engine: Literal["auto", "pyarrow", "fastparquet"] = "fastparquet",
     config: FullConfig = DefaultFullConfig(),
 ) -> pd.DataFrame:
-    fs = s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
+    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
     with fs.open(filepath, mode="rb") as file_in:
         return pd.read_parquet(file_in, engine)
 

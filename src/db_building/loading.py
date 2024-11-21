@@ -218,10 +218,10 @@ def _load_vector_database_from_s3(
 @Configurable()
 def load_vector_database(
     filesystem: s3fs.S3FileSystem,
-    config: LoadingConfig = DefaultFullConfig(),
     allow_local: bool = True,
     allow_mlflow: bool = True,
     allow_s3: bool = True,
+    config: LoadingConfig = DefaultFullConfig(),
 ) -> Chroma | None:
     """
     Load a vector database from either a local session, MLFlow artifacts or S3 storage.
@@ -260,11 +260,11 @@ def load_vector_database(
 @Configurable()
 def build_or_load_vector_database(
     filesystem: s3fs.S3FileSystem,
-    config: LoadingConfig = DefaultFullConfig(),
     allow_local: bool = True,
     allow_mlflow: bool = True,
     allow_s3: bool = True,
     document_database: tuple[pd.DataFrame, list[Document]] | None = None,
+    config: LoadingConfig = DefaultFullConfig(),
 ) -> Chroma | None:
     """
     Load a vector database from either a local session, MLFlow artifacts or S3 storage.

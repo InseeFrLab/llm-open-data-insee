@@ -36,7 +36,7 @@ def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
         df, all_splits = build_or_load_document_database(filesystem, config)
 
         # Try to simply load the vector database
-        db = load_vector_database(filesystem, config)
+        db = None if config.force_rebuild else load_vector_database(filesystem, config)
         if db is None:
             # If no cached database found: rebuild from documents
             db = build_vector_database(

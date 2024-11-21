@@ -12,14 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 @Configurable()
-def get_s3_file_system(config: FullConfig = DefaultFullConfig()) -> s3fs.S3FileSystem:
-    """
-    Return the s3 file system.
-    """
-    return s3fs.S3FileSystem(endpoint_url=config["s3_endpoint_url"])
-
-
-@Configurable()
 def cache_model_from_hf_hub(
     model_name: str,
     s3_bucket: str = "models-hf",

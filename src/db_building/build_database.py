@@ -95,8 +95,8 @@ def build_vector_database(
     # Loop through the chunks and build the Chroma database
     try:
         db = Chroma(
-            collection_name=config["collection_name"],
-            persist_directory=config["chroma_db_local_path"],
+            collection_name=config.collection_name,
+            persist_directory=config.chroma_db_local_path,
             embedding_function=emb_model,
             client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
         )

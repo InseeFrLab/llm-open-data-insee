@@ -73,6 +73,7 @@ max_new_tokens = 2000
 
 faq_s3_path = "data/FAQ_site/faq.parquet"
 faq_s3_uri = "s3://{s3_bucket}/{faq_s3_path}" # (templated)
+topk_stats = 3
 
 # INSTRUCTION PROMPT ----------------------------------------------------------
 

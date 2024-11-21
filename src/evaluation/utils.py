@@ -138,7 +138,7 @@ def compress_metadata_lambda(
     documents: Sequence[LangchainDocument], query: str, config: dict
 ) -> Sequence[LangchainDocument]:
     rerank_k = config.get("rerank_k", len(documents))
-    metadata_field = config.get("use_metadata")
+    metadata_field = config["use_metadata"]
 
     if metadata_field is not None:
         new_data = []
@@ -177,8 +177,8 @@ def choosing_reranker_test(config: dict):
     Should take as input list[Document]
     """
     reranker_type, reranker_name, rerank_k = (
-        config.get("reranker_type"),
-        config.get("reranker_name"),
+        config.reranker_type,
+        config.reranker_name,
         config.get("rerank_k", max(config.k_values)),
     )
 
@@ -227,7 +227,7 @@ def build_chain_reranker_test(config=RetrievalConfiguration):
     # {"reranker_type" : ..., "reranker_name": ..., "rerank_k" : < "nb_retrieved", "param_ensemble" :
     # [{"reranker_type" : ..., "reranker_name" : ..., "reranker_weight"} )]}
 
-    reranker_type = config.get("reranker_type")
+    reranker_type = config.reranker_type
 
     if reranker_type in [None, "BM25", "Cross-encoder", "ColBERT", "Metadata"]:
         retrieval_agent = choosing_reranker_test(config=config)
@@ -236,7 +236,7 @@ def build_chain_reranker_test(config=RetrievalConfiguration):
         results = {}
 
         copy_config = config.copy()
-        for i, config_ind in enumerate(config.get("param_ensemble")):
+        for i, config_ind in enumerate(config.param_ensemble):
             (r_type, r_name, r_w) = config_ind.values()
 
             copy_config = config.copy()

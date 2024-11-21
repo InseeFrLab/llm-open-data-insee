@@ -19,12 +19,13 @@ from src.utils.formatting_utilities import add_sources_to_messages, get_chatbot_
 
 # Logging, configuration and S3
 args = process_args()
+config = DefaultFullConfig()
 logger = logging.getLogger(__name__)
-fs = s3fs.S3FileSystem(endpoint_url=DefaultFullConfig().s3_endpoint_url)
+fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
 
 # PARAMETERS --------------------------------------
 
-CLI_MESSAGE_SEPARATOR = (DefaultFullConfig().cli_message_separator_length * "-") + " \n"
+CLI_MESSAGE_SEPARATOR = (config.cli_message_separator_length * "-") + " \n"
 
 # APPLICATION -----------------------------------------
 
@@ -35,7 +36,7 @@ def retrieve_model_tokenizer_and_db(filesystem=fs, with_db=True) -> tuple[Huggin
 
     # Load LLM in session
     llm, tokenizer = build_llm_model(
-        model_name=DefaultFullConfig().llm_model,
+        model_name=config.llm_model,
         streaming=False,
     )
     return (
@@ -171,10 +172,6 @@ async def on_message(message: cl.Message):
 
         # Log Q/A
         if cl.user_session.get("IS_LOGGING_ON"):
-            embedding_model_name = os.getenv("EMB_MODEL_NAME")
-            LLM_name = os.getenv("LLM_MODEL_NAME")
-            reranker = os.getenv("RERANKING_METHOD")
-
             log_qa_to_s3(
                 filesystem=fs,
                 thread_id=message.thread_id,
@@ -182,9 +179,7 @@ async def on_message(message: cl.Message):
                 user_query=message.content,
                 generated_answer=(None if cl.user_session.get("RETRIEVER_ONLY") else generated_answer),
                 retrieved_documents=docs,
-                embedding_model_name=embedding_model_name,
-                LLM_name=None if cl.user_session.get("RETRIEVER_ONLY") else LLM_name,
-                reranker=reranker,
+                llm_name=None if cl.user_session.get("RETRIEVER_ONLY") else config.llm_model,
             )
     else:
         await cl.Message(

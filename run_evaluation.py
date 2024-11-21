@@ -98,11 +98,9 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
         # ------------------------
         # IV - RERANKER
 
-        reranking_method = config.get("reranking_method")
-
-        if reranking_method is not None:
+        if config.reranking_method is not None:
             logger.info(f"Applying reranking {80*'='}")
-            logger.info(f"Selected method: {reranking_method}")
+            logger.info(f"Selected method: {config.reranking_method}")
 
             # Define a langchain prompt template
             RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(
@@ -116,7 +114,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
                 retriever=retriever,
                 prompt=prompt,
                 llm=llm,
-                reranker=reranking_method,
+                reranker=config.reranking_method,
             )
         else:
             logger.info(f"Skipping reranking since value is None {80*'='}")
@@ -126,9 +124,9 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
 
         logger.info(f"Evaluating model performance against expectations {80*'='}")
 
-        if reranking_method is None:
+        if config.reranking_method is None:
             answers_bot = answer_faq_by_bot(retriever, faq)
-            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=int(config.get("topk_stats")))
+            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=config.topk_stats)
         else:
             answers_bot_before_reranker = answer_faq_by_bot(retriever, faq)
             eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(
@@ -147,12 +145,12 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
         document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
         document_is_top = answers_bot_topk["cumsum_url_expected"].min()
         # Also compute model performance before reranking when relevant
-        if reranking_method is not None:
+        if config.reranking_method is not None:
             document_among_topk_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].max()
             document_is_top_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].min()
 
         # Store FAQ
-        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=config["faq_s3_uri"], name="FAQ_data")
+        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=config.faq_s3_uri, name="FAQ_data")
         mlflow.log_input(mlflow_faq_raw, context="faq-raw")
         mlflow.log_table(data=faq, artifact_file="faq_data.json")
 
@@ -168,7 +166,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
         mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
 
         # If we used reranking, we also store performance before reranking
-        if reranking_method is not None:
+        if config.reranking_method is not None:
             mlflow.log_metric("document_is_first_before_reranker", 100 * document_is_top_before_reranker)
             mlflow.log_metric("document_among_topk_before_reranker", 100 * document_among_topk_before_reranker)
             mlflow.log_metrics(

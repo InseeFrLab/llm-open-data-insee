@@ -17,11 +17,22 @@ def log_qa_to_s3(
     generated_answer: str | None = None,
     retrieved_documents: list[Document] | None = None,
     prompt_template: str | None = None,
-    embedding_model_name: str | None = None,
-    LLM_name: str | None = None,
-    reranker: str | None = None,
     config: FullConfig = DefaultFullConfig(),
 ):
+    """
+    Args:
+    filesystem: TODO
+    thread_id: TODO
+    message_id: TODO
+    user_query: TODO
+    generated_answer: TODO
+    retrieved_documents: TODO
+    prompt_template: TODO
+    llm_model: (overrides config) TODO
+    emb_model: (overrides config) TODO
+    reranking_method: (overrides config) TODO
+    config: Configuration object
+    """
     retrieved_documents_text = [d.page_content for d in retrieved_documents] if retrieved_documents else None
     retrieved_documents_metadata = [d.metadata for d in retrieved_documents] if retrieved_documents else None
 
@@ -33,9 +44,9 @@ def log_qa_to_s3(
             "retrieved_docs_text": retrieved_documents_text,
             "retrieved_docs_metadata": retrieved_documents_metadata,
             "prompt": prompt_template,
-            "embedding_model": embedding_model_name,
-            "llm": LLM_name,
-            "reranker": reranker,
+            "embedding_model": config.emb_model,
+            "llm": config.llm_model,
+            "reranker": config.reranking_method,
         }
     }
 

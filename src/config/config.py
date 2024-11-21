@@ -1,6 +1,7 @@
 import inspect
 import os
 from dataclasses import dataclass
+from functools import wraps
 
 import mlflow
 import toml
@@ -111,45 +112,56 @@ def custom_config(defaults: dict | None = None, overrides: dict | None = None):
 
 class Configurable:
     """
-    Decorator for function with a special "configuration" argument.
+    Decorator for functions with a special "configuration" argument.
 
+    The configuration argument must be a keyword (named) argument (after the / special argument)
     """
 
-    # The decorator is initialised with the configuration argument name
-    def __init__(self, config_param: str = "config"):
-        self.config_param = config_param
+    def __init__(self, config_arg_name: str = "config"):
+        """Decorator initialised with the configuration argument name"""
+        self.config_arg_name = config_arg_name
 
     def __call__(self, f):
+        sig = inspect.signature(f)
         # The original arguments from the annotated function
-        declared_parameters = inspect.signature(f).parameters
+        declared_parameters = sig.parameters
         # The configuration argument's annotation (required) and default value (optional)
-        config_default = declared_parameters[self.config_param].default
-        config_class = declared_parameters[self.config_param].annotation
+        config_default = declared_parameters[self.config_arg_name].default
+        config_class = declared_parameters[self.config_arg_name].annotation
         # All fields from the config's class
         config_parameters = config_class.model_fields.keys()
         # All config fields without the ones already explicitely specified in the decorated function's arguments
         overridable_params = set(config_parameters) - set(declared_parameters.keys())
 
         # The returned function
-        def new_f(*args, **kwargs):
-            # Get original config argument from kwargs (and remove it) or use default
-            orig_config = kwargs.pop(self.config_param, config_default)
-            # TODO: do not hcange anything if no special overriding argument were provided!
+        @wraps(f)
+        def wrapped_f(*args, **kwargs):
+            # Map args and kwargs to a single dict of named variables
+            ba = sig.bind(*args, **kwargs)
+            override_args = [k for k in ba.arguments if k in overridable_params]
+            if not override_args:
+                # If no overriding argument is provided, simply call f
+                return f(*args, **kwargs)
+            else:
+                # Get original config argument from kwargs (and remove it) or use default
+                orig_config = ba.arguments.get(self.config_arg_name, config_default)
 
-            # Dict with the original config overriden with keyword args (which are removed from the kwargs dict)
-            new_config_params = {
-                k: kwargs.pop(k) if k in kwargs and k in overridable_params else getattr(orig_config, k)
-                for k in config_parameters
-            }
-            # Updated config object buily by passing overriden parameters to the config_class constructor
-            # NOTE: this only works if the class annotation of config can be built this way (e.g. pydantic BaseModel)
-            new_config = config_class(**new_config_params)
-            # Set the config_param to the updated object
-            kwargs[self.config_param] = new_config
-            # Call the original function with the updated config object
-            return f(*args, **kwargs)
+                # Dict with the original config overriden with keyword args (which are removed from the kwargs dict)
+                new_config_params = {
+                    k: ba.arguments[k] if k in override_args else getattr(orig_config, k) for k in config_parameters
+                }
+                for k in override_args:
+                    del ba.arguments[k]
+                # Updated config object buily by passing overriden parameters to the config_class constructor
+                # NOTE: this only works if the class annotation of config can be built this way
+                # # (e.g. pydantic BaseModel)
+                new_config = config_class(**new_config_params)
+                # Set the config_param to the updated object
+                ba.arguments[self.config_param] = new_config
+                # Call the original function with the updated config object
+                return f(*ba.args, **ba.kwargs)
 
-        return new_f
+        return wrapped_f
 
 
 # Example:

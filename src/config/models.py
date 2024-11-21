@@ -73,6 +73,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     # EVALUATION
     faq_s3_path: str
     faq_s3_uri: str  # (Templated)
+    topk_stats: int
 
     # INSTRUCTION PROMPT
     BASIC_RAG_PROMPT_TEMPLATE: str
@@ -98,7 +99,8 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     reranking_method: str | None = None
     retriever_only: bool | None = None
 
-    # Allow the 'None' string to represent None values for all optional parameters (MLFlow import requires this)
+    # Allow the 'None' string to represent None values for all optional parameters
+    # (importing from MLFlow requires this)
     @validator("chunk_size", "chunk_overlap", "max_pages", "reranking_method", "retriever_only", pre=True)
     def allow_none(cls, data: Any) -> int | None:
         return None if data == "None" else data
