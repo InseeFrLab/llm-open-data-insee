@@ -11,7 +11,11 @@ import s3fs
 import yaml
 
 from src.config import DefaultFullConfig, FullConfig, process_args, simple_argparser
-from src.db_building import build_or_load_document_database, build_vector_database, load_vector_database
+from src.db_building import (
+    build_or_load_document_database,
+    build_vector_database,
+    load_vector_database
+)
 
 # Logging configuration
 logger = logging.getLogger(__name__)
