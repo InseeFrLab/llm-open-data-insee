@@ -2,7 +2,6 @@ import os
 import sys
 from typing import Any
 
-from langchain_huggingface import HuggingFacePipeline
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -14,7 +13,6 @@ from transformers import (
 
 from src.config import Configurable, DefaultFullConfig, FullConfig
 
-# from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
 
 # Add the project root directory to sys.path
