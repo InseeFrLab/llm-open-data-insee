@@ -78,9 +78,7 @@ def RG_S(tokenizer, model, query, document, aggregating_method, k=5):
         },
     ]
 
-    input_text = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, tokenize=False
-    )
+    input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
 
     inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
 
@@ -116,9 +114,9 @@ def RG_4L(tokenizer, model, query, document, args):
 
     log_probs = []
     for judgement in possible_judgements:
-        input_text = tokenizer.apply_chat_template(
-            messages, add_generation_prompt=False, tokenize=False
-        ).format(query=query, document=document, judgement=judgement)
+        input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False).format(
+            query=query, document=document, judgement=judgement
+        )
         log_probs.append(compute_sequence_log_probs(sequence=input_text))
 
     probs = F.softmax(torch.tensor(log_probs), dim=-1).numpy()
@@ -145,9 +143,9 @@ def RG_3L(tokenizer, model, query, document, args):
 
     log_probs = []
     for judgement in possible_judgements:
-        input_text = tokenizer.apply_chat_template(
-            messages, add_generation_prompt=False, tokenize=False
-        ).format(query=query, document=document, judgement=judgement)
+        input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=False, tokenize=False).format(
+            query=query, document=document, judgement=judgement
+        )
         log_probs.append(compute_sequence_log_probs(sequence=input_text))
 
     probs = F.softmax(torch.tensor(log_probs), dim=-1).numpy()
@@ -176,9 +174,7 @@ def RG_YN(tokenizer, model, query, document, aggregating_method):
         },
     ]
 
-    input_text = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, tokenize=False
-    )
+    input_text = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
 
     inputs = tokenizer(input_text, return_tensors="pt").to(model.device)
 
@@ -189,12 +185,8 @@ def RG_YN(tokenizer, model, query, document, aggregating_method):
     return aggregating_method(logits, grades_token_ids, list_grades)
 
 
-def llm_reranking(
-    tokenizer, model, query, retrieved_documents, assessing_method, aggregating_method
-):
-    docs_content = (
-        retrieved_documents.copy()
-    )  # [doc.page_content for doc in retrieved_documents]
+def llm_reranking(tokenizer, model, query, retrieved_documents, assessing_method, aggregating_method):
+    docs_content = retrieved_documents.copy()  # [doc.page_content for doc in retrieved_documents]
 
     scores = []
     for document in docs_content:

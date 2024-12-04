@@ -56,19 +56,13 @@ def build_llm_model(
         ),
         # Load LLM config
         "config": (
-            AutoConfig.from_pretrained(
-                model_name, trust_remote_code=True,
-                token=hf_token
-            ) if load_LLM_config else None
+            AutoConfig.from_pretrained(model_name, trust_remote_code=True, token=hf_token) if load_LLM_config else None
         ),
         "token": hf_token,
     }
 
     # Load LLM tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, use_fast=True,
-        device_map="auto", token=hf_token
-    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=hf_token)
 
     streamer = None
     if streaming:
