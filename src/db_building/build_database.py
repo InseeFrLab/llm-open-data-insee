@@ -17,36 +17,6 @@ from .utils_db import split_list
 logger = logging.getLogger(__name__)
 
 
-def parse_collection_name(collection_name: str) -> dict[str, str | int] | None:
-    """
-    Parse a concatenated string to extract the embedding model name, chunk size, and overlap size.
-    :param concatenated_string: A string in the format 'embeddingmodelname_chunkSize_overlapSize'
-    :return: A dictionary with the parsed values
-    """
-    try:
-        # Split the string by the underscore delimiter
-        parts = collection_name.split("_")
-
-        # Ensure there are exactly three parts
-        if len(parts) != 3:
-            raise ValueError("String format is incorrect." "Expected format: 'modelname_chunkSize_overlapSize'")
-
-        # Extract and assign the parts
-        model_name = parts[0]
-        chunk_size = int(parts[1])
-        overlap_size = int(parts[2])
-
-        # Return the parsed values in a dictionary
-        return {
-            "model_name": model_name,
-            "chunk_size": chunk_size,
-            "overlap_size": overlap_size,
-        }
-    except Exception as e:
-        logger.error(f"Error parsing string: {e}")
-        return None
-
-
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
 
 

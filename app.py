@@ -59,19 +59,6 @@ prompt = create_prompt_from_instructions(system_instructions, question_instructi
 # CHAT START -------------------------------
 
 
-def format_docs2(docs: list):
-    return "\n\n".join(
-        [
-            f"""
-            Doc {i + 1}:\nTitle: {doc.metadata.get("Header 1")}\n
-            Source: {doc.metadata.get("url")}\n
-            Content:\n{doc.page_content}
-            """
-            for i, doc in enumerate(docs)
-        ]
-    )
-
-
 @cl.on_chat_start
 async def on_chat_start():
     # Initial message

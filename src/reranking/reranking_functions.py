@@ -18,9 +18,6 @@ def compress_documents_lambda(
     return retriever.get_relevant_documents(query)
 
 
-###### LLM Reraner functions ######
-
-
 def expected_relevance_values(logits, grades_token_ids, list_grades):
     next_token_logits = logits[:, -1, :]
     next_token_logits = next_token_logits.cpu()[0]
@@ -200,49 +197,3 @@ def llm_reranking(tokenizer, model, query, retrieved_documents, assessing_method
     docs_with_scores.sort(key=lambda x: x[1], reverse=True)
     sorted_documents = [doc for doc, score in docs_with_scores]  # docs_with_scores
     return sorted_documents
-
-
-"""
-def compute_proba_judgement(sequence, judgement):
-    # Tokenize the input sequence and judgement
-    inputs = tokenizer(sequence, return_tensors='pt')
-    input_ids = inputs['input_ids']
-    judgement_ids = tokenizer(judgement, return_tensors='pt')['input_ids'][0][1:]
-
-    # print("Input IDs:", input_ids)
-    # print("Judgement IDs:", judgement_ids)
-
-    # Move input tensors to the same device as the model
-    input_ids = input_ids.to(model.device)
-
-    # Get the logits from the model
-    with torch.no_grad():
-        outputs = model(**inputs)
-        logits = outputs.logits
-
-    # Calculate the probabilities
-    log_probs = F.log_softmax(logits, dim=-1)
-    probs = F.softmax(logits, dim=-1)
-
-    # Convert input IDs tensor to list for indexing
-    input_ids_list = input_ids[0].tolist()[1:]
-    judgement_ids_list = judgement_ids.tolist()
-
-    start_index  = find_sublist_indices(main_list=input_ids_list, sublist=judgement_ids_list)
-    #print("Start index:", start_index, "End index:", end_index)
-
-    if start_index == -1 or end_index == -1:
-        raise ValueError("Judgement sublist not found in the input sequence")
-
-    # Compute the probability of the sequence
-    sequence_probability = 0.0
-    list_indexes  = list(range(0, start_index + len(judgement_ids_list), 1))
-    for i in list_indexes:
-        token_id = input_ids_list[i]
-        token_log_prob = log_probs[0, i, token_id].item()
-        token_prob = probs[0, i, token_id].item()
-        print("     Token:", tokenizer.decode([token_id]),"/ Probability:", token_prob * 100, "%")
-        sequence_probability += token_log_prob
-
-    return sequence_probability/len(list_indexes)
-"""

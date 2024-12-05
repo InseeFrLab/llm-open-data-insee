@@ -25,3 +25,4 @@ lxml
 jsonlines
 langchain_chroma
 confz
+pipreqs

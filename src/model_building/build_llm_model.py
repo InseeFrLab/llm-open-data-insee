@@ -2,7 +2,7 @@ import os
 import sys
 from typing import Any
 
-from langchain_huggingface import HuggingFacePipeline
+from langchain_huggingface.llms import HuggingFacePipeline
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -14,11 +14,10 @@ from transformers import (
 
 from src.config import Configurable, DefaultFullConfig, FullConfig
 
-# from src.model_building.custom_hf_pipeline import CustomHuggingFacePipeline
 from .fetch_llm_model import cache_model_from_hf_hub
 
-# Add the project root directory to sys.path
 root_dir = os.path.abspath(os.path.join(os.path.dirname(""), "./src"))
+
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
@@ -64,6 +63,7 @@ def build_llm_model(
 
     # Load LLM tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, device_map="auto", token=hf_token)
+
     streamer = None
     if streaming:
         streamer = TextStreamer(tokenizer=tokenizer, skip_prompt=True)
