@@ -47,7 +47,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     # PARSING, PROCESSING and CHUNKING
     max_pages: int | None = None
     chunk_size: int | None = None
-    chunk_overlap: int | None = None
+    chunk_overlap: float | None = None
     documents_s3_dir: str  # (Templated)
     documents_jsonl_s3_path: str  # (Templated)
     documents_parquet_s3_path: str  # (Templated)
@@ -59,6 +59,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     collection_name: str
     force_rebuild: bool
     chroma_db_s3_path: str  # (Templated)
+    batch_size_embedding: int
 
     # EMBEDDING MODEL
     emb_device: str

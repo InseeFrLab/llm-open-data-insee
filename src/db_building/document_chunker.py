@@ -87,7 +87,7 @@ def compute_autokenizer_chunk_size(hf_tokenizer_name: str) -> tuple:
     autokenizer = AutoTokenizer.from_pretrained(hf_tokenizer_name)
 
     # Get the maximum token length the tokenizer can handle
-    chunk_size = autokenizer.model_max_length
+    chunk_size = min(autokenizer.model_max_length, 8192)
 
     # Compute chunk overlap as 10% of the chunk size
     chunk_overlap = int(chunk_size * 0.1)

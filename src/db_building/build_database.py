@@ -33,10 +33,11 @@ def build_vector_database(
     Args:
     filesystem: The filesystem object for interacting with S3.
     config: Keyword arguments for building the vector database:
-        - emb_device (str):
-        - emb_model (str):
+        - emb_device (str): device to run the embedding model on
+        - emb_model (str): the embedding model to use
         - collection_name (str): langchain collection name
-        - chroma_db_local_path (str):
+        - chroma_db_local_path (str): local path to store the database
+        - batch_size_embedding (int): batch size for embedding
     document_database: the document database. Will be build_or_loaded if unspecified.
 
     Returns:
@@ -58,9 +59,8 @@ def build_vector_database(
     logger.info("Building the Chroma vector database from model and chunked docs")
     logger.info(f"The database will temporarily be stored in {config.chroma_db_local_path}")
 
-    max_batch_size = 41600
-    split_docs_chunked = split_list(all_splits, max_batch_size)
-    nb_chunks = 1 + (len(all_splits) - 1) // max_batch_size
+    split_docs_chunked = split_list(all_splits, config.batch_size_embedding)
+    nb_chunks = 1 + (len(all_splits) - 1) // config.batch_size_embedding
 
     # Loop through the chunks and build the Chroma database
     try:
@@ -72,8 +72,11 @@ def build_vector_database(
         )
         logger.info(f"Empty new database created. Adding {len(all_splits)} documents...")
         for chunk_count, split_docs_chunk in enumerate(split_docs_chunked):
+            logger.info(
+                f"Max len in chunk: {max([len(doc.page_content) for doc in list(split_docs_chunk)])}"
+            )  # Just to check for memory issues
             db.add_documents(list(split_docs_chunk))
-            ratio_docs_processed = min(1.0, max_batch_size * (chunk_count + 1) / len(all_splits))
+            ratio_docs_processed = min(1.0, config.batch_size_embedding * (chunk_count + 1) / len(all_splits))
             logger.info(f"Chunk: {chunk_count+1}/{nb_chunks} ({100*ratio_docs_processed:.0f}%)")
     except Exception as e:
         logger.error(f"An error occurred while building the Chroma database: {e}")

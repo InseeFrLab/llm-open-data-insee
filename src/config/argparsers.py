@@ -188,6 +188,13 @@ def simple_argparser():
         Should we reuse previously constructed database (--no-force_rebuild, default)  or rebuild (--force_rebuild)?
         """,
     )
+    argparser.add_argument(
+        "--batch_size_embedding",
+        default=int,
+        help="""
+        Batch size for embedding in the vector database.
+        """,
+    )
     return argparser
 
 
