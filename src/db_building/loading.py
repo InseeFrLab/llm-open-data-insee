@@ -150,7 +150,6 @@ def vector_database_available_from_s3(
         "data_raw_s3_path",
         "collection_name",
         "markdown_split",
-        "use_tokenizer_to_chunk",
         "separators",
         "embedding_model",
         "chunk_size",

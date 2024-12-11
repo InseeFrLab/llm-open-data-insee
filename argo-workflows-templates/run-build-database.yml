@@ -79,7 +79,8 @@ spec:
             cd llm-open-data-insee/ &&
             git checkout qwen-embedding &&
             pip install -r requirements.txt &&
-            python run_build_database.py --experiment_name {{inputs.parameters.EXPERIMENT}} \
+            python run_build_database.py \
+              --experiment_name {{inputs.parameters.EXPERIMENT}} \
               --collection_name {{inputs.parameters.COLLECTION_NAME}} \
               --embedding_model {{inputs.parameters.EMBEDDING_MODEL}} \
               --chunk_size {{inputs.parameters.CHUNK_SIZE}} \

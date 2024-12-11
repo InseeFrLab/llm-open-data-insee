@@ -36,7 +36,6 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     data_raw_s3_path: str
     raw_dataset_uri: str  # (Templated)
     markdown_split: bool
-    use_tokenizer_to_chunk: bool
     separators: list[str]
 
     rawdata_web4g: str
@@ -46,8 +45,8 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
 
     # PARSING, PROCESSING and CHUNKING
     max_pages: int | None = None
-    chunk_size: int | None = None
-    chunk_overlap: float | None = None
+    chunk_size: int
+    chunk_overlap: float
     documents_s3_dir: str  # (Templated)
     documents_jsonl_s3_path: str  # (Templated)
     documents_parquet_s3_path: str  # (Templated)

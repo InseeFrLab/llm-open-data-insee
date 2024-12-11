@@ -130,15 +130,6 @@ def simple_argparser():
         """,
     )
     argparser.add_argument(
-        "--use_tokenizer_to_chunk",
-        default=True,
-        action=BooleanOptionalAction,
-        help="""
-        Should we use the tokenizer of the embedding model to chunk ?
-        --use_tokenizer_to_chunk yields True and --no-use_tokenizer_to_chunk yields False
-        """,
-    )
-    argparser.add_argument(
         "--separators",
         help="List separators to split the text",
     )
@@ -148,7 +139,6 @@ def simple_argparser():
         help="""
         Embedding model.
         Should be a huggingface model.
-        Defaults to OrdalieTech/Solon-embeddings-large-0.1
         """,
     )
     argparser.add_argument(

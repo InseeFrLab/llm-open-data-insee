@@ -27,7 +27,6 @@ mlflow_load_artifacts = true
 data_raw_s3_path = "data/raw_data/applishare_solr_joined.parquet"
 raw_dataset_uri = "s3://{s3_bucket}/{data_raw_s3_path}" # (templated)
 markdown_split = false
-use_tokenizer_to_chunk = true
 separators = ['\n\n', '\n', '.', ' ', '']
 
 rawdata_web4g = "data/raw_data/applishare_solr_joined.parquet"
@@ -41,7 +40,7 @@ max_pages     = "None"  # int but the "None" string is allowed and interpreted a
 chunk_size    = "None"  # int but the "None" string is allowed and interpreted as None
 chunk_overlap = "None"  # int but the "None" string is allowed and interpreted as None
 # Templated S3 path to save and load documents collection from
-documents_s3_dir = "s3://{s3_bucket}/data/chunked_documents/model_id={emb_model}/chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}"
+documents_s3_dir = "s3://{s3_bucket}/data/chunked_documents/model_id={embedding_model}/chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}"
 documents_jsonl_s3_path = "{documents_s3_dir}/docs.jsonl"
 documents_parquet_s3_path = "{documents_s3_dir}/corpus.parquet"
 
@@ -59,7 +58,7 @@ batch_size_embedding = 10
 
 # Embedding model for IR
 emb_device = "cuda"
-emb_model = "Alibaba-NLP/gte-Qwen2-7B-instruct"
+embedding_model = "Alibaba-NLP/gte-Qwen2-7B-instruct"
 
 # LLM -------------------------------------------------------------------------
 

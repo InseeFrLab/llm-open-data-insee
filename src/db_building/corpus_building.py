@@ -34,7 +34,6 @@ def build_document_database(
         - rawdata_rmes_uri
         - embedding_model
         - markdown_split
-        - use_tokenizer_to_chunk
         - separators
     - filesystem (s3fs.S3FileSystem): object for interacting with S3
 
@@ -74,7 +73,6 @@ def _preprocess_data(
         - embedding_model: The name of the Hugging Face tokenizer to use.
         - markdown_split (bool): Whether to split markdown headers into separate chunks.
         - hf_tokenizer_name (str, optional): Name of the Hugging Face tokenizer to use.
-        - use_tokenizer_to_chunk
         - chunk_size (int, optional): Size of each chunk if not using hf_tokenizer.
         - chunk_overlap (int, optional): Overlap size between chunks if not using hf_tokenizer.
         - separators (list, optional): List of separators to use for splitting the text.
@@ -127,7 +125,6 @@ def _preprocess_data(
         data=df,
         embedding_model=config.embedding_model,
         markdown_split=config.markdown_split,
-        use_tokenizer_to_chunk=config.use_tokenizer_to_chunk,
         chunk_size=config.chunk_size,
         chunk_overlap=config.chunk_overlap,
         separators=config.separators,
