@@ -76,6 +76,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     topk_stats: int
 
     # INSTRUCTION PROMPT
+    SIMILARITY_SEARCH_INSTRUCTION: str
     BASIC_RAG_PROMPT_TEMPLATE: str
     RAG_PROMPT_TEMPLATE: str
 

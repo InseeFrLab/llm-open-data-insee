@@ -78,7 +78,8 @@ def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
         mlflow.log_table(data=example_documents, artifact_file="example_documents.json")
 
         # Log a result of a similarity search
-        query = "Quels sont les chiffres du chômages en 2023 ?"
+        query = f"{config.SIMILARITY_SEARCH_INSTRUCTION}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
+
         retrieved_docs = db.similarity_search(query, k=5)
 
         result_list = []
