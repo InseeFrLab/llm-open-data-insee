@@ -114,8 +114,9 @@ def _preprocess_data(
     logger.info(f"Reading rmes data from {config.rawdata_rmes_uri}")
     data_rmes = pd.read_parquet(config.rawdata_rmes_uri, filesystem=filesystem)
 
-    # Concatenate the original data with the RMES data
-    df = pd.concat([df, data_rmes])
+    # Concatenate the original data with the RMES data (if max_pages is not None)
+    if config.max_pages is not None:
+        df = pd.concat([df, data_rmes])
 
     # Fill NaN values with empty strings (for compatibility with Chroma metadata)
     df = df.fillna(value="")
