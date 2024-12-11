@@ -52,7 +52,7 @@ def build_vector_database(
 
     logger.info(f"Loading embedding model: {config.emb_model} on {config.emb_device}")
 
-    cache_model_from_hf_hub(config.emb_model, hf_token=os.environ["HF_TOKEN"])
+    cache_model_from_hf_hub(config.emb_model, hf_token=os.environ.get("HF_TOKEN"))
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=config.emb_model,
