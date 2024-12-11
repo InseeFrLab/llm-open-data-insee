@@ -15,7 +15,6 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     """
 
     # S3 CONFIG
-    experiment_name: str
     aws_s3_endpoint: str
     s3_bucket: str
     s3_endpoint_url: str  # (Templated)
@@ -28,6 +27,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     logs_dir_path: str  # (Templated)
 
     # ML FLOW LOGGING
+    experiment_name: str
     mlflow_run_id: str | None = None
     mlflow_tracking_uri: str
     mlflow_load_artifacts: bool

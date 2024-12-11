@@ -1,6 +1,5 @@
 # S3 CONFIG -------------------------------------------------------------------
 
-experiment_name = "default"
 # aws_s3_endpoint = "minio.lab.sspcloud.fr"
 s3_bucket = "projet-llm-insee-open-data"
 s3_endpoint_url = "https://{aws_s3_endpoint}" # (templated)
@@ -15,6 +14,7 @@ logs_dir_path = "{work_dir}/{relative_logs_dir}" # (templated)
 
 # ML FLOW LOGGING -------------------------------------------------------------
 
+experiment_name = "default"
 mlflow_tracking_uri = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
 
 # MLflow run ID to override all parameters with
