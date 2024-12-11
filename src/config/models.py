@@ -46,7 +46,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     # PARSING, PROCESSING and CHUNKING
     max_pages: int | None = None
     chunk_size: int
-    chunk_overlap: float
+    chunk_overlap: int
     documents_s3_dir: str  # (Templated)
     documents_jsonl_s3_path: str  # (Templated)
     documents_parquet_s3_path: str  # (Templated)

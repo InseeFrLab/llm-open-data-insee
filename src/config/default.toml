@@ -37,8 +37,8 @@ rawdata_rmes_uri = "s3://{s3_bucket}/{rawdata_rmes}" # (templated)
 # PARSING, PROCESSING and CHUNKING CORPUS -------------------------------------
 
 max_pages     = "None"  # int but the "None" string is allowed and interpreted as None
-chunk_size    = "None"  # int but the "None" string is allowed and interpreted as None
-chunk_overlap = "None"  # int but the "None" string is allowed and interpreted as None
+chunk_size    = 8192
+chunk_overlap = 0
 # Templated S3 path to save and load documents collection from
 documents_s3_dir = "s3://{s3_bucket}/data/chunked_documents/model_id={embedding_model}/chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}"
 documents_jsonl_s3_path = "{documents_s3_dir}/docs.jsonl"

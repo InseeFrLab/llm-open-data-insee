@@ -5,6 +5,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
+from transformers import AutoTokenizer
 
 HEADERS_TO_SPLIT_ON = [
     ("#", "Header 1"),
@@ -51,8 +52,12 @@ def chunk_documents(
         markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False)
         document_list = make_md_splits(document_list, markdown_splitter)
 
-    # Initialize token/char splitter
-    text_splitter = RecursiveCharacterTextSplitter(
+    # Load the tokenizer
+    autokenizer = AutoTokenizer.from_pretrained(embedding_model)
+
+    # Initialize token splitter
+    text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
+        autokenizer,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         separators=separators,
