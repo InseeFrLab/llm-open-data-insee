@@ -54,9 +54,10 @@ def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
                 "cp",
                 "-r",
                 f"{config.chroma_db_local_path}/",
-                f"{config.chroma_db_s3_dir}/{hash_chroma}/",
+                f"{config.chroma_db_s3_path}/{hash_chroma}/",
             )
-            subprocess.run(cmd, check=True)
+            with open("/dev/null", "w") as devnull:
+                subprocess.run(cmd, check=True, stdout=devnull, stderr=devnull)
 
             # Log the newly generated vector database unless it was already loaded from an other run ID
             logger.info(f"Logging to MLFlow ({hash_chroma}) to s3: {config.chroma_db_local_path}")
