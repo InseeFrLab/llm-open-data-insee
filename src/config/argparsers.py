@@ -68,7 +68,7 @@ def minimal_argparser():
 def models_only_argparser():
     argparser = minimal_argparser()
     argparser.add_argument(
-        "--emb_model",
+        "--embedding_model",
         type=str,
         help="""
         Embedding model for information retrieval.
@@ -145,7 +145,6 @@ def simple_argparser():
     argparser.add_argument(
         "--embedding_model",
         type=str,
-        dest="emb_model",
         help="""
         Embedding model.
         Should be a huggingface model.

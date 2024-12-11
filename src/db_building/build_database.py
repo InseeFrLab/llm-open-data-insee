@@ -36,7 +36,7 @@ def build_vector_database(
     filesystem: The filesystem object for interacting with S3.
     config: Keyword arguments for building the vector database:
         - emb_device (str): device to run the embedding model on
-        - emb_model (str): the embedding model to use
+        - embedding_model (str): the embedding model to use
         - collection_name (str): langchain collection name
         - chroma_db_local_path (str): local path to store the database
         - batch_size_embedding (int): batch size for embedding
@@ -50,12 +50,12 @@ def build_vector_database(
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = document_database or build_or_load_document_database(filesystem, config)
 
-    logger.info(f"Loading embedding model: {config.emb_model} on {config.emb_device}")
+    logger.info(f"Loading embedding model: {config.embedding_model} on {config.emb_device}")
 
-    cache_model_from_hf_hub(config.emb_model, hf_token=os.environ.get("HF_TOKEN"))
+    cache_model_from_hf_hub(config.embedding_model, hf_token=os.environ.get("HF_TOKEN"))
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=config.emb_model,
+        model_name=config.embedding_model,
         model_kwargs={"device": config.emb_device},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
@@ -108,7 +108,7 @@ def load_vector_database_from_local(
     """
     Load Chroma vector database from local directory.
 
-    Assumes, without checking, that the embedding function matches `config.emb_model`
+    Assumes, without checking, that the embedding function matches `config.embedding_model`
 
     Args:
     persist_directory: path to the directory from. If empty, `config.chroma_db_local_path` is used
@@ -121,7 +121,7 @@ def load_vector_database_from_local(
     if persist_directory is None:
         persist_directory = config.chroma_db_local_path
     emb_model = HuggingFaceEmbeddings(
-        model_name=config.emb_model,
+        model_name=config.embedding_model,
         multi_process=False,
         model_kwargs={"device": config.emb_device, "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},

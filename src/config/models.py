@@ -63,7 +63,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
 
     # EMBEDDING MODEL
     emb_device: str
-    emb_model: str
+    embedding_model: str
 
     # LLM
     llm_model: str

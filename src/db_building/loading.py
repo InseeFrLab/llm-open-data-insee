@@ -152,7 +152,7 @@ def vector_database_available_from_s3(
         "markdown_split",
         "use_tokenizer_to_chunk",
         "separators",
-        "emb_model",
+        "embedding_model",
         "chunk_size",
         "chunk_overlap",
     ]
@@ -165,7 +165,7 @@ def vector_database_available_from_s3(
     for key in required_keys:
         logger.info(f"  {key}: {config_dict.get(key)}")
 
-    s3_folder = f"{config.chroma_db_s3_path}/{config.emb_model}"
+    s3_folder = f"{config.chroma_db_s3_path}/{config.embedding_model}"
 
     if not filesystem.exists(s3_folder):
         logger.info(f"Expected S3 folder for database does not exist: {s3_folder}")

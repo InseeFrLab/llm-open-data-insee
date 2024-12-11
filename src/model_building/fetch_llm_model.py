@@ -90,7 +90,7 @@ if __name__ == "__main__":
     process_args(models_only_argparser())
     config = DefaultFullConfig()
     cache_models_from_hf_hub(
-        [config.emb_model, config.llm_model],
+        [config.embedding_model, config.llm_model],
         config.s3_bucket,
         config.s3_endpoint_url,
         config.s3_model_cache_dir,

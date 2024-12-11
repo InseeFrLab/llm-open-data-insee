@@ -32,7 +32,7 @@ def build_document_database(
         - max_pages (int): the maximum number of pages (can be None).
         - rawdata_web4g_uri
         - rawdata_rmes_uri
-        - emb_model
+        - embedding_model
         - markdown_split
         - use_tokenizer_to_chunk
         - separators
@@ -71,7 +71,7 @@ def _preprocess_data(
         - max_pages
         - rawdata_web4g_uri: link to the web4g data
         - rawdata_rmes_uri: link to the rmes data
-        - emb_model: The name of the Hugging Face tokenizer to use.
+        - embedding_model: The name of the Hugging Face tokenizer to use.
         - markdown_split (bool): Whether to split markdown headers into separate chunks.
         - hf_tokenizer_name (str, optional): Name of the Hugging Face tokenizer to use.
         - use_tokenizer_to_chunk
@@ -125,7 +125,7 @@ def _preprocess_data(
     # Chunk the documents (using tokenizer if specified in kwargs)
     all_splits = chunk_documents(
         data=df,
-        embedding_model=config.emb_model,
+        embedding_model=config.embedding_model,
         markdown_split=config.markdown_split,
         use_tokenizer_to_chunk=config.use_tokenizer_to_chunk,
         chunk_size=config.chunk_size,
