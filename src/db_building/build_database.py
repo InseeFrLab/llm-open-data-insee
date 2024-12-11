@@ -1,5 +1,6 @@
 import gc
 import logging
+import os
 
 import pandas as pd
 import s3fs
@@ -10,6 +11,7 @@ from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from src.config import Configurable, DefaultFullConfig, FullConfig
+from src.model_building import cache_model_from_hf_hub
 
 from .corpus_building import build_or_load_document_database
 from .utils_db import split_list
@@ -49,6 +51,9 @@ def build_vector_database(
     df, all_splits = document_database or build_or_load_document_database(filesystem, config)
 
     logger.info(f"Loading embedding model: {config.emb_model} on {config.emb_device}")
+
+    cache_model_from_hf_hub(config.emb_model, hf_token=os.environ["HF_TOKEN"])
+
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=config.emb_model,
         model_kwargs={"device": config.emb_device},
