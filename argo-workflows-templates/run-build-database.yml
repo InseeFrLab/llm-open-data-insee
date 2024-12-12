@@ -18,8 +18,8 @@ spec:
               "COLLECTION_NAME": "insee_data",
               "EMBEDDING_MODEL": "Alibaba-NLP/gte-Qwen2-1.5B-instruct",
               "CHUNK_SIZE": 8192,
-              "CHUNK_OVERLAP": 0.1,
-              "BATCH_EMBEDDING": 50
+              "CHUNK_OVERLAP": 0,
+              "BATCH_EMBEDDING": 400
             }
             ]'
 
@@ -77,7 +77,6 @@ spec:
             git clone https://github.com/InseeFrLab/llm-open-data-insee.git &&
             export MC_HOST_s3=https://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}:@${AWS_S3_ENDPOINT} &&
             cd llm-open-data-insee/ &&
-            git checkout qwen-embedding &&
             pip install -r requirements.txt &&
             python run_build_database.py \
               --experiment_name {{inputs.parameters.EXPERIMENT}} \
@@ -85,8 +84,7 @@ spec:
               --embedding_model {{inputs.parameters.EMBEDDING_MODEL}} \
               --chunk_size {{inputs.parameters.CHUNK_SIZE}} \
               --chunk_overlap {{inputs.parameters.CHUNK_OVERLAP}} \
-              --batch_size_embedding {{inputs.parameters.BATCH_EMBEDDING}} \
-              --max_pages 100
+              --batch_size_embedding {{inputs.parameters.BATCH_EMBEDDING}}
 
         volumeMounts:
           - mountPath: /dev/shm
