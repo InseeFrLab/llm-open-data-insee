@@ -68,7 +68,7 @@ def minimal_argparser():
 def models_only_argparser():
     argparser = minimal_argparser()
     argparser.add_argument(
-        "--emb_model",
+        "--embedding_model",
         type=str,
         help="""
         Embedding model for information retrieval.
@@ -130,26 +130,15 @@ def simple_argparser():
         """,
     )
     argparser.add_argument(
-        "--use_tokenizer_to_chunk",
-        default=True,
-        action=BooleanOptionalAction,
-        help="""
-        Should we use the tokenizer of the embedding model to chunk ?
-        --use_tokenizer_to_chunk yields True and --no-use_tokenizer_to_chunk yields False
-        """,
-    )
-    argparser.add_argument(
         "--separators",
         help="List separators to split the text",
     )
     argparser.add_argument(
         "--embedding_model",
         type=str,
-        dest="emb_model",
         help="""
         Embedding model.
         Should be a huggingface model.
-        Defaults to OrdalieTech/Solon-embeddings-large-0.1
         """,
     )
     argparser.add_argument(
@@ -186,6 +175,13 @@ def simple_argparser():
         action=BooleanOptionalAction,
         help="""
         Should we reuse previously constructed database (--no-force_rebuild, default)  or rebuild (--force_rebuild)?
+        """,
+    )
+    argparser.add_argument(
+        "--batch_size_embedding",
+        default=int,
+        help="""
+        Batch size for embedding in the vector database.
         """,
     )
     return argparser

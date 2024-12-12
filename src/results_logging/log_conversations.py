@@ -29,7 +29,7 @@ def log_qa_to_s3(
     retrieved_documents: TODO
     prompt_template: TODO
     llm_model: (overrides config) TODO
-    emb_model: (overrides config) TODO
+    embedding_model: (overrides config) TODO
     reranking_method: (overrides config) TODO
     config: Configuration object
     """
@@ -44,7 +44,7 @@ def log_qa_to_s3(
             "retrieved_docs_text": retrieved_documents_text,
             "retrieved_docs_metadata": retrieved_documents_metadata,
             "prompt": prompt_template,
-            "embedding_model": config.emb_model,
+            "embedding_model": config.embedding_model,
             "llm": config.llm_model,
             "reranker": config.reranking_method,
         }

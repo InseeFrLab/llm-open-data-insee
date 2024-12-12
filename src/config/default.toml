@@ -1,6 +1,5 @@
 # S3 CONFIG -------------------------------------------------------------------
 
-experiment_name = "default"
 # aws_s3_endpoint = "minio.lab.sspcloud.fr"
 s3_bucket = "projet-llm-insee-open-data"
 s3_endpoint_url = "https://{aws_s3_endpoint}" # (templated)
@@ -15,6 +14,7 @@ logs_dir_path = "{work_dir}/{relative_logs_dir}" # (templated)
 
 # ML FLOW LOGGING -------------------------------------------------------------
 
+experiment_name = "default"
 mlflow_tracking_uri = "https://projet-llm-insee-open-data-mlflow.user.lab.sspcloud.fr"
 
 # MLflow run ID to override all parameters with
@@ -26,22 +26,21 @@ mlflow_load_artifacts = true
 
 data_raw_s3_path = "data/raw_data/applishare_solr_joined.parquet"
 raw_dataset_uri = "s3://{s3_bucket}/{data_raw_s3_path}" # (templated)
-markdown_split = true
-use_tokenizer_to_chunk = true
+markdown_split = false
 separators = ['\n\n', '\n', '.', ' ', '']
 
 rawdata_web4g = "data/raw_data/applishare_solr_joined.parquet"
-rawdata_rmes = "data/raw_data/applishare_solr_joined.parquet"
+rawdata_rmes = "data/processed_data/rmes_sources_content.parquet"
 rawdata_web4g_uri = "s3://{s3_bucket}/{rawdata_web4g}" # (templated)
 rawdata_rmes_uri = "s3://{s3_bucket}/{rawdata_rmes}" # (templated)
 
 # PARSING, PROCESSING and CHUNKING CORPUS -------------------------------------
 
 max_pages     = "None"  # int but the "None" string is allowed and interpreted as None
-chunk_size    = "None"  # int but the "None" string is allowed and interpreted as None
-chunk_overlap = "None"  # int but the "None" string is allowed and interpreted as None
+chunk_size    = 8192
+chunk_overlap = 0
 # Templated S3 path to save and load documents collection from
-documents_s3_dir = "s3://{s3_bucket}/data/chunked_documents/model_id={emb_model}/chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}"
+documents_s3_dir = "s3://{s3_bucket}/data/chunked_documents/model_id={embedding_model}/chunk_overlap={chunk_overlap}/chunk_size={chunk_size}/max_pages={max_pages}"
 documents_jsonl_s3_path = "{documents_s3_dir}/docs.jsonl"
 documents_parquet_s3_path = "{documents_s3_dir}/corpus.parquet"
 
@@ -50,15 +49,16 @@ documents_parquet_s3_path = "{documents_s3_dir}/corpus.parquet"
 chroma_db_local_dir = "chroma_db"
 chroma_db_local_path = "{data_dir_path}/{chroma_db_local_dir}" # (templated)
 chroma_db_s3_dir = "data/chroma_database"
-chroma_db_s3_path = "{s3_bucket}/{chroma_db_s3_dir}" # (templated)
+chroma_db_s3_path = "{s3_bucket}/{chroma_db_s3_dir}/{embedding_model}" # (templated)
 collection_name = "insee_data"
 force_rebuild = false
+batch_size_embedding = 10
 
 # IR MODEL    -----------------------------------------------------------------
 
 # Embedding model for IR
 emb_device = "cuda"
-emb_model = "OrdalieTech/Solon-embeddings-large-0.1"
+embedding_model = "Alibaba-NLP/gte-Qwen2-7B-instruct"
 
 # LLM -------------------------------------------------------------------------
 
@@ -76,6 +76,7 @@ faq_s3_uri = "s3://{s3_bucket}/{faq_s3_path}" # (templated)
 topk_stats = 3
 
 # INSTRUCTION PROMPT ----------------------------------------------------------
+SIMILARITY_SEARCH_INSTRUCTION = "Instruct: Given a specific query in french, retrieve the most relevant passages that answer the query"
 
 BASIC_RAG_PROMPT_TEMPLATE = """<s>[INST]
     Instruction: Réponds à la question en te basant sur le contexte donné:

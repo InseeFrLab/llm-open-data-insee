@@ -15,7 +15,6 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     """
 
     # S3 CONFIG
-    experiment_name: str
     aws_s3_endpoint: str
     s3_bucket: str
     s3_endpoint_url: str  # (Templated)
@@ -28,6 +27,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     logs_dir_path: str  # (Templated)
 
     # ML FLOW LOGGING
+    experiment_name: str
     mlflow_run_id: str | None = None
     mlflow_tracking_uri: str
     mlflow_load_artifacts: bool
@@ -36,7 +36,6 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     data_raw_s3_path: str
     raw_dataset_uri: str  # (Templated)
     markdown_split: bool
-    use_tokenizer_to_chunk: bool
     separators: list[str]
 
     rawdata_web4g: str
@@ -46,8 +45,8 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
 
     # PARSING, PROCESSING and CHUNKING
     max_pages: int | None = None
-    chunk_size: int | None = None
-    chunk_overlap: int | None = None
+    chunk_size: int
+    chunk_overlap: int
     documents_s3_dir: str  # (Templated)
     documents_jsonl_s3_path: str  # (Templated)
     documents_parquet_s3_path: str  # (Templated)
@@ -59,10 +58,11 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     collection_name: str
     force_rebuild: bool
     chroma_db_s3_path: str  # (Templated)
+    batch_size_embedding: int
 
     # EMBEDDING MODEL
     emb_device: str
-    emb_model: str
+    embedding_model: str
 
     # LLM
     llm_model: str
@@ -76,6 +76,7 @@ class FullConfig(BaseConfig, metaclass=BaseConfigMetaclass):
     topk_stats: int
 
     # INSTRUCTION PROMPT
+    SIMILARITY_SEARCH_INSTRUCTION: str
     BASIC_RAG_PROMPT_TEMPLATE: str
     RAG_PROMPT_TEMPLATE: str
 

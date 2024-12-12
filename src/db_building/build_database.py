@@ -1,5 +1,6 @@
 import gc
 import logging
+import os
 
 import pandas as pd
 import s3fs
@@ -10,6 +11,7 @@ from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from src.config import Configurable, DefaultFullConfig, FullConfig
+from src.model_building import cache_model_from_hf_hub
 
 from .corpus_building import build_or_load_document_database
 from .utils_db import split_list
@@ -33,10 +35,11 @@ def build_vector_database(
     Args:
     filesystem: The filesystem object for interacting with S3.
     config: Keyword arguments for building the vector database:
-        - emb_device (str):
-        - emb_model (str):
+        - emb_device (str): device to run the embedding model on
+        - embedding_model (str): the embedding model to use
         - collection_name (str): langchain collection name
-        - chroma_db_local_path (str):
+        - chroma_db_local_path (str): local path to store the database
+        - batch_size_embedding (int): batch size for embedding
     document_database: the document database. Will be build_or_loaded if unspecified.
 
     Returns:
@@ -47,9 +50,12 @@ def build_vector_database(
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = document_database or build_or_load_document_database(filesystem, config)
 
-    logger.info(f"Loading embedding model: {config.emb_model} on {config.emb_device}")
+    logger.info(f"Loading embedding model: {config.embedding_model} on {config.emb_device}")
+
+    cache_model_from_hf_hub(config.embedding_model, hf_token=os.environ.get("HF_TOKEN"))
+
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=config.emb_model,
+        model_name=config.embedding_model,
         model_kwargs={"device": config.emb_device},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
@@ -58,9 +64,8 @@ def build_vector_database(
     logger.info("Building the Chroma vector database from model and chunked docs")
     logger.info(f"The database will temporarily be stored in {config.chroma_db_local_path}")
 
-    max_batch_size = 41600
-    split_docs_chunked = split_list(all_splits, max_batch_size)
-    nb_chunks = 1 + (len(all_splits) - 1) // max_batch_size
+    split_docs_chunked = split_list(all_splits, config.batch_size_embedding)
+    nb_chunks = 1 + (len(all_splits) - 1) // config.batch_size_embedding
 
     # Loop through the chunks and build the Chroma database
     try:
@@ -72,8 +77,11 @@ def build_vector_database(
         )
         logger.info(f"Empty new database created. Adding {len(all_splits)} documents...")
         for chunk_count, split_docs_chunk in enumerate(split_docs_chunked):
+            logger.info(
+                f"Max len in chunk: {max([len(doc.page_content) for doc in list(split_docs_chunk)])}"
+            )  # Just to check for memory issues
             db.add_documents(list(split_docs_chunk))
-            ratio_docs_processed = min(1.0, max_batch_size * (chunk_count + 1) / len(all_splits))
+            ratio_docs_processed = min(1.0, config.batch_size_embedding * (chunk_count + 1) / len(all_splits))
             logger.info(f"Chunk: {chunk_count+1}/{nb_chunks} ({100*ratio_docs_processed:.0f}%)")
     except Exception as e:
         logger.error(f"An error occurred while building the Chroma database: {e}")
@@ -100,7 +108,7 @@ def load_vector_database_from_local(
     """
     Load Chroma vector database from local directory.
 
-    Assumes, without checking, that the embedding function matches `config.emb_model`
+    Assumes, without checking, that the embedding function matches `config.embedding_model`
 
     Args:
     persist_directory: path to the directory from. If empty, `config.chroma_db_local_path` is used
@@ -113,7 +121,7 @@ def load_vector_database_from_local(
     if persist_directory is None:
         persist_directory = config.chroma_db_local_path
     emb_model = HuggingFaceEmbeddings(
-        model_name=config.emb_model,
+        model_name=config.embedding_model,
         multi_process=False,
         model_kwargs={"device": config.emb_device, "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},

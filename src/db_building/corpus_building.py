@@ -32,9 +32,8 @@ def build_document_database(
         - max_pages (int): the maximum number of pages (can be None).
         - rawdata_web4g_uri
         - rawdata_rmes_uri
-        - emb_model
+        - embedding_model
         - markdown_split
-        - use_tokenizer_to_chunk
         - separators
     - filesystem (s3fs.S3FileSystem): object for interacting with S3
 
@@ -71,10 +70,9 @@ def _preprocess_data(
         - max_pages
         - rawdata_web4g_uri: link to the web4g data
         - rawdata_rmes_uri: link to the rmes data
-        - emb_model: The name of the Hugging Face tokenizer to use.
+        - embedding_model: The name of the Hugging Face tokenizer to use.
         - markdown_split (bool): Whether to split markdown headers into separate chunks.
         - hf_tokenizer_name (str, optional): Name of the Hugging Face tokenizer to use.
-        - use_tokenizer_to_chunk
         - chunk_size (int, optional): Size of each chunk if not using hf_tokenizer.
         - chunk_overlap (int, optional): Overlap size between chunks if not using hf_tokenizer.
         - separators (list, optional): List of separators to use for splitting the text.
@@ -116,8 +114,9 @@ def _preprocess_data(
     logger.info(f"Reading rmes data from {config.rawdata_rmes_uri}")
     data_rmes = pd.read_parquet(config.rawdata_rmes_uri, filesystem=filesystem)
 
-    # Concatenate the original data with the RMES data
-    df = pd.concat([df, data_rmes])
+    # Concatenate the original data with the RMES data (if max_pages is not None)
+    if config.max_pages is not None:
+        df = pd.concat([df, data_rmes])
 
     # Fill NaN values with empty strings (for compatibility with Chroma metadata)
     df = df.fillna(value="")
@@ -125,9 +124,8 @@ def _preprocess_data(
     # Chunk the documents (using tokenizer if specified in kwargs)
     all_splits = chunk_documents(
         data=df,
-        embedding_model=config.emb_model,
+        embedding_model=config.embedding_model,
         markdown_split=config.markdown_split,
-        use_tokenizer_to_chunk=config.use_tokenizer_to_chunk,
         chunk_size=config.chunk_size,
         chunk_overlap=config.chunk_overlap,
         separators=config.separators,

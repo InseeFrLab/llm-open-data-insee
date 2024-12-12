@@ -28,7 +28,7 @@ class EvalConfiguration:
 class RetrievalConfiguration(EvalConfiguration):
     # Embedding model
     embedding_model_name: str = field(
-        default=DefaultFullConfig().emb_model, metadata={"description": "embedding model"}
+        default=DefaultFullConfig().embedding_model, metadata={"description": "embedding model"}
     )
     collection: str | None = field(default=None)
     chunk_size: int | None = field(default=None, metadata={"description": "chunk size"})
