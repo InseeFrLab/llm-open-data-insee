@@ -1,5 +1,4 @@
 import gc
-import logging
 import os
 
 import pandas as pd
@@ -9,6 +8,7 @@ from langchain.schema import Document
 from langchain_chroma import Chroma
 from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
+from loguru import logger
 
 from src.config import Configurable, DefaultFullConfig, FullConfig
 from src.model_building import cache_model_from_hf_hub
@@ -16,7 +16,7 @@ from src.model_building import cache_model_from_hf_hub
 from .corpus_building import build_or_load_document_database
 from .utils_db import split_list
 
-logger = logging.getLogger(__name__)
+logger.add("./logging/logs.log")
 
 
 # BUILD VECTOR DATABASE FROM COLLECTION -------------------------
@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 @Configurable()
 def build_vector_database(
     filesystem: s3fs.S3FileSystem,
+    embedding_model: str | None = None,
     config: FullConfig = DefaultFullConfig(),
     return_none_on_fail=False,
     document_database: tuple[pd.DataFrame, list[Document]] | None = None,
@@ -47,15 +48,18 @@ def build_vector_database(
     """
     logger.info("Building the vector database from documents")
 
+    if embedding_model is None:
+        embedding_model = config.embedding_model
+
     # Call the process_data function to handle data loading, parsing, and splitting
     df, all_splits = document_database or build_or_load_document_database(filesystem, config)
 
-    logger.info(f"Loading embedding model: {config.embedding_model} on {config.emb_device}")
+    logger.info(f"Loading embedding model: {embedding_model} on {config.emb_device}")
 
-    cache_model_from_hf_hub(config.embedding_model, hf_token=os.environ.get("HF_TOKEN"))
+    cache_model_from_hf_hub(embedding_model, hf_token=os.environ.get("HF_TOKEN"))
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=config.embedding_model,
+        model_name=embedding_model,
         model_kwargs={"device": config.emb_device},
         encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
         show_progress=False,
@@ -94,7 +98,7 @@ def build_vector_database(
     del emb_model
     gc.collect()
 
-    logger.info("Vector database built successfully!")
+    logger.success("Vector database built successfully!")
     return db
 
 
@@ -103,7 +107,7 @@ def build_vector_database(
 
 @Configurable()
 def load_vector_database_from_local(
-    persist_directory: str | None = None, config: FullConfig = DefaultFullConfig()
+    persist_directory: str | None = None, embedding_model: str | None = None, config: FullConfig = DefaultFullConfig()
 ) -> Chroma:
     """
     Load Chroma vector database from local directory.
@@ -117,11 +121,17 @@ def load_vector_database_from_local(
     Returns:
     The loaded Chroma vector database
     """
+
     logger.info("Loading Chroma vector database from local session")
+
     if persist_directory is None:
         persist_directory = config.chroma_db_local_path
+
+    if embedding_model is None:
+        embedding_model = config.embedding_model
+
     emb_model = HuggingFaceEmbeddings(
-        model_name=config.embedding_model,
+        model_name=embedding_model,
         multi_process=False,
         model_kwargs={"device": config.emb_device, "trust_remote_code": True},
         encode_kwargs={"normalize_embeddings": True},

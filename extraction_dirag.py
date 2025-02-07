@@ -1,17 +1,38 @@
-# Install necessary packages if not already installed
+# ENVIRONMENT --------------------------
+
+import argparse
 import os
+import pathlib
 import re
+import subprocess
+import sys
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-import nltk
 import pandas as pd
 import s3fs
 import seaborn as sns
+from loguru import logger
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-from plotnine import *
 
-nltk.download("punkt_tab")
-nltk.download("stopwords")
+from src.db_building.build_database import build_vector_database
+from src.db_building.corpus_building import _preprocess_data
+
+# nltk.download("punkt_tab")
+# nltk.download("stopwords")
+
+
+# ENVIRONMENT ---------------------------------
+
+parser = argparse.ArgumentParser(description="Paramètres du script de préparation des données DIRAG")
+
+parser.add_argument(
+    "--embedding_model", type=str, default="OrdalieTech/Solon-embeddings-large-0.1", help="Modèle d'embedding"
+)
+
+args = parser.parse_args()
+
 
 fs = s3fs.S3FileSystem(
     client_kwargs={"endpoint_url": "https://" + "minio.lab.sspcloud.fr"},
@@ -21,8 +42,14 @@ fs = s3fs.S3FileSystem(
 )
 s3_path = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
 
+DIRAG_INTERMEDIATE_PARQUET = "./data/raw/dirag.parquet"
+embedding_model = args.embedding_model
+
+
+# DATA ENGINEERING ----------------------------------------
+
 df = pd.read_parquet(s3_path, engine="pyarrow", filesystem=fs)
-donnees_site_insee = df
+donnees_site_insee = df.copy()
 
 # Define the regex pattern (case-insensitive)
 pattern_antilles = re.compile(r"(antilla|antille|martiniq|guadelou|guyan)", re.IGNORECASE)
@@ -34,21 +61,68 @@ articles_antilles = donnees_site_insee[
     | donnees_site_insee["xml_intertitre"].str.contains(pattern_antilles, na=False)
 ]
 
-# Display the number of results found
-print(f"Nombre d'articles Total: {donnees_site_insee.shape[0]}")
-print(f"Nombre d'articles trouvés: {articles_antilles.shape[0]}")
 
-# Display the first 10 results without the 'xml_content' column
-articles_antilles.titre.iloc[100]
+# SUMMARY STATISTICS ---------------------------------
+
+# TABLES ==================================
+
+# Display the number of results found
+logger.info(f"Nombre d'articles total dans la base Insee: {donnees_site_insee.shape[0]}")
+logger.info(f"Nombre d'articles trouvés concernant la DIRAG: {articles_antilles.shape[0]}")
 
 # Frequency table of 'libelleAffichageGeo'
-print(articles_antilles["libelleAffichageGeo"].value_counts())
+logger.info("Stats sur les libellés géographiques dans la base DIRAG")
+logger.info(articles_antilles["libelleAffichageGeo"].value_counts())
 
-# Ensure 'dateDiffusion' is in datetime format
+
+logger.info(f"Writing DIRAG dataset in temporary location ({DIRAG_INTERMEDIATE_PARQUET})")
+
+pathlib.Path(DIRAG_INTERMEDIATE_PARQUET).parents[0].mkdir(parents=True, exist_ok=True)
+articles_antilles.to_parquet(DIRAG_INTERMEDIATE_PARQUET)
+
+logger.success(f"DIRAG dataset has been written at {DIRAG_INTERMEDIATE_PARQUET} location")
+
+
+# BUILDING DATABASE -------------------------------
+
+logger.info("Cleaning dataset and chunking " + 30 * "-")
+
+corpus_dirag_clean, all_splits = _preprocess_data(
+    data=articles_antilles, embedding_model=embedding_model, filesystem=None, skip_chunking=False
+)
+
+
+db = build_vector_database(
+    filesystem=None,
+    embedding_model="OrdalieTech/Solon-embeddings-large-0.1",
+    return_none_on_fail=True,
+    document_database=(corpus_dirag_clean, all_splits),
+)
+
+
+# Writing database on S3
+directory = Path("./data/chroma_db")
+items = list(directory.iterdir())
+
+subprocess.run(
+    "mc cp data/chroma_db/ s3/projet-llm-insee-open-data/data/chroma_database/experiment/dirag/ -r", shell=True
+)
+
+
+logger.debug("Early exit to avoid computing graphics")
+sys.exit(1)
+
+
+# a mettre dans un quarto pour le futur
+# FIGURES ==================================
+
+
 articles_antilles["dateDiffusion"] = pd.to_datetime(articles_antilles["dateDiffusion"], errors="coerce")
+
 
 # Extract year and count publications per year
 evolution = articles_antilles["dateDiffusion"].dt.year.value_counts().sort_index()
+
 
 # Plot Evolution Temporelle des Publications
 plt.figure(figsize=(10, 6))

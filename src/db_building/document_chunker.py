@@ -55,11 +55,14 @@ def chunk_documents(
     # Load the tokenizer
     autokenizer = AutoTokenizer.from_pretrained(embedding_model)
 
+    if autokenizer.model_max_length is not None:
+        chunk_size = autokenizer.model_max_length
+
     # Initialize token splitter
     text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
         autokenizer,
         chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
+        # chunk_overlap=chunk_overlap,
         separators=separators,
     )
 

@@ -1,18 +1,17 @@
-import logging
 from collections.abc import Iterable
 
 import jsonlines
 import pandas as pd
 import s3fs
 from langchain.schema import Document
+from loguru import logger
 
 from src.config import Configurable, DefaultFullConfig, FullConfig
 
 from .document_chunker import chunk_documents
 from .utils_db import parse_xmls
 
-logger = logging.getLogger(__name__)
-
+logger.add("./logging/logs.log")
 
 # CHUNKING ALL DATASET ---------------------------------------------------
 
@@ -58,7 +57,11 @@ def build_document_database(
 
 @Configurable()
 def _preprocess_data(
-    filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()
+    filesystem: s3fs.S3FileSystem,
+    config: FullConfig = DefaultFullConfig(),
+    data: pd.DataFrame = None,
+    embedding_model: str | None = None,
+    skip_chunking: bool = False,
 ) -> tuple[pd.DataFrame, list[Document]]:
     """
     Process and merge data from multiple parquet sources, parse XML content,
@@ -81,9 +84,17 @@ def _preprocess_data(
     - all_splits: list or DataFrame containing the processed and chunked documents.
     """
 
+    if embedding_model is None:
+        embedding_model = config.embedding_model
+
     # Load main data from parquet file
     logger.info(f"Reading web4g data from {config.rawdata_web4g_uri}")
-    data = pd.read_parquet(config.rawdata_web4g_uri, filesystem=filesystem)
+
+    if data is None:
+        data = pd.read_parquet(config.rawdata_web4g_uri, filesystem=filesystem)
+        # Load additional RMES data
+        logger.info(f"Reading rmes data from {config.rawdata_rmes_uri}")
+        data_rmes = pd.read_parquet(config.rawdata_rmes_uri, filesystem=filesystem)
 
     # Limit the number of pages if specified
     if config.max_pages is not None:
@@ -110,10 +121,6 @@ def _preprocess_data(
         ]
     ]
 
-    # Load additional RMES data
-    logger.info(f"Reading rmes data from {config.rawdata_rmes_uri}")
-    data_rmes = pd.read_parquet(config.rawdata_rmes_uri, filesystem=filesystem)
-
     # Concatenate the original data with the RMES data (if max_pages is not None)
     if config.max_pages is not None:
         df = pd.concat([df, data_rmes])
@@ -121,15 +128,23 @@ def _preprocess_data(
     # Fill NaN values with empty strings (for compatibility with Chroma metadata)
     df = df.fillna(value="")
 
+    if skip_chunking is True:
+        logger.success("Chunking is skipped, preprocessed is done")
+        return df
+
+    logger.info("Chunking corpus")
+
     # Chunk the documents (using tokenizer if specified in kwargs)
     all_splits = chunk_documents(
         data=df,
-        embedding_model=config.embedding_model,
+        embedding_model=embedding_model,
         markdown_split=config.markdown_split,
         chunk_size=config.chunk_size,
         chunk_overlap=config.chunk_overlap,
         separators=config.separators,
     )
+
+    logger.info("Corpus chunking has been successful")
 
     return df, all_splits
 
