@@ -26,3 +26,4 @@ jsonlines
 langchain_chroma
 confz
 pipreqs
+loguru
