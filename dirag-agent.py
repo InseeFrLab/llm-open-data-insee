@@ -6,6 +6,7 @@ from src.db_building.build_database import load_vector_database_from_local
 from src.db_building import load_retriever
 
 from loguru import logger
+import pandas as pd
 
 
 client = AsyncOpenAI(
@@ -88,7 +89,20 @@ async def on_chat_start():
 @cl.on_message
 async def on_message(message: cl.Message):
 
+    await cl.Message(
+        content="Recherche des documents les plus pertinents"
+        ).send()
+
     best_documents = retriever.invoke(message.content)
+    best_documents_df = [docs.metadata for docs in best_documents]
+    best_documents_df = pd.DataFrame(best_documents_df)
+
+    await cl.Message(
+        content="Documents trouvés, je génère maintenant une réponse personnalisée"
+        ).send()
+
+
+    logger.debug(best_documents_df)
 
     context = format_docs(best_documents)
     #await cl.Message(content=context).send()
@@ -111,3 +125,6 @@ async def on_message(message: cl.Message):
 
     message_history.append({"role": "assistant", "content": msg.content})
     await msg.update()
+
+    elements = [cl.Dataframe(data=best_documents_df, display="inline", name="Dataframe")]
+    await cl.Message(content="Documents les plus pertinents", elements=elements).send()
