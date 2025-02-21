@@ -165,7 +165,7 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
     for i, row in data.iterrows():
         page_id = row[id]
         if i % logstep == 0:
-            logger.info(f"Parsing XML from page {page_id} -- {i}/{len(data)} ({100*i/len(data):.2f}%)")
+            logger.info(f"Parsing XML from page {page_id} -- {i}/{len(data)} ({100 * i / len(data):.2f}%)")
 
         if not row[xml_column]:
             # When xml_content is empty, we skip the page
@@ -298,7 +298,7 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
 
         # Rename intertitre tags
         if tag.name == "intertitre":
-            tag.name = f"h{int(tag.get("niveau")) + 2}" if tag.get("niveau") is not None else "h3"
+            tag.name = f"h{int(tag.get('niveau')) + 2}" if tag.get("niveau") is not None else "h3"
             continue
 
         ## TABLES

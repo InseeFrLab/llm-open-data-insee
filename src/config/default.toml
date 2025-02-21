@@ -57,8 +57,9 @@ batch_size_embedding = 10
 # IR MODEL    -----------------------------------------------------------------
 
 # Embedding model for IR
-emb_device = "cpu"
-embedding_model = "Alibaba-NLP/gte-Qwen2-7B-instruct"
+emb_device = "cuda"
+embedding_model = "OrdalieTech/Solon-embeddings-large-0.1"
+
 
 # LLM -------------------------------------------------------------------------
 

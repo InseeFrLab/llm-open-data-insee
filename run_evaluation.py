@@ -50,7 +50,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
         # ------------------------
         # II - CREATING RETRIEVER
 
-        logger.info(f"Training retriever {80*'='}")
+        logger.info(f"Training retriever {80 * '='}")
 
         mlflow.log_text(config.RAG_PROMPT_TEMPLATE, "rag_prompt.md")
 
@@ -99,7 +99,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
         # IV - RERANKER
 
         if config.reranking_method is not None:
-            logger.info(f"Applying reranking {80*'='}")
+            logger.info(f"Applying reranking {80 * '='}")
             logger.info(f"Selected method: {config.reranking_method}")
 
             # Define a langchain prompt template
@@ -117,12 +117,12 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
                 reranker=config.reranking_method,
             )
         else:
-            logger.info(f"Skipping reranking since value is None {80*'='}")
+            logger.info(f"Skipping reranking since value is None {80 * '='}")
 
         # ------------------------
         # V - EVALUATION
 
-        logger.info(f"Evaluating model performance against expectations {80*'='}")
+        logger.info(f"Evaluating model performance against expectations {80 * '='}")
 
         if config.reranking_method is None:
             answers_bot = answer_faq_by_bot(retriever, faq)
@@ -159,7 +159,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
         mlflow.log_metric("document_among_topk", 100 * document_among_topk)
         mlflow.log_metrics(
             {
-                f'document_in_top_{int(row["document_position"])}': 100 * row["cumsum_url_expected"]
+                f"document_in_top_{int(row['document_position'])}": 100 * row["cumsum_url_expected"]
                 for _, row in answers_bot_topk.iterrows()
             }
         )
@@ -171,7 +171,7 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
             mlflow.log_metric("document_among_topk_before_reranker", 100 * document_among_topk_before_reranker)
             mlflow.log_metrics(
                 {
-                    f'document_in_top_{int(row["document_position"])}_before_reranker': 100 * row["cumsum_url_expected"]
+                    f"document_in_top_{int(row['document_position'])}_before_reranker": 100 * row["cumsum_url_expected"]
                     for _, row in answers_bot_topk_before_reranker.iterrows()
                 }
             )

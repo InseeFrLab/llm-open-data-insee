@@ -78,7 +78,7 @@ async def on_chat_start():
         retriever_params={"search_type": "similarity", "search_kwargs": {"k": 10}},
     )
 
-    logger.info(f"Ma base de connaissance du site Insee comporte {len(db.get()["documents"])} documents")
+    logger.info(f"Ma base de connaissance du site Insee comporte {len(db.get()['documents'])} documents")
 
     logger.info("------ retriever ready for use")
 

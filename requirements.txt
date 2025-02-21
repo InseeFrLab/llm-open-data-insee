@@ -27,3 +27,5 @@ langchain_chroma
 confz
 pipreqs
 loguru
+langchain_openai
+langchain_qdrant
