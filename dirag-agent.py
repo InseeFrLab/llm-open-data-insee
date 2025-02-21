@@ -8,8 +8,6 @@ from qdrant_client import QdrantClient
 from langchain_qdrant import QdrantVectorStore
 
 from src.utils import create_prompt_from_instructions, format_docs
-from src.db_building.build_database import load_vector_database_from_local
-from src.db_building import load_retriever
 from src.model_building import cache_model_from_hf_hub
 
 from loguru import logger
