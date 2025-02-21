@@ -45,7 +45,7 @@ def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
         with open(f"{config.chroma_db_local_path}/parameters.yaml", "w") as f:
             yaml.dump(config, f, default_flow_style=False)
 
-        # Load or build the document database
+        # Load or build the document database -----------------------------------
 
         donnees_site_insee = pd.read_parquet(s3_path, engine="pyarrow", filesystem=filesystem)
 
