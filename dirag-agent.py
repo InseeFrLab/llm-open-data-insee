@@ -1,16 +1,37 @@
+import os
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import chainlit as cl
+
+from langchain_huggingface import HuggingFaceEmbeddings
+from qdrant_client import QdrantClient
+from langchain_qdrant import QdrantVectorStore
 
 from src.utils import create_prompt_from_instructions, format_docs
 from src.db_building.build_database import load_vector_database_from_local
 from src.db_building import load_retriever
+from src.model_building import cache_model_from_hf_hub
 
 from loguru import logger
 import pandas as pd
 
+# ENVIRONEMENT ------------------------------
 
-client = AsyncOpenAI(
-    base_url="https://projet-llm-insee-open-data-vllm.user.lab.sspcloud.fr/v1/", api_key="EMPTY")
+load_dotenv()
+
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "OrdalieTech/Solon-embeddings-large-0.1")
+URL_QDRANT = os.getenv("EMBEDDING_MODEL", None)
+API_KEY_QDRANT = os.getenv("API_KEY_QDRANT", None)
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "dirag_solon")
+logger.debug(f"Using {EMBEDDING_MODEL} for database retrieval")
+logger.debug(f"Setting {URL_QDRANT} as vector database endpoint")
+
+URL_VLLM_CLIENT = os.getenv("URL_VLLM_CLIENT")
+logger.debug(f"Setting {URL_VLLM_CLIENT} for database retrieval")
+
+
+vllm_client = AsyncOpenAI(
+    base_url=URL_VLLM_CLIENT, api_key="EMPTY")
 # Instrument the OpenAI client
 cl.instrument_openai()
 
@@ -20,7 +41,7 @@ settings = {
     # ... more settings
 }
 
-
+    
 # PROMPT -------------------------------------
 
 system_instructions = """
@@ -58,16 +79,32 @@ prompt = create_prompt_from_instructions(system_instructions, question_instructi
 def load_retriever_cache():
     logger.info("Loading vector database")
 
-    db = load_vector_database_from_local(
-        persist_directory="data/chroma_db_checkpoint/", embedding_model="OrdalieTech/Solon-embeddings-large-0.1"
+    cache_model_from_hf_hub(EMBEDDING_MODEL, hf_token=os.environ.get("HF_TOKEN"))
+
+    emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"device": "cuda"},
+            encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
+            show_progress=False,
+        )
+
+    client = QdrantClient(
+        url=URL_QDRANT,
+        api_key=API_KEY_QDRANT,
+        port="443",
+        https="true"
     )
 
-    retriever, vectorstore = load_retriever(
-        vectorstore=db,
-        retriever_params={"search_type": "similarity", "search_kwargs": {"k": 10}},
+    vectorstore = QdrantVectorStore(
+        client=client,
+        collection_name=COLLECTION_NAME,
+        embedding=emb_model,
+        vector_name=EMBEDDING_MODEL
     )
 
-    logger.info(f"Ma base de connaissance du site Insee comporte {len(db.get()["documents"])} documents")
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
+
+    #logger.info(f"Ma base de connaissance du site Insee comporte {len(db.get()["documents"])} documents")
 
     logger.info("------ rag_chain initialized, ready for use")
 
@@ -115,7 +152,7 @@ async def on_message(message: cl.Message):
 
     msg = cl.Message(content="")
 
-    stream = await client.chat.completions.create(
+    stream = await vllm_client.chat.completions.create(
         messages=message_history, stream=True, **settings
     )
 
