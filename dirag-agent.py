@@ -20,7 +20,7 @@ import pandas as pd
 load_dotenv()
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "OrdalieTech/Solon-embeddings-large-0.1")
-URL_QDRANT = os.getenv("EMBEDDING_MODEL", None)
+URL_QDRANT = os.getenv("URL_QDRANT", None)
 API_KEY_QDRANT = os.getenv("API_KEY_QDRANT", None)
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "dirag_solon")
 logger.debug(f"Using {EMBEDDING_MODEL} for database retrieval")
@@ -83,7 +83,7 @@ def load_retriever_cache():
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
             model_name=EMBEDDING_MODEL,
-            model_kwargs={"device": "cuda"},
+            model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
             show_progress=False,
         )
@@ -95,12 +95,17 @@ def load_retriever_cache():
         https="true"
     )
 
+    logger.success("Connection to DB client successful")
+
     vectorstore = QdrantVectorStore(
         client=client,
         collection_name=COLLECTION_NAME,
         embedding=emb_model,
         vector_name=EMBEDDING_MODEL
     )
+
+
+    logger.success("Vectorstore initialization successful")
 
     retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
