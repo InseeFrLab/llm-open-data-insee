@@ -104,7 +104,7 @@ def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
 
         retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
-        retrieved_docs = retriever.similarity_search(query, k=5)
+        retrieved_docs = retriever.batch([query])
         result_list = []
         for doc in retrieved_docs:
             row = {"page_content": doc.page_content}
