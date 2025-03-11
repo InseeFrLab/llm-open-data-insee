@@ -1,6 +1,15 @@
 import os
 
 import chainlit as cl
+
+from langchain_huggingface import HuggingFaceEmbeddings
+from qdrant_client import QdrantClient
+from langchain_qdrant import QdrantVectorStore
+
+from src.utils import create_prompt_from_instructions, format_docs
+from src.model_building import cache_model_from_hf_hub
+
+from loguru import logger
 import pandas as pd
 from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -17,7 +26,7 @@ from src.utils import create_prompt_from_instructions, format_docs
 load_dotenv()
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "OrdalieTech/Solon-embeddings-large-0.1")
-URL_QDRANT = os.getenv("EMBEDDING_MODEL", None)
+URL_QDRANT = os.getenv("URL_QDRANT", None)
 API_KEY_QDRANT = os.getenv("API_KEY_QDRANT", None)
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "dirag_solon")
 logger.debug(f"Using {EMBEDDING_MODEL} for database retrieval")
@@ -79,17 +88,27 @@ def load_retriever_cache():
     cache_model_from_hf_hub(EMBEDDING_MODEL, hf_token=os.environ.get("HF_TOKEN"))
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": "cuda"},
-        encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
-        show_progress=False,
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
+            show_progress=False,
+        )
+
+    client = QdrantClient(
+        url=URL_QDRANT,
+        api_key=API_KEY_QDRANT,
+        port="443",
+        https="true"
     )
 
-    client = QdrantClient(url=URL_QDRANT, api_key=API_KEY_QDRANT, port="443", https="true")
+    logger.success("Connection to DB client successful")
 
     vectorstore = QdrantVectorStore(
         client=client, collection_name=COLLECTION_NAME, embedding=emb_model, vector_name=EMBEDDING_MODEL
     )
+
+
+    logger.success("Vectorstore initialization successful")
 
     retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
