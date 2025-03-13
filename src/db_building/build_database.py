@@ -25,8 +25,6 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "OrdalieTech/Solon-embeddings-lar
 URL_QDRANT = os.getenv("URL_QDRANT", None)
 API_KEY_QDRANT = os.getenv("API_KEY_QDRANT", None)
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "dirag_solon")
-logger.debug(f"Using {EMBEDDING_MODEL} for database retrieval")
-logger.debug(f"Setting {URL_QDRANT} as vector database endpoint")
 
 
 @Configurable()

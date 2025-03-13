@@ -1,19 +1,10 @@
 import os
 
 import chainlit as cl
-
-from langchain_huggingface import HuggingFaceEmbeddings
-from qdrant_client import QdrantClient
-from langchain_qdrant import QdrantVectorStore
-
-from src.utils import create_prompt_from_instructions, format_docs
-from src.model_building import cache_model_from_hf_hub
-
-from loguru import logger
 import pandas as pd
 from dotenv import load_dotenv
-
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from loguru import logger
 from openai import AsyncOpenAI
@@ -21,24 +12,50 @@ from qdrant_client import QdrantClient
 
 from src.model_building import cache_model_from_hf_hub
 from src.utils import create_prompt_from_instructions, format_docs
+from src.utils.utils_vllm import get_model_from_env
+
+# CONFIGURATION ------------------------------------------
+
+config_s3 = {"AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")}
+
+config_database_client = {
+    "QDRANT_URL": os.getenv("QDRANT_URL", None),
+    "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY", None),
+    "QDRANT_COLLECTION_NAME": os.getenv("QDRANT_COLLECTION_NAME", "dirag_mistral_small"),
+}
+
+config_embedding_model = {
+    # Assuming an OpenAI compatible client is used (VLLM, Ollama, etc.)
+    "OPENAI_API_BASE_EMBEDDING": os.getenv("OPENAI_API_BASE", os.getenv("URL_EMBEDDING_MODEL")),
+    "OPENAI_API_KEY_EMBEDDING": os.getenv("OPENAI_API_KEY", "EMPTY"),
+    "MODE_EMBEDDING": "API",  # 'API' or 'local' mode
+}
+
+config_generative_model = {
+    # Assuming an OpenAI compatible client is used (VLLM, Ollama, etc.)
+    "OPENAI_API_BASE_GENERATIVE": os.getenv("OPENAI_API_BASE", os.getenv("URL_GENERATIVE_MODEL")),
+    "OPENAI_API_KEY_GENERATIVE": os.getenv("OPENAI_API_KEY", "EMPTY"),
+    "MODE_COMPLETION": "API",  # 'API' or 'local' mode
+}
+
+
+config = {**config_s3, **config_database_client, **config_embedding_model, **config_generative_model}
+
 
 # ENVIRONEMENT ------------------------------
 
-load_dotenv()
+load_dotenv(override=True)
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "OrdalieTech/Solon-embeddings-large-0.1")
-URL_QDRANT = os.getenv("URL_QDRANT", None)
-API_KEY_QDRANT = os.getenv("API_KEY_QDRANT", None)
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "dirag_solon")
-logger.debug(f"Using {EMBEDDING_MODEL} for database retrieval")
-logger.debug(f"Setting {URL_QDRANT} as vector database endpoint")
-
-URL_VLLM_EMBEDDING = os.getenv("URL_VLLM_EMBEDDING")
-URL_VLLM_CLIENT = os.getenv("URL_VLLM_CLIENT")
-logger.debug(f"Setting {URL_VLLM_CLIENT} for database retrieval")
+# TODO: alternative with local models
+embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
+generative_model = get_model_from_env("URL_GENERATIVE_MODEL")
 
 
-vllm_client = AsyncOpenAI(base_url=URL_VLLM_CLIENT, api_key="EMPTY")
+vllm_client_completion = AsyncOpenAI(
+    base_url=config.get("OPENAI_API_BASE_GENERATIVE"),
+    api_key=config.get("OPENAI_API_KEY_GENERATIVE"),
+)
+
 # Instrument the OpenAI client
 cl.instrument_openai()
 
@@ -83,32 +100,44 @@ Réponse:
 prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
 
+def _embedding_client_local(config):
+    cache_model_from_hf_hub(embedding_model, hf_token=os.getenv("HF_TOKEN"))
+
+    emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
+        model_name=embedding_model,
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
+        show_progress=False,
+    )
+
+    return emb_model
+
+
+def _embedding_client_api(config):
+    emb_model = OpenAIEmbeddings(
+        model=embedding_model,
+        base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
+        api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+    )
+
+    return emb_model
+
+
 @cl.cache
 def load_retriever_cache():
     logger.info("Loading vector database")
 
-    cache_model_from_hf_hub(EMBEDDING_MODEL, hf_token=os.environ.get("HF_TOKEN"))
+    emb_model = _embedding_client_api()
 
-    emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
-            model_name=EMBEDDING_MODEL,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},  # set True for cosine similarity
-            show_progress=False,
-        )
-
-    client = QdrantClient(
-        url=URL_QDRANT,
-        api_key=API_KEY_QDRANT,
-        port="443",
-        https="true"
-    )
-
+    client = QdrantClient(url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"), port="443", https="true")
     logger.success("Connection to DB client successful")
 
     vectorstore = QdrantVectorStore(
-        client=client, collection_name=COLLECTION_NAME, embedding=emb_model, vector_name=EMBEDDING_MODEL
+        client=client,
+        collection_name=config.get("QDRANT_COLLECTION_NAME"),
+        embedding=emb_model,
+        vector_name=embedding_model,
     )
-
 
     logger.success("Vectorstore initialization successful")
 
@@ -155,7 +184,7 @@ async def on_message(message: cl.Message):
 
     msg = cl.Message(content="")
 
-    stream = await vllm_client.chat.completions.create(messages=message_history, stream=True, **settings)
+    stream = await vllm_client_completion.chat.completions.create(messages=message_history, stream=True, **settings)
 
     async for part in stream:
         if token := part.choices[0].delta.content or "":

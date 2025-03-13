@@ -1,15 +1,16 @@
-import logging
 import re
 from collections.abc import Generator, Sequence
 from typing import Any
 
+# import logging
 import pandas as pd
 from bs4 import BeautifulSoup
 from bs4.element import Tag
+from loguru import logger
 from markdownify import MarkdownConverter
 from tqdm import tqdm
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 TAGS_TO_IGNORE = [
     "sage",

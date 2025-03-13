@@ -1,9 +1,7 @@
 import logging
-from typing import Optional, Union
 
 import pandas as pd
-
-from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
+from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
@@ -115,12 +113,42 @@ def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHea
     return splitted_docs
 
 
+def _parser_xml_web4g(data: pd.DataFrame) -> pd.DataFrame:
+    logger.info("Parsing XML content")
+    parsed_pages = parse_xmls(data)
+
+    # Merge parsed XML data with the original DataFrame
+    df = (
+        data.set_index("id")
+        .merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
+        .drop(columns=["xml_content"], errors="ignore")  # Drop only if exists
+    )
+
+    df = df.loc[
+        :,
+        [
+            "titre",
+            "categorie",
+            "url",
+            "dateDiffusion",
+            "theme",
+            "collection",
+            "libelleAffichageGeo",
+            "content",
+        ],
+    ]
+
+    df = df.fillna(value="")
+
+    return df
+
+
 def parse_transform_documents(
     data: pd.DataFrame,
-    max_document_size: Optional[int] = None,
+    max_document_size: int | None = None,
     page_column_content: str = "content",
     engine_output: str = "pandas",
-) -> Union[pd.DataFrame, list]:
+) -> pd.DataFrame | list:
     """
     Parses and transforms document data, optionally splitting documents into smaller chunks.
 
@@ -148,15 +176,7 @@ def parse_transform_documents(
     if engine_output not in {"pandas", "langchain"}:
         raise ValueError("'engine_output' should be 'pandas' or 'langchain'")
 
-    logger.info("Parsing XML content")
-    parsed_pages = parse_xmls(data)
-
-    # Merge parsed XML data with the original DataFrame
-    df = (
-        data.set_index("id")
-        .merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
-        .drop(columns=["xml_content"], errors="ignore")  # Drop only if exists
-    )
+    df = _parser_xml_web4g(data)
 
     if engine_output == "pandas":
         logger.debug("Returning Pandas DataFrame since 'engine_output' is set to 'pandas'")

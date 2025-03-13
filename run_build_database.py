@@ -16,18 +16,30 @@ from loguru import logger
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import Distance, VectorParams
 
-from src.db_building.dirag import constructor_data_dirag
+from src.db_building.corpus import constructor_corpus
 from src.db_building.document_chunker import parse_transform_documents
 from src.utils.utils_vllm import get_model_from_env, get_model_max_len
 
 load_dotenv(override=True)
-parser = argparse.ArgumentParser(description="Parameters to control database building")
 
+parser = argparse.ArgumentParser(description="Parameters to control database building")
 parser.add_argument(
     "--collection_name",
     type=str,
     default="dirag_experimentation",
     help="Database collection name (for Qdrant or Chroma like database)",
+)
+parser.add_argument(
+    "--max_pages",
+    type=int,
+    default=None,
+    help="Max number of pages that should be considered",
+)
+parser.add_argument(
+    "--mlflow_experiment_name",
+    type=str,
+    default="vector_database_building",
+    help="Experiment name in mlflow",
 )
 parser.add_argument(
     "--max_document_size",
@@ -38,13 +50,16 @@ parser.add_argument(
     "If value provided, CharacterTextSplitter.from_tiktoken_encoder is applied",
 )
 parser.add_argument(
-    "--max_pages",
-    type=int,
-    default=None,
-    help="Max number of pages that should be considered",
+    "--dirag_only",
+    action=argparse.BooleanOptionalAction,
+    help="Use restricted DIRAG data instead of the complete web4g dataset.",
 )
+# Example usage:
+# python run_build_dataset.py max_pages 10 --dirag_only
+# python run_build_dataset.py max_pages 10
 
 args = parser.parse_args()
+parser.set_defaults(dirag_only=False)
 
 # Logging configuration
 # logger = logging.getLogger(__name__)
@@ -56,11 +71,12 @@ config_s3 = {"AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.la
 config_database_client = {
     "QDRANT_URL": os.getenv("QDRANT_URL", None),
     "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY", None),
+    "QDRANT_COLLECTION_NAME": args.collection_name,
 }
 
 config_mlflow = {
     "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", None),
-    "MLFLOW_EXPERIMENT_NAME": os.getenv("MLFLOW_EXPERIMENT", "default"),
+    "MLFLOW_EXPERIMENT_NAME": args.mlflow_experiment_name,
 }
 
 config_embedding_model = {
@@ -72,26 +88,25 @@ config_embedding_model = {
 
 config = {**config_s3, **config_database_client, **config_mlflow, **config_embedding_model}
 
-
 # PARAMETERS ------------------------------------------
 
 SIMILARITY_SEARCH_INSTRUCTION = (
     "Instruct: Given a specific query in french, retrieve the most relevant passages that answer the query"
 )
 S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
-collection_name = os.getenv("COLLECTION_NAME", args.collection_name)
+collection_name = args.collection_name
 
 url_database_client = config_database_client.get("QDRANT_URL")
 api_key_database_client = config_database_client.get("QDRANT_API_KEY")
 max_document_size = args.max_document_size
-embedding_model = get_model_from_env()
+embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
     "QDRANT_URL_API": url_database_client,
     "max_document_size": max_document_size,
 }
-
+print(parameters_database_construction)
 logger.debug(f"Using {embedding_model} for database retrieval")
 logger.debug(f"Setting {url_database_client} as vector database endpoint")
 
@@ -104,21 +119,34 @@ def run_build_database() -> None:
         run_id = run.info.run_id
         filesystem = s3fs.S3FileSystem(endpoint_url=config.get("AWS_ENDPOINT_URL"))
 
-        mlflow.log_params(config)
+        filtered_config = {k: v for k, v in config.items() if "KEY" not in k}
+        mlflow.log_params(filtered_config)
         mlflow.log_params(parameters_database_construction)
 
         # LOAD AND PROCESS CORPUS -----------------------------------
         logger.debug(f"Importing raw data {30 * '-'}")
 
-        data = constructor_data_dirag(s3_path=S3_PATH, fs=filesystem)
+        data = constructor_corpus(
+            dirag_only="dirag" if args.dirag_only else "complete",
+            s3_path=S3_PATH,
+            fs=filesystem,
+            search_cols=["titre", "libelleAffichageGeo", "xml_intertitre"],
+        )
+
         data["mlflow_run_id"] = run_id  # Add mlflow run id in metadata
+
         if args.max_pages is not None:
             logger.debug(f"Limiting database to {args.max_pages} pages")
             data = data.head(args.max_pages)
 
+        mlflow.log_param("max_pages", args.max_pages)
         mlflow.log_param("max_document_size", max_document_size)
 
+        logger.info("Starting to parse XMLs")
+
         documents = parse_transform_documents(data=data, max_document_size=max_document_size, engine_output="langchain")
+
+        logger.success("XMLs have been parsed")
 
         # CREATE DATABASE COLLECTION -----------------------
         logger.info("Connecting to vector database")
@@ -169,7 +197,7 @@ def run_build_database() -> None:
 
         mlflow.log_params(
             {
-                "QDRANT_COLLECTION_NAME": unique_collection_name,
+                "QDRANT_COLLECTION_UNIQUE": unique_collection_name,
                 "QDRANT_COLLECTION_ALIAS": collection_name,
             }
         )
