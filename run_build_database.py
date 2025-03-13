@@ -1,6 +1,5 @@
-import logging
+import argparse
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -8,103 +7,207 @@ from pathlib import Path, PosixPath
 
 import mlflow
 import pandas as pd
+import requests
 import s3fs
-import yaml
 from dotenv import load_dotenv
+from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import QdrantVectorStore
+from loguru import logger
+from qdrant_client import QdrantClient, models
+from qdrant_client.http.models import Distance, VectorParams
 
-from src.config import DefaultFullConfig, FullConfig, process_args, simple_argparser
-from src.db_building import build_vector_database
-from src.db_building.corpus_building import _preprocess_data
+from src.db_building.dirag import constructor_data_dirag
+from src.db_building.document_chunker import parse_transform_documents
+from src.utils.utils_vllm import get_model_from_env, get_model_max_len
+
+load_dotenv(override=True)
+parser = argparse.ArgumentParser(description="Parameters to control database building")
+
+parser.add_argument(
+    "--collection_name",
+    type=str,
+    default="dirag_experimentation",
+    help="Database collection name (for Qdrant or Chroma like database)",
+)
+parser.add_argument(
+    "--max_document_size",
+    type=int,
+    default=None,
+    help="Threshold size for documents. "
+    "If None (default), corpus is left asis. "
+    "If value provided, CharacterTextSplitter.from_tiktoken_encoder is applied",
+)
+parser.add_argument(
+    "--max_pages",
+    type=int,
+    default=None,
+    help="Max number of pages that should be considered",
+)
+
+args = parser.parse_args()
 
 # Logging configuration
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
-load_dotenv()
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "OrdalieTech/Solon-embeddings-large-0.1")
-URL_QDRANT = os.getenv("EMBEDDING_MODEL", None)
-API_KEY_QDRANT = os.getenv("API_KEY_QDRANT", None)
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "dirag_solon")
-logger.debug(f"Using {EMBEDDING_MODEL} for database retrieval")
-logger.debug(f"Setting {URL_QDRANT} as vector database endpoint")
-s3_path = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
-DIRAG_INTERMEDIATE_PARQUET = "./data/raw/dirag.parquet"
+# CONFIGURATION ------------------------------------------
+
+config_s3 = {"AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")}
+
+config_database_client = {
+    "QDRANT_URL": os.getenv("QDRANT_URL", None),
+    "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY", None),
+}
+
+config_mlflow = {
+    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", None),
+    "MLFLOW_EXPERIMENT_NAME": os.getenv("MLFLOW_EXPERIMENT", "default"),
+}
+
+config_embedding_model = {
+    # Assuming an OpenAI compatible client is used (VLLM, Ollama, etc.)
+    "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", os.getenv("URL_EMBEDDING_MODEL")),
+    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "EMPTY"),
+}
 
 
-def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
-    mlflow.set_tracking_uri(config.mlflow_tracking_uri)
-    mlflow.set_experiment(config.experiment_name)
+config = {**config_s3, **config_database_client, **config_mlflow, **config_embedding_model}
 
-    with mlflow.start_run():
-        # Logging the full configuration to mlflow
-        mlflow.log_params(vars(config))
 
-        filesystem = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
+# PARAMETERS ------------------------------------------
 
-        # Log the parameters in a yaml file
-        os.makedirs(config.chroma_db_local_path, exist_ok=True)
-        with open(f"{config.chroma_db_local_path}/parameters.yaml", "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
+SIMILARITY_SEARCH_INSTRUCTION = (
+    "Instruct: Given a specific query in french, retrieve the most relevant passages that answer the query"
+)
+S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
+collection_name = os.getenv("COLLECTION_NAME", args.collection_name)
 
-        # Load or build the document database -----------------------------------
+url_database_client = config_database_client.get("QDRANT_URL")
+api_key_database_client = config_database_client.get("QDRANT_API_KEY")
+max_document_size = args.max_document_size
+embedding_model = get_model_from_env()
 
-        donnees_site_insee = pd.read_parquet(s3_path, engine="pyarrow", filesystem=filesystem)
+parameters_database_construction = {
+    "embedding_model": embedding_model,
+    "QDRANT_URL_API": url_database_client,
+    "max_document_size": max_document_size,
+}
 
-        # Define the regex pattern (case-insensitive)
-        pattern_antilles = re.compile(r"(antilla|antille|martiniq|guadelou|guyan)", re.IGNORECASE)
+logger.debug(f"Using {embedding_model} for database retrieval")
+logger.debug(f"Setting {url_database_client} as vector database endpoint")
 
-        # Filter articles where the pattern matches in specified columns
-        articles_antilles = donnees_site_insee[
-            donnees_site_insee["titre"].str.contains(pattern_antilles, na=False)
-            | donnees_site_insee["libelleAffichageGeo"].str.contains(pattern_antilles, na=False)
-            | donnees_site_insee["xml_intertitre"].str.contains(pattern_antilles, na=False)
-        ]
 
-        df = articles_antilles.copy()
+def run_build_database() -> None:
+    mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
+    mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
 
-        corpus_dirag_clean, all_splits = _preprocess_data(
-            data=articles_antilles, embedding_model=EMBEDDING_MODEL, filesystem=None, skip_chunking=False
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+        filesystem = s3fs.S3FileSystem(endpoint_url=config.get("AWS_ENDPOINT_URL"))
+
+        mlflow.log_params(config)
+        mlflow.log_params(parameters_database_construction)
+
+        # LOAD AND PROCESS CORPUS -----------------------------------
+        logger.debug(f"Importing raw data {30 * '-'}")
+
+        data = constructor_data_dirag(s3_path=S3_PATH, fs=filesystem)
+        data["mlflow_run_id"] = run_id  # Add mlflow run id in metadata
+        if args.max_pages is not None:
+            logger.debug(f"Limiting database to {args.max_pages} pages")
+            data = data.head(args.max_pages)
+
+        mlflow.log_param("max_document_size", max_document_size)
+
+        documents = parse_transform_documents(data=data, max_document_size=max_document_size, engine_output="langchain")
+
+        # CREATE DATABASE COLLECTION -----------------------
+        logger.info("Connecting to vector database")
+
+        model_max_len = get_model_max_len(embedding_model)
+        unique_collection_name = f"{collection_name}_{run_id}"
+
+        logger.info("Setting connection")
+        client = QdrantClient(url=url_database_client, api_key=api_key_database_client, port="443", https="true")
+
+        logger.info(f"Creating vector collection ({unique_collection_name})")
+        client.create_collection(
+            collection_name=unique_collection_name,
+            vectors_config=VectorParams(size=model_max_len, distance=Distance.COSINE),
         )
 
-        db = build_vector_database(filesystem, config=config, return_none_on_fail=True, document_database=all_splits)
-
-        # Move ChromaDB in a specific path in s3
-        hash_chroma = next(
-            entry
-            for entry in os.listdir(config.chroma_db_local_path)
-            if os.path.isdir(os.path.join(config.chroma_db_local_path, entry))
+        emb_model = OpenAIEmbeddings(
+            model=embedding_model,
+            openai_api_base=config_embedding_model.get("OPENAI_API_BASE"),
+            openai_api_key=config_embedding_model.get("OPENAI_API_KEY"),
         )
 
-        logger.info(f"Uploading Chroma database ({hash_chroma}) to s3: {config.chroma_db_local_path}")
+        # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
+        logger.info("Putting documents in vector database")
 
-        cmd = (
-            "mc",
-            "cp",
-            "-r",
-            f"{config.chroma_db_local_path}/",
-            f"{config.chroma_db_s3_path}/{hash_chroma}/",
+        db = QdrantVectorStore.from_documents(
+            documents,
+            emb_model,
+            url=url_database_client,
+            api_key=api_key_database_client,
+            vector_name=embedding_model,
+            prefer_grpc=False,
+            port="443",
+            https="true",
+            collection_name=unique_collection_name,
+            force_recreate=True,
         )
-        with open("/dev/null", "w") as devnull:
-            subprocess.run(cmd, check=True, stdout=devnull, stderr=devnull)
-        # Log the newly generated vector database unless it was already loaded from an other run ID
-        logger.info(f"Logging to MLFlow ({hash_chroma}) to s3: {config.chroma_db_local_path}")
-        if not (config.mlflow_run_id and config.mlflow_load_artifacts):
-            mlflow.log_artifacts(config.chroma_db_local_path, artifact_path="chroma")
+
+        # SETTING ALIAS -----------------------
+
+        client.update_collection_aliases(
+            change_aliases_operations=[
+                models.CreateAliasOperation(
+                    create_alias=models.CreateAlias(collection_name=unique_collection_name, alias_name=collection_name)
+                )
+            ]
+        )
+
+        mlflow.log_params(
+            {
+                "QDRANT_COLLECTION_NAME": unique_collection_name,
+                "QDRANT_COLLECTION_ALIAS": collection_name,
+            }
+        )
+
+        # CREATING SNAPSHOT FOR LOGGING -------------------
+        logger.info("Logging database snapshot")
+
+        snapshot = client.create_snapshot(collection_name=unique_collection_name)
+
+        url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
+
+        # Intermediate save snapshot in local for logging in MLFlow
+        response = requests.get(url_snapshot, headers={"api-key": api_key_database_client})
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
+            temp_file.write(response.content)
+            temp_file_path = temp_file.name  # Store temp file path
+
+        mlflow.log_artifact(local_path=temp_file_path)
+
+        logger.success("Database building successful")
+
+        # LOGGING OTHER USEFUL THINGS --------------------------
 
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
-            df.head(10),
-            source=config.raw_dataset_uri,
+            data.head(10),
+            source=S3_PATH,
             name="web4g_data",
         )
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
-        mlflow.log_table(data=df.head(10), artifact_file="web4g_data.json")
+        mlflow.log_table(data=data.head(10), artifact_file="web4g_data.json")
 
         # Log a result of a similarity search
-        query = f"{config.SIMILARITY_SEARCH_INSTRUCTION}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
+        query = f"{SIMILARITY_SEARCH_INSTRUCTION}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
 
         retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
-        retrieved_docs = retriever.batch([query])
+        retrieved_docs = retriever.invoke(query)
         result_list = []
         for doc in retrieved_docs:
             row = {"page_content": doc.page_content}
@@ -119,11 +222,7 @@ def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
 
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")
-        FILES_TO_LOG = (
-            list(current_dir.glob("src/db_building/*.py"))
-            + list(current_dir.glob("src/config/*.py"))
-            + [PosixPath("run_build_database.py")]
-        )
+        FILES_TO_LOG = list(current_dir.glob("src/**/*.py")) + [PosixPath("run_build_database.py")]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_dir_path = Path(tmp_dir)
@@ -144,6 +243,4 @@ def run_build_database(config: FullConfig = DefaultFullConfig()) -> None:
 
 
 if __name__ == "__main__":
-    process_args(simple_argparser())
-    assert DefaultFullConfig().mlflow_tracking_uri is not None, "Please set the MLFLOW_TRACKING_URI parameter"
     run_build_database()

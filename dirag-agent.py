@@ -12,6 +12,7 @@ from src.model_building import cache_model_from_hf_hub
 from loguru import logger
 import pandas as pd
 from dotenv import load_dotenv
+
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from loguru import logger
@@ -32,6 +33,7 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME", "dirag_solon")
 logger.debug(f"Using {EMBEDDING_MODEL} for database retrieval")
 logger.debug(f"Setting {URL_QDRANT} as vector database endpoint")
 
+URL_VLLM_EMBEDDING = os.getenv("URL_VLLM_EMBEDDING")
 URL_VLLM_CLIENT = os.getenv("URL_VLLM_CLIENT")
 logger.debug(f"Setting {URL_VLLM_CLIENT} for database retrieval")
 
