@@ -122,6 +122,7 @@ def run_build_database() -> None:
         filtered_config = {k: v for k, v in config.items() if "KEY" not in k}
         mlflow.log_params(filtered_config)
         mlflow.log_params(parameters_database_construction)
+        mlflow.log_params({"dirag_only": args.dirag_only})
 
         # LOAD AND PROCESS CORPUS -----------------------------------
         logger.debug(f"Importing raw data {30 * '-'}")

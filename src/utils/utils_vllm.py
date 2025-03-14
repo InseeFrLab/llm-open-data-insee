@@ -2,6 +2,7 @@ import logging
 import os
 
 import requests
+from langchain_openai import OpenAIEmbeddings
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -58,3 +59,13 @@ def get_model_max_len(
     available_models = response.json().get("data", [])
     max_model_len = [model["max_model_len"] for model in available_models if model["id"] == model_id][0]
     return max_model_len
+
+
+def _embedding_client_api(config, embedding_model):
+    emb_model = OpenAIEmbeddings(
+        model=embedding_model,
+        base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
+        api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+    )
+
+    return emb_model

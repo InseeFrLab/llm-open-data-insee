@@ -1,79 +1,194 @@
-import logging
+import argparse
 import os
-import shutil
-import subprocess
-import tempfile
-from pathlib import Path
 
 import mlflow
 import pandas as pd
 import s3fs
-from langchain_core.prompts import PromptTemplate
+from dotenv import load_dotenv
+from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import QdrantVectorStore
+from loguru import logger
+from qdrant_client import QdrantClient
 
-from src.chain_building import build_chain_validator
-from src.chain_building.build_chain import build_chain
-from src.config import Configurable, DefaultFullConfig, FullConfig, llm_argparser, load_config
-from src.db_building import chroma_topk_to_df, load_retriever, load_vector_database
-from src.evaluation import (
-    answer_faq_by_bot,
-    compare_performance_reranking,
-    evaluate_question_validator,
-    transform_answers_bot,
-)
-from src.model_building import build_llm_model
-from src.utils.formatting_utilities import get_chatbot_template
+from src.db_building import chroma_topk_to_df
+from src.utils.utils_vllm import get_model_from_env
 
 # Logging configuration
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 
-@Configurable()
-def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFullConfig()) -> None:
-    mlflow.set_tracking_uri(config.mlflow_tracking_uri)
-    mlflow.set_experiment(config.experiment_name)
+load_dotenv(override=True)
 
-    with mlflow.start_run():
+parser = argparse.ArgumentParser(description="Parameters to control database building")
+parser.add_argument(
+    "--collection_name",
+    type=str,
+    default=None,
+    help="Database collection name (for Qdrant or Chroma like database)",
+)
+parser.add_argument(
+    "--mlflow_experiment_name_building",
+    type=str,
+    default="vector_database_building",
+    help="Experiment name in mlflow",
+)
+parser.add_argument(
+    "--mlflow_experiment_name_evaluation",
+    type=str,
+    default="vector_database_evaluation",
+    help="Experiment name in mlflow",
+)
+args = parser.parse_args()
+
+
+# CONFIGURATION ------------------------------------------
+
+config_s3 = {"AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")}
+
+config_database_client = {
+    "QDRANT_URL": os.getenv("QDRANT_URL", None),
+    "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY", None),
+    "QDRANT_COLLECTION_NAME": args.collection_name,
+}
+
+config_mlflow = {
+    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", None),
+    "MLFLOW_EXPERIMENT_NAME": args.mlflow_experiment_name_evaluation,
+}
+
+config_embedding_model = {
+    # Assuming an OpenAI compatible client is used (VLLM, Ollama, etc.)
+    "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", os.getenv("URL_EMBEDDING_MODEL")),
+    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "EMPTY"),
+}
+
+
+config = {**config_s3, **config_database_client, **config_mlflow, **config_embedding_model}
+
+
+# PARAMETRES -------------------------------------
+
+embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
+s3_bucket = "projet-llm-insee-open-data"
+faq_s3_path = "data/FAQ_site/faq.parquet"
+
+
+def retrieve_unique_collection_id(
+    experiment_name: str = "vector_database_building",
+    embedding_model: str = "model-org/model-name",
+    config: dict = {}
+):
+
+    logger.debug("Checking if collection_name can be retrieved from MLFlow")
+
+    df = mlflow.search_runs(
+        experiment_names=[experiment_name]
+    )
+
+    parameters_to_check = [
+        "URL_EMBEDDING_MODEL",
+        "OPENAI_API_BASE",
+        "OPENAI_API_KEY",
+        "QDRANT_URL"
+    ]
+
+    eligible_run = (
+        df
+        .loc[df["params.embedding_model"] == embedding_model]
+        .loc[df["params.OPENAI_API_BASE"] == config.get("OPENAI_API_BASE")]
+        .loc[df["params.QDRANT_URL"] == config.get("QDRANT_URL")]
+        #.loc[df["params.dirag_only"] == ]
+    )
+
+    n_eligible = eligible_run.shape[0]
+
+    if n_eligible == 0:
+        message = (
+            f"No eligible run has been found,"
+            f"check your {', '.join(parameters_to_check)} env vars allow to find a model"
+        )
+        logger.error(message)
+        raise ValueError(message)
+
+    if n_eligible > 1:
+        logger.debug(
+            f"{n_eligible} runs are consistent with input parameters, "
+            "taking last one"
+        )
+
+    # if multiple run, take the last one
+    unique_run_identifier = (
+        eligible_run
+        .loc[eligible_run['end_time'] == eligible_run['end_time'].max()]
+        ["params.QDRANT_COLLECTION_UNIQUE"].iloc[0]
+    )
+
+    logger.success(f"Using {unique_run_identifier} collection for evaluation")
+
+    return unique_run_identifier
+
+
+# RETRIEVE DATABASE PARAMETERS
+
+collection_name = args.collection_name
+if args.collection_name is None:
+    collection_name = retrieve_unique_collection_id(
+        experiment_name=args.mlflow_experiment_name_building,
+        embedding_model=embedding_model,
+        config=config
+    )
+
+
+def run_evaluation() -> None:
+
+    mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
+    mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
+    filesystem = s3fs.S3FileSystem(endpoint_url=config.get("AWS_ENDPOINT_URL"))
+
+    with mlflow.start_run() as run:
+        run_id = run.info.run_id
+
         # Logging the full configuration to mlflow
-        mlflow.log_params(vars(config))
 
         # INPUT: FAQ THAT WILL BE USED FOR EVALUATION -----------------
-        faq = pd.read_parquet(config.faq_s3_uri, filesystem=filesystem)
+
+        logger.info("Importing evaluation dataset")
+
+        faq = pd.read_parquet(f"s3://{s3_bucket}/{faq_s3_path}", filesystem=filesystem)
+
         # Extract all URLs from the 'sources' column
         faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
         # ------------------------
         # I - LOAD VECTOR DATABASE
+        logger.info("Loading vector database")
+
+        emb_model = OpenAIEmbeddings(
+            model=embedding_model,
+            base_url=config.get("OPENAI_API_BASE"),
+            api_key=config.get("OPENAI_API_KEY"),
+        ) # should we use src.utils.utils_vllm ?  
 
         # Ensure correct database is used
-        db = load_vector_database(filesystem, config)
+        client = QdrantClient(url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"), port="443", https="true")
+        logger.success("Connection to DB client successful")
+
+        vectorstore = QdrantVectorStore(
+            client=client,
+            collection_name=collection_name,
+            embedding=emb_model,
+            vector_name=embedding_model,
+        )
+
+        logger.success("Vectorstore initialization successful")
+
 
         # ------------------------
         # II - CREATING RETRIEVER
 
         logger.info(f"Training retriever {80 * '='}")
 
-        mlflow.log_text(config.RAG_PROMPT_TEMPLATE, "rag_prompt.md")
-
-        # Load LLM in session
-        llm, tokenizer = build_llm_model(
-            model_name=config.llm_model,
-            load_LLM_config=True,
-            streaming=False,
-            config=config,
-        )
-
-        logger.info("Logging an example of tokenized text")
-        query = "Quels sont les chiffres du chômages en 2023 ?"
-        mlflow.log_text(
-            f"{query} \n ---------> \n {', '.join(tokenizer.tokenize(query))}",
-            "example_tokenizer.json",
-        )
-
-        retriever, vectorstore = load_retriever(
-            vectorstore=db,
-            retriever_params={"search_type": "similarity", "search_kwargs": {"k": 30}},
-            config=config,
-        )
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
         # Log retriever
         retrieved_docs = retriever.invoke("Quels sont les chiffres du chômage en 2023 ?")
@@ -83,123 +198,137 @@ def run_evaluation(filesystem: s3fs.S3FileSystem, config: FullConfig = DefaultFu
             artifact_file="retrieved_documents_retriever_raw.json",
         )
 
+        collection_info = client.get_collection(collection_name=collection_name)
+        toto = collection_info.config.params.vectors
+        embedding_size = toto[embedding_model].size
+        print(embedding_size)
+
+
+        # --------------------------------
+        # III - DATABASE STATISTICS
+
+
+
+        # OLDIES ------------------------------
         # ------------------------
         # III - QUESTION VALIDATOR
 
-        logger.info("Testing the questions that are accepted/refused by our agent")
+        # logger.info("Testing the questions that are accepted/refused by our agent")
 
-        validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
-        validator_answers = evaluate_question_validator(validator=validator)
-        true_positive_validator = validator_answers.loc[validator_answers["real"], "real"].mean()
-        true_negative_validator = 1 - (validator_answers.loc[~validator_answers["real"], "real"].mean())
-        mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
-        mlflow.log_metric("validator_negative", 100 * true_negative_validator)
+        # validator = build_chain_validator(evaluator_llm=llm, tokenizer=tokenizer)
+        # validator_answers = evaluate_question_validator(validator=validator)
+        # true_positive_validator = validator_answers.loc[validator_answers["real"], "real"].mean()
+        # true_negative_validator = 1 - (validator_answers.loc[~validator_answers["real"], "real"].mean())
+        # mlflow.log_metric("validator_true_positive", 100 * true_positive_validator)
+        # mlflow.log_metric("validator_negative", 100 * true_negative_validator)
 
-        # ------------------------
-        # IV - RERANKER
+        # # ------------------------
+        # # IV - RERANKER
 
-        if config.reranking_method is not None:
-            logger.info(f"Applying reranking {80 * '='}")
-            logger.info(f"Selected method: {config.reranking_method}")
+        # if config.reranking_method is not None:
+        #     logger.info(f"Applying reranking {80 * '='}")
+        #     logger.info(f"Selected method: {config.reranking_method}")
 
-            # Define a langchain prompt template
-            RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(
-                get_chatbot_template(), tokenize=False, add_generation_prompt=True
-            )
-            prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER)
+        #     # Define a langchain prompt template
+        #     RAG_PROMPT_TEMPLATE_RERANKER = tokenizer.apply_chat_template(
+        #         get_chatbot_template(), tokenize=False, add_generation_prompt=True
+        #     )
+        #     prompt = PromptTemplate(input_variables=["context", "question"], template=RAG_PROMPT_TEMPLATE_RERANKER)
 
-            mlflow.log_dict(get_chatbot_template(config)[0], "chatbot_template.json")
+        #     mlflow.log_dict(get_chatbot_template(config)[0], "chatbot_template.json")
 
-            chain = build_chain(
-                retriever=retriever,
-                prompt=prompt,
-                llm=llm,
-                reranker=config.reranking_method,
-            )
-        else:
-            logger.info(f"Skipping reranking since value is None {80 * '='}")
+        #     chain = build_chain(
+        #         retriever=retriever,
+        #         prompt=prompt,
+        #         llm=llm,
+        #         reranker=config.reranking_method,
+        #     )
+        # else:
+        #     logger.info(f"Skipping reranking since value is None {80 * '='}")
 
-        # ------------------------
-        # V - EVALUATION
+        # # ------------------------
+        # # V - EVALUATION
 
-        logger.info(f"Evaluating model performance against expectations {80 * '='}")
+        # logger.info(f"Evaluating model performance against expectations {80 * '='}")
 
-        if config.reranking_method is None:
-            answers_bot = answer_faq_by_bot(retriever, faq)
-            eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=config.topk_stats)
-        else:
-            answers_bot_before_reranker = answer_faq_by_bot(retriever, faq)
-            eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(
-                answers_bot_before_reranker, k=5
-            )
-            answers_bot_after_reranker = answer_faq_by_bot(chain, faq)
-            eval_reponses_bot_after_reranker, answers_bot_topk_after_reranker = transform_answers_bot(
-                answers_bot_after_reranker, k=5
-            )
-            eval_reponses_bot = compare_performance_reranking(
-                eval_reponses_bot_after_reranker, eval_reponses_bot_before_reranker
-            )
-            answers_bot_topk = answers_bot_topk_after_reranker
+        # if config.reranking_method is None:
+        #     answers_bot = answer_faq_by_bot(retriever, faq)
+        #     eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=config.topk_stats)
+        # else:
+        #     answers_bot_before_reranker = answer_faq_by_bot(retriever, faq)
+        #     eval_reponses_bot_before_reranker, answers_bot_topk_before_reranker = transform_answers_bot(
+        #         answers_bot_before_reranker, k=5
+        #     )
+        #     answers_bot_after_reranker = answer_faq_by_bot(chain, faq)
+        #     eval_reponses_bot_after_reranker, answers_bot_topk_after_reranker = transform_answers_bot(
+        #         answers_bot_after_reranker, k=5
+        #     )
+        #     eval_reponses_bot = compare_performance_reranking(
+        #         eval_reponses_bot_after_reranker, eval_reponses_bot_before_reranker
+        #     )
+        #     answers_bot_topk = answers_bot_topk_after_reranker
 
-        # Compute model performance at the end of the pipeline
-        document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
-        document_is_top = answers_bot_topk["cumsum_url_expected"].min()
-        # Also compute model performance before reranking when relevant
-        if config.reranking_method is not None:
-            document_among_topk_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].max()
-            document_is_top_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].min()
+        # # Compute model performance at the end of the pipeline
+        # document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
+        # document_is_top = answers_bot_topk["cumsum_url_expected"].min()
+        # # Also compute model performance before reranking when relevant
+        # if config.reranking_method is not None:
+        #     document_among_topk_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].max()
+        #     document_is_top_before_reranker = answers_bot_topk_before_reranker["cumsum_url_expected"].min()
 
-        # Store FAQ
-        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=config.faq_s3_uri, name="FAQ_data")
-        mlflow.log_input(mlflow_faq_raw, context="faq-raw")
-        mlflow.log_table(data=faq, artifact_file="faq_data.json")
+        # # Store FAQ
+        # mlflow_faq_raw = mlflow.data.from_pandas(faq, source=config.faq_s3_uri, name="FAQ_data")
+        # mlflow.log_input(mlflow_faq_raw, context="faq-raw")
+        # mlflow.log_table(data=faq, artifact_file="faq_data.json")
 
-        # Check if document expected is in topk answers =========================
-        mlflow.log_metric("document_is_first", 100 * document_is_top)
-        mlflow.log_metric("document_among_topk", 100 * document_among_topk)
-        mlflow.log_metrics(
-            {
-                f"document_in_top_{int(row['document_position'])}": 100 * row["cumsum_url_expected"]
-                for _, row in answers_bot_topk.iterrows()
-            }
-        )
-        mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+        # # Check if document expected is in topk answers =========================
+        # mlflow.log_metric("document_is_first", 100 * document_is_top)
+        # mlflow.log_metric("document_among_topk", 100 * document_among_topk)
+        # mlflow.log_metrics(
+        #     {
+        #         f"document_in_top_{int(row['document_position'])}": 100 * row["cumsum_url_expected"]
+        #         for _, row in answers_bot_topk.iterrows()
+        #     }
+        # )
+        # mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
 
-        # If we used reranking, we also store performance before reranking
-        if config.reranking_method is not None:
-            mlflow.log_metric("document_is_first_before_reranker", 100 * document_is_top_before_reranker)
-            mlflow.log_metric("document_among_topk_before_reranker", 100 * document_among_topk_before_reranker)
-            mlflow.log_metrics(
-                {
-                    f"document_in_top_{int(row['document_position'])}_before_reranker": 100 * row["cumsum_url_expected"]
-                    for _, row in answers_bot_topk_before_reranker.iterrows()
-                }
-            )
+        # # If we used reranking, we also store performance before reranking
+        # if config.reranking_method is not None:
+        #     mlflow.log_metric("document_is_first_before_reranker", 100 * document_is_top_before_reranker)
+        #     mlflow.log_metric("document_among_topk_before_reranker", 100 * document_among_topk_before_reranker)
+        #     mlflow.log_metrics(
+        #         {
+        #             f"document_in_top_{int(row['document_position'])}_before_reranker": 100 * row["cumsum_url_expected"]
+        #             for _, row in answers_bot_topk_before_reranker.iterrows()
+        #         }
+        #     )
 
-        # Log environment necessary to reproduce the experiment
-        current_dir = Path(".")
-        FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
+        # # Log environment necessary to reproduce the experiment
+        # current_dir = Path(".")
+        # FILES_TO_LOG = list(current_dir.glob("src/db_building/*.py")) + list(current_dir.glob("src/config/*.py"))
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_dir_path = Path(tmp_dir)
+        # with tempfile.TemporaryDirectory() as tmp_dir:
+        #     tmp_dir_path = Path(tmp_dir)
 
-            for file_path in FILES_TO_LOG:
-                relative_path = file_path.relative_to(current_dir)
-                destination_path = tmp_dir_path / relative_path.parent
-                destination_path.mkdir(parents=True, exist_ok=True)
-                shutil.copy(file_path, destination_path)
+        #     for file_path in FILES_TO_LOG:
+        #         relative_path = file_path.relative_to(current_dir)
+        #         destination_path = tmp_dir_path / relative_path.parent
+        #         destination_path.mkdir(parents=True, exist_ok=True)
+        #         shutil.copy(file_path, destination_path)
 
-            # Generate requirements.txt using pipreqs
-            subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
+        #     # Generate requirements.txt using pipreqs
+        #     subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
 
-            # Log all Python files to MLflow artifact
-            mlflow.log_artifacts(tmp_dir, artifact_path="environment")
+        #     # Log all Python files to MLflow artifact
+        #     mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
 
-if __name__ == "__main__":
-    argparser = llm_argparser()
-    load_config(argparser)
-    assert DefaultFullConfig().mlflow_tracking_uri is not None, "Please set the mlflow_tracking_uri parameter."
-    assert os.environ.get("HF_TOKEN"), "Please set the HF_TOKEN environment variable."
-    filesystem = s3fs.S3FileSystem(endpoint_url=DefaultFullConfig().s3_endpoint_url)
-    run_evaluation(filesystem)
+run_evaluation()
+
+# if __name__ == "__main__":
+#     argparser = llm_argparser()
+#     load_config(argparser)
+#     assert DefaultFullConfig().mlflow_tracking_uri is not None, "Please set the mlflow_tracking_uri parameter."
+#     assert os.environ.get("HF_TOKEN"), "Please set the HF_TOKEN environment variable."
+#     filesystem = s3fs.S3FileSystem(endpoint_url=DefaultFullConfig().s3_endpoint_url)
+#     run_evaluation(filesystem)

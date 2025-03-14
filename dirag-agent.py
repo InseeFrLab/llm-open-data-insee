@@ -140,7 +140,7 @@ def load_retriever_cache():
 
     logger.success("Vectorstore initialization successful")
 
-    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
 
     # logger.info(f"Ma base de connaissance du site Insee comporte {len(db.get()["documents"])} documents")
 
