@@ -210,7 +210,11 @@ def run_build_database() -> None:
         url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
 
         # Intermediate save snapshot in local for logging in MLFlow
-        response = requests.get(url_snapshot, headers={"api-key": api_key_database_client})
+        response = requests.get(
+            url_snapshot,
+            headers={"api-key": api_key_database_client},
+            timeout=60*5
+        )
         with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
             temp_file.write(response.content)
             temp_file_path = temp_file.name  # Store temp file path
