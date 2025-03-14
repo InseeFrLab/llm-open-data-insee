@@ -10,7 +10,6 @@ from loguru import logger
 from openai import AsyncOpenAI
 from qdrant_client import QdrantClient
 
-from src.model_building import cache_model_from_hf_hub
 from src.utils import create_prompt_from_instructions, format_docs
 from src.utils.utils_vllm import get_model_from_env
 
@@ -101,7 +100,7 @@ prompt = create_prompt_from_instructions(system_instructions, question_instructi
 
 
 def _embedding_client_local(config):
-    cache_model_from_hf_hub(embedding_model, hf_token=os.getenv("HF_TOKEN"))
+    #cache_model_from_hf_hub(embedding_model, hf_token=os.getenv("HF_TOKEN"))
 
     emb_model = HuggingFaceEmbeddings(  # load from sentence transformers
         model_name=embedding_model,
@@ -127,7 +126,7 @@ def _embedding_client_api(config):
 def load_retriever_cache():
     logger.info("Loading vector database")
 
-    emb_model = _embedding_client_api()
+    emb_model = _embedding_client_api(config)
 
     client = QdrantClient(url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"), port="443", https="true")
     logger.success("Connection to DB client successful")
