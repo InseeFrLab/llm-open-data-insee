@@ -1,17 +1,23 @@
 import argparse
 import os
+import subprocess
+import shutil
+import tempfile
+from pathlib import Path
 
 import mlflow
 import pandas as pd
 import s3fs
 from dotenv import load_dotenv
+from loguru import logger
+
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
-from loguru import logger
 from qdrant_client import QdrantClient
 
 from src.db_building import chroma_topk_to_df
 from src.utils.utils_vllm import get_model_from_env
+from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 
 # Logging configuration
 # logger = logging.getLogger(__name__)
@@ -38,6 +44,13 @@ parser.add_argument(
     default="vector_database_evaluation",
     help="Experiment name in mlflow",
 )
+parser.add_argument(
+    "--top_k_statistics",
+    type=int,
+    default=10,
+    help="Number of documents that should be given by retriever for evaluation",
+)
+
 args = parser.parse_args()
 
 
@@ -99,6 +112,12 @@ def retrieve_unique_collection_id(
         .loc[df["params.QDRANT_URL"] == config.get("QDRANT_URL")]
         #.loc[df["params.dirag_only"] == ]
     )
+
+    eligible_run = eligible_run.loc[
+        # We remove run when max_pages has been set
+        eligible_run['params.max_pages'].isnull()
+        # TODO: remove when dirag_only has been set
+    ]
 
     n_eligible = eligible_run.shape[0]
 
@@ -170,7 +189,10 @@ def run_evaluation() -> None:
         ) # should we use src.utils.utils_vllm ?  
 
         # Ensure correct database is used
-        client = QdrantClient(url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"), port="443", https="true")
+        client = QdrantClient(
+            url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"),
+            port="443", https="true"
+            )
         logger.success("Connection to DB client successful")
 
         vectorstore = QdrantVectorStore(
@@ -186,9 +208,12 @@ def run_evaluation() -> None:
         # ------------------------
         # II - CREATING RETRIEVER
 
-        logger.info(f"Training retriever {80 * '='}")
+        logger.info(f"Creating retriever {80 * '='}")
 
-        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
+        retriever = vectorstore.as_retriever(
+            search_type="similarity",
+            search_kwargs={"k": args.top_k_statistics}
+        )
 
         # Log retriever
         retrieved_docs = retriever.invoke("Quels sont les chiffres du chômage en 2023 ?")
@@ -198,14 +223,58 @@ def run_evaluation() -> None:
             artifact_file="retrieved_documents_retriever_raw.json",
         )
 
-        collection_info = client.get_collection(collection_name=collection_name)
-        toto = collection_info.config.params.vectors
-        embedding_size = toto[embedding_model].size
-        print(embedding_size)
-
 
         # --------------------------------
-        # III - DATABASE STATISTICS
+        # III - RETRIEVER STATISTICS
+
+        logger.info("Evaluating model performance against expectations")
+
+        answers_bot = answer_faq_by_bot(retriever, faq)
+        eval_reponses_bot, answers_bot_topk = transform_answers_bot(
+            answers_bot, k=args.top_k_statistics
+        )
+
+        document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
+        document_is_top = answers_bot_topk["cumsum_url_expected"].min()
+
+        mlflow.log_metric("document_is_first", 100 * document_is_top)
+        mlflow.log_metric("document_among_topk", 100 * document_among_topk)
+        mlflow.log_metrics(
+            {
+                f"document_in_top_{int(row['document_position'])}": 100 * row["cumsum_url_expected"]
+                for _, row in answers_bot_topk.iterrows()
+            }
+        )
+        mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+
+        # --------------------------------
+        # IV - OTHER USEFUL METADATA
+
+        logger.info("Storing additional metadata")
+
+        # Store FAQ
+        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=faq_s3_path, name="FAQ_data")
+        mlflow.log_input(mlflow_faq_raw, context="faq-raw")
+        mlflow.log_table(data=faq, artifact_file="faq_data.json")
+
+        # Log environment necessary to reproduce the experiment
+        current_dir = Path(".")
+        FILES_TO_LOG = current_dir.glob("src/**/*.py")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_dir_path = Path(tmp_dir)
+
+            for file_path in FILES_TO_LOG:
+                relative_path = file_path.relative_to(current_dir)
+                destination_path = tmp_dir_path / relative_path.parent
+                destination_path.mkdir(parents=True, exist_ok=True)
+                shutil.copy(file_path, destination_path)
+
+            # Generate requirements.txt using pipreqs
+            subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
+
+            # Log all Python files to MLflow artifact
+            mlflow.log_artifacts(tmp_dir, artifact_path="environment")
 
 
 

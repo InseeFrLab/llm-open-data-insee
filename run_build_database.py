@@ -110,6 +110,9 @@ print(parameters_database_construction)
 logger.debug(f"Using {embedding_model} for database retrieval")
 logger.debug(f"Setting {url_database_client} as vector database endpoint")
 
+if args.dirag_only is True:
+    logger.warning("Restricting publications to DIRAG related content")
+
 
 def run_build_database() -> None:
     mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
@@ -170,6 +173,7 @@ def run_build_database() -> None:
             openai_api_key=config_embedding_model.get("OPENAI_API_KEY"),
         )
 
+
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
         logger.info("Putting documents in vector database")
 
@@ -202,6 +206,28 @@ def run_build_database() -> None:
                 "QDRANT_COLLECTION_ALIAS": collection_name,
             }
         )
+
+        # LOGGING DATABASE STATISTICS --------------------------
+
+        collection_info = client.get_collection(collection_name=unique_collection_name)
+        embedding_size = (
+            collection_info
+            .config
+            .params.vectors
+            .get(embedding_model)
+            .size
+        )
+
+        n_documents = collection_info.indexed_vectors_count
+
+        mlflow.log_params(
+            {
+                "embedding_size": embedding_size,
+                "n_documents": n_documents,
+                "embedding_model": embedding_model
+            }
+        )
+
 
         # CREATING SNAPSHOT FOR LOGGING -------------------
         logger.info("Logging database snapshot")
