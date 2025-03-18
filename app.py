@@ -141,7 +141,7 @@ st.set_page_config(page_title="Chat with AI")
 # Session state initialization
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
-        AIMessage(content=(f"Interrogez moi sur le site insee.fr ({n_docs} documents dans ma base de connaissance)"))
+        AIMessage(content=(f"Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)"))
     ]
 
 # Display conversation history
