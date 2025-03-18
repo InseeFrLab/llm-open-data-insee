@@ -23,7 +23,7 @@ config_s3 = {
 config_database_client = {
     "QDRANT_URL": os.getenv("QDRANT_URL"),
     "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY"),
-    "QDRANT_COLLECTION_NAME": os.getenv("QDRANT_COLLECTION_NAME", "dirag_mistral_small"),
+    "QDRANT_COLLECTION_NAME": os.getenv("COLLECTION_NAME", "dirag_mistral_small"),
 }
 
 config_embedding_model = {
@@ -41,6 +41,7 @@ config = {**config_s3, **config_database_client, **config_embedding_model, **con
 embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
 generative_model = get_model_from_env("URL_GENERATIVE_MODEL")
 
+
 # ---------------- INITIALIZATION ---------------- #
 def initialize_clients(config):
     emb_model = OpenAIEmbeddings(
@@ -48,32 +49,41 @@ def initialize_clients(config):
         base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
         api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
     )
-    
+
     qdrant_client = QdrantClient(
-        url=config.get("QDRANT_URL"),
-        api_key=config.get("QDRANT_API_KEY"),
-        port="443", https=True
+        url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"), port="443", https=True
     )
     logger.success("Connected to Qdrant DB client")
-    
+
     vectorstore = QdrantVectorStore(
         client=qdrant_client,
         collection_name=config.get("QDRANT_COLLECTION_NAME"),
         embedding=emb_model,
         vector_name=embedding_model,
     )
-    
+
     logger.success("Vectorstore initialized successfully")
-    
+
     retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
-    
+
     chat_client = OpenAI(
         base_url=config.get("OPENAI_API_BASE_GENERATIVE"),
         api_key=config.get("OPENAI_API_KEY_GENERATIVE"),
     )
-    return retriever, chat_client
+    return retriever, chat_client, qdrant_client
 
-retriever, chat_client = initialize_clients(config)
+
+retriever, chat_client, qdrant_client = initialize_clients(config)
+
+
+def get_number_docs_collection(qdrant_client, collection_name=config.get("QDRANT_COLLECTION_NAME")):
+    collection_info = qdrant_client.get_collection(collection_name=collection_name)
+    n_documents = collection_info.points_count
+    return n_documents
+
+
+n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
+
 
 # ---------------- PROMPT TEMPLATE ---------------- #
 system_instructions = """
@@ -101,6 +111,7 @@ Réponse:
 
 prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
+
 # ---------------- FUNCTION FOR GENERATION ---------------- #
 def generate_answer_from_context(retriever, prompt, question):
     """Retrieve context and generate a response from OpenAI."""
@@ -110,12 +121,12 @@ def generate_answer_from_context(retriever, prompt, question):
 
     with st.expander("Documents jugés les plus pertinents"):
         best_documents_df
-    
+
     context = format_docs(best_documents)
     question_with_context = prompt.format(question=question, context=context)
-    
+
     logger.debug(best_documents_df.head(2))
-    
+
     stream = chat_client.chat.completions.create(
         model=generative_model,
         messages=[{"role": "user", "content": question_with_context}],
@@ -123,13 +134,15 @@ def generate_answer_from_context(retriever, prompt, question):
     )
     return stream
 
+
 # ---------------- STREAMLIT UI ---------------- #
-st.set_page_config(page_title="Chat with AI", layout="wide")
-st.title("💬 Chat with AI")
+st.set_page_config(page_title="Chat with AI")
 
 # Session state initialization
 if "chat_history" not in st.session_state:
-    st.session_state.chat_history = [AIMessage(content="Bonjour, je suis un assistant IA. Comment puis-je vous aider ?")]
+    st.session_state.chat_history = [
+        AIMessage(content=(f"Interrogez moi sur le site insee.fr ({n_docs} documents dans ma base de connaissance)"))
+    ]
 
 # Display conversation history
 for message in st.session_state.chat_history:
@@ -137,22 +150,24 @@ for message in st.session_state.chat_history:
         st.markdown(message.content)
 
 # User input handling
-user_query = st.chat_input("Tapez votre message ici...")
+user_query = st.chat_input(f"Poser une question sur le site insee")
+
+
 if user_query:
     st.session_state.chat_history.append(HumanMessage(content=user_query))
-    
+
     with st.chat_message("Human"):
         st.markdown(user_query)
-    
+
     with st.chat_message("AI"):
         response_stream = generate_answer_from_context(retriever, prompt, user_query)
         response_text = ""
         response_area = st.empty()
-        
+
         for chunk in response_stream:
             response_text += chunk.choices[0].delta.content or ""
             response_area.markdown(response_text + "▌")
-        
+
         response_area.markdown(response_text)  # Finalize response
-        
+
     st.session_state.chat_history.append(AIMessage(content=response_text))
