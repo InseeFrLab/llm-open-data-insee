@@ -150,7 +150,7 @@ for message in st.session_state.chat_history:
         st.markdown(message.content)
 
 # User input handling
-user_query = st.chat_input(f"Poser une question sur le site insee")
+user_query = st.chat_input("Poser une question sur le site insee")
 
 
 if user_query:
