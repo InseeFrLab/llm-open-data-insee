@@ -4,10 +4,12 @@ import pandas as pd
 from dotenv import load_dotenv
 from loguru import logger
 from qdrant_client import QdrantClient
+from openai import OpenAI
 from langchain_qdrant import QdrantVectorStore
 from langchain_openai import OpenAIEmbeddings
-from openai import OpenAI
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain.memory import ConversationBufferMemory, StreamlitChatMessageHistory
+from streamlit_feedback import streamlit_feedback
 
 from src.utils import create_prompt_from_instructions, format_docs
 from src.utils.utils_vllm import get_model_from_env
@@ -36,13 +38,16 @@ config_generative_model = {
     "OPENAI_API_KEY_GENERATIVE": os.getenv("OPENAI_API_KEY", "EMPTY"),
 }
 
-config = {**config_s3, **config_database_client, **config_embedding_model, **config_generative_model}
+config = {
+    **config_s3, **config_database_client, **config_embedding_model, **config_generative_model
+}
 
 embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
 generative_model = get_model_from_env("URL_GENERATIVE_MODEL")
 
 
 # ---------------- INITIALIZATION ---------------- #
+@st.cache_resource(show_spinner=False)
 def initialize_clients(config):
     emb_model = OpenAIEmbeddings(
         model=embedding_model,
@@ -72,15 +77,12 @@ def initialize_clients(config):
     )
     return retriever, chat_client, qdrant_client
 
-
 retriever, chat_client, qdrant_client = initialize_clients(config)
 
 
 def get_number_docs_collection(qdrant_client, collection_name=config.get("QDRANT_COLLECTION_NAME")):
     collection_info = qdrant_client.get_collection(collection_name=collection_name)
-    n_documents = collection_info.points_count
-    return n_documents
-
+    return collection_info.points_count
 
 n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
 
@@ -112,21 +114,11 @@ Réponse:
 prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
 
-# ---------------- FUNCTION FOR GENERATION ---------------- #
 def generate_answer_from_context(retriever, prompt, question):
-    """Retrieve context and generate a response from OpenAI."""
     best_documents = retriever.invoke(question)
-    best_documents_df = [docs.metadata for docs in best_documents]
-    best_documents_df = pd.DataFrame(best_documents_df)
-
-    with st.expander("Documents jugés les plus pertinents"):
-        best_documents_df
-
     context = format_docs(best_documents)
     question_with_context = prompt.format(question=question, context=context)
-
-    logger.debug(best_documents_df.head(2))
-
+    
     stream = chat_client.chat.completions.create(
         model=generative_model,
         messages=[{"role": "user", "content": question_with_context}],
@@ -138,36 +130,39 @@ def generate_answer_from_context(retriever, prompt, question):
 # ---------------- STREAMLIT UI ---------------- #
 st.set_page_config(page_title="Chat with AI")
 
-# Session state initialization
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = [
-        AIMessage(content=(f"Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)"))
-    ]
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-# Display conversation history
-for message in st.session_state.chat_history:
-    with st.chat_message("AI" if isinstance(message, AIMessage) else "Human"):
-        st.markdown(message.content)
+if "feedback" not in st.session_state:
+    st.session_state.feedback = []
 
-# User input handling
-user_query = st.chat_input("Poser une question sur le site insee")
+def handle_feedback(response, index):
+    st.toast("✔️ Feedback received!")
+    st.session_state.feedback.append({"index": index, "response": response})
+    logger.debug(st.session_state)
 
 
-if user_query:
-    st.session_state.chat_history.append(HumanMessage(content=user_query))
+initial_message = f"Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)"
 
-    with st.chat_message("Human"):
+if not st.session_state.history:
+    st.session_state.history.append({"role": "assistant", "content": initial_message})
+
+for i, message in enumerate(st.session_state.history):
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if message["role"] == "assistant":
+            feedback = streamlit_feedback(
+                on_submit=lambda response, idx=i: handle_feedback(response, idx),
+                feedback_type="faces",
+                optional_text_label="Qualité du retriever",
+                key=f"feedback_{i}"
+            )
+
+if user_query := st.chat_input("Poser une question sur le site insee"):
+    st.session_state.history.append({"role": "user", "content": user_query})
+    with st.chat_message("user"):
         st.markdown(user_query)
-
-    with st.chat_message("AI"):
-        response_stream = generate_answer_from_context(retriever, prompt, user_query)
-        response_text = ""
-        response_area = st.empty()
-
-        for chunk in response_stream:
-            response_text += chunk.choices[0].delta.content or ""
-            response_area.markdown(response_text + "▌")
-
-        response_area.markdown(response_text)  # Finalize response
-
-    st.session_state.chat_history.append(AIMessage(content=response_text))
+    with st.chat_message("assistant"):
+        response = st.write_stream(generate_answer_from_context(retriever, prompt, user_query))
+    st.session_state.history.append({"role": "assistant", "content": response})
+    st.rerun()
