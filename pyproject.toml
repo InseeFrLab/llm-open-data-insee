@@ -55,6 +55,11 @@ ignore_missing_imports = true
 module = "transformers"
 ignore_missing_imports = true
 
+[dependency-groups]
+dev = [
+    "vulture>=2.14",
+]
+
 [tool.ruff.lint]
 select = [
     # pycodestyle
