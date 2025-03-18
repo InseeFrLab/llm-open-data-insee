@@ -222,7 +222,7 @@ def run_build_database() -> None:
             .size
         )
 
-        n_documents = collection_info.indexed_vectors_count
+        n_documents = collection_info.points_count
 
         mlflow.log_params(
             {
