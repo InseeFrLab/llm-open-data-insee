@@ -3,15 +3,17 @@ import os
 import chainlit as cl
 import pandas as pd
 from dotenv import load_dotenv
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_openai import OpenAIEmbeddings
-from langchain_qdrant import QdrantVectorStore
 from loguru import logger
+
 from openai import AsyncOpenAI
+from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 
 from src.utils import create_prompt_from_instructions, format_docs
 from src.utils.utils_vllm import get_model_from_env
+
 
 # CONFIGURATION ------------------------------------------
 

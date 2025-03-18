@@ -50,16 +50,16 @@ parser.add_argument(
     "If value provided, CharacterTextSplitter.from_tiktoken_encoder is applied",
 )
 parser.add_argument(
-    "--dirag_only",
-    action=argparse.BooleanOptionalAction,
-    help="Use restricted DIRAG data instead of the complete web4g dataset.",
+    "--dataset",
+    choices=["dirag", "complete"],
+    default="complete",
+    help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
 )
 # Example usage:
-# python run_build_dataset.py max_pages 10 --dirag_only
+# python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
 
 args = parser.parse_args()
-parser.set_defaults(dirag_only=False)
 
 # Logging configuration
 # logger = logging.getLogger(__name__)
@@ -110,7 +110,7 @@ print(parameters_database_construction)
 logger.debug(f"Using {embedding_model} for database retrieval")
 logger.debug(f"Setting {url_database_client} as vector database endpoint")
 
-if args.dirag_only is True:
+if args.dataset == "dirag":
     logger.warning("Restricting publications to DIRAG related content")
 
 
@@ -125,14 +125,14 @@ def run_build_database() -> None:
         filtered_config = {k: v for k, v in config.items() if "KEY" not in k}
         mlflow.log_params(filtered_config)
         mlflow.log_params(parameters_database_construction)
-        mlflow.log_params({"dirag_only": args.dirag_only})
+        mlflow.log_params({"dataset": args.dataset})
 
         # LOAD AND PROCESS CORPUS -----------------------------------
         logger.debug(f"Importing raw data {30 * '-'}")
 
         data = constructor_corpus(
-            dirag_only="dirag" if args.dirag_only else "complete",
-            s3_path=S3_PATH,
+            field=args.dataset,
+            web4g_path_uri=S3_PATH,
             fs=filesystem,
             search_cols=["titre", "libelleAffichageGeo", "xml_intertitre"],
         )
@@ -159,7 +159,11 @@ def run_build_database() -> None:
         unique_collection_name = f"{collection_name}_{run_id}"
 
         logger.info("Setting connection")
-        client = QdrantClient(url=url_database_client, api_key=api_key_database_client, port="443", https="true")
+        client = QdrantClient(
+            url=url_database_client,
+            api_key=api_key_database_client,
+            port="443", https="true"
+        )
 
         logger.info(f"Creating vector collection ({unique_collection_name})")
         client.create_collection(
