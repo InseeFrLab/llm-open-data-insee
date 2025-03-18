@@ -82,7 +82,7 @@ jq '. + {
     ]
 
 
-    
+
 }' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
 
 

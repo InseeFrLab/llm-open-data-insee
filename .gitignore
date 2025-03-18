@@ -1,5 +1,8 @@
 data/chroma_*
 toto.toml
+*.png
+data/
+core
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -8,6 +11,8 @@ __pycache__/
 
 # C extensions
 *.so
+
+
 
 # Distribution / packaging
 .Python

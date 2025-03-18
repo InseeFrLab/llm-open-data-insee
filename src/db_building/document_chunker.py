@@ -1,11 +1,15 @@
 import logging
 
 import pandas as pd
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from transformers import AutoTokenizer
+
+from .utils_db import parse_xmls
+
+logger = logging.getLogger(__name__)
 
 HEADERS_TO_SPLIT_ON = [
     ("#", "Header 1"),
@@ -55,11 +59,14 @@ def chunk_documents(
     # Load the tokenizer
     autokenizer = AutoTokenizer.from_pretrained(embedding_model)
 
+    if autokenizer.model_max_length is not None:
+        chunk_size = autokenizer.model_max_length
+
     # Initialize token splitter
     text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
         autokenizer,
         chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
+        # chunk_overlap=chunk_overlap,
         separators=separators,
     )
 
@@ -104,3 +111,87 @@ def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHea
             splitted_docs.append(md_section)
 
     return splitted_docs
+
+
+def _parser_xml_web4g(data: pd.DataFrame) -> pd.DataFrame:
+    logger.info("Parsing XML content")
+    parsed_pages = parse_xmls(data)
+
+    # Merge parsed XML data with the original DataFrame
+    df = (
+        data.set_index("id")
+        .merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
+        .drop(columns=["xml_content"], errors="ignore")  # Drop only if exists
+    )
+
+    df = df.loc[
+        :,
+        [
+            "titre",
+            "categorie",
+            "url",
+            "dateDiffusion",
+            "theme",
+            "collection",
+            "libelleAffichageGeo",
+            "content",
+        ],
+    ]
+
+    df = df.fillna(value="")
+
+    return df
+
+
+def parse_transform_documents(
+    data: pd.DataFrame,
+    max_document_size: int | None = None,
+    page_column_content: str = "content",
+    engine_output: str = "pandas",
+) -> pd.DataFrame | list:
+    """
+    Parses and transforms document data, optionally splitting documents into smaller chunks.
+
+    This function processes a DataFrame containing document data by:
+    1. Parsing XML content.
+    2. Merging parsed content into the original DataFrame.
+    3. Converting the data into LangChain document format if needed.
+    4. Optionally splitting documents into smaller chunks if `max_document_size` is specified.
+
+    Args:
+        data (pd.DataFrame): Input DataFrame containing documents, with an 'id' column.
+        max_document_size (Optional[int], optional): The maximum number of tokens per document chunk.
+            If `None`, documents are not split. Defaults to `None`.
+        page_column_content (str, optional): The column containing document content. Defaults to "content".
+        engine_output (str, optional): The output format, either `"pandas"` or `"langchain"`.
+            Defaults to `"pandas"`.
+
+    Returns:
+        Union[pd.DataFrame, list]: A DataFrame if `engine_output="pandas"`, or a list of LangChain documents.
+
+    Raises:
+        ValueError: If `engine_output` is not `"pandas"` or `"langchain"`.
+    """
+
+    if engine_output not in {"pandas", "langchain"}:
+        raise ValueError("'engine_output' should be 'pandas' or 'langchain'")
+
+    df = _parser_xml_web4g(data)
+
+    if engine_output == "pandas":
+        logger.debug("Returning Pandas DataFrame since 'engine_output' is set to 'pandas'")
+        return df
+
+    logger.debug("Transforming into LangChain document format")
+
+    # Load DataFrame into LangChain document format
+    loader = DataFrameLoader(df, page_content_column=page_column_content)
+    documents = loader.load()
+
+    # Optionally split documents into smaller chunks
+    if max_document_size:
+        logger.debug(f"Splitting documents if they exceed {max_document_size} tokens")
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=max_document_size, chunk_overlap=0)
+        documents = text_splitter.split_documents(documents)
+
+    return documents
