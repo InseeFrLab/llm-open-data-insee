@@ -1,65 +1,47 @@
 import mlflow
 from loguru import logger
 
-def retrieve_unique_collection_id(
-    experiment_name: str = "vector_database_building",
-    embedding_model: str = "model-org/model-name",
-    config: dict = {}
-):
 
+def retrieve_unique_collection_id(
+    experiment_name: str = "vector_database_building", embedding_model: str = "model-org/model-name", config: dict = {}
+):
     logger.debug("Checking if collection_name can be retrieved from MLFlow")
 
-    df = mlflow.search_runs(
-        experiment_names=[experiment_name]
-    )
+    df = mlflow.search_runs(experiment_names=[experiment_name])
 
-    parameters_to_check = [
-        "URL_EMBEDDING_MODEL",
-        "OPENAI_API_BASE",
-        "OPENAI_API_KEY",
-        "QDRANT_URL"
-    ]
+    parameters_to_check = ["URL_EMBEDDING_MODEL", "OPENAI_API_BASE", "OPENAI_API_KEY", "QDRANT_URL"]
 
     eligible_run = (
-        df
-        .loc[df["params.embedding_model"] == embedding_model]
+        df.loc[df["params.embedding_model"] == embedding_model]
         .loc[df["params.OPENAI_API_BASE"] == config.get("OPENAI_API_BASE")]
         .loc[df["params.QDRANT_URL"] == config.get("QDRANT_URL")]
-        #.loc[df["params.dirag_only"] == ]
+        # .loc[df["params.dirag_only"] == ]
     )
 
     eligible_run = eligible_run.loc[
         # We remove run when max_pages has been set
-        eligible_run['params.max_pages'].isnull()
+        eligible_run["params.max_pages"].isnull()
         # Keep only run on complete dataset
-        & eligible_run['params.dataset'] != 'dirag'
+        & eligible_run["params.dataset"]
+        != "dirag"
     ]
-
-    
 
     n_eligible = eligible_run.shape[0]
 
     if n_eligible == 0:
         message = (
-            f"No eligible run has been found,"
-            f"check your {', '.join(parameters_to_check)} env vars allow to find a model"
+            f"No eligible run has been found,check your {', '.join(parameters_to_check)} env vars allow to find a model"
         )
         logger.error(message)
         raise ValueError(message)
 
     if n_eligible > 1:
-        logger.debug(
-            f"{n_eligible} runs are consistent with input parameters, "
-            "taking last one"
-        )
+        logger.debug(f"{n_eligible} runs are consistent with input parameters, taking last one")
 
     # if multiple run, take the last one
-    unique_run_identifier = (
-        eligible_run
-        .loc[eligible_run['end_time'] == eligible_run['end_time'].max()]
-        ["params.QDRANT_COLLECTION_UNIQUE"].iloc[0]
-    )
-
+    unique_run_identifier = eligible_run.loc[eligible_run["end_time"] == eligible_run["end_time"].max()][
+        "params.QDRANT_COLLECTION_UNIQUE"
+    ].iloc[0]
 
     logger.success(f"Using {unique_run_identifier} collection for evaluation")
 

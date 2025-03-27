@@ -1,7 +1,7 @@
 import argparse
 import os
-import subprocess
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -9,16 +9,15 @@ import mlflow
 import pandas as pd
 import s3fs
 from dotenv import load_dotenv
-from loguru import logger
-
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
+from loguru import logger
 from qdrant_client import QdrantClient
 
 from src.db_building import chroma_topk_to_df
-from src.utils.utils_vllm import get_model_from_env
 from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.results_logging.mlflow_utils import retrieve_unique_collection_id
+from src.utils.utils_vllm import get_model_from_env
 
 # Logging configuration
 # logger = logging.getLogger(__name__)
@@ -87,21 +86,16 @@ s3_bucket = "projet-llm-insee-open-data"
 faq_s3_path = "data/FAQ_site/faq.parquet"
 
 
-
-
 # RETRIEVE DATABASE PARAMETERS
 
 collection_name = args.collection_name
 if args.collection_name is None:
     collection_name = retrieve_unique_collection_id(
-        experiment_name=args.mlflow_experiment_name_building,
-        embedding_model=embedding_model,
-        config=config
+        experiment_name=args.mlflow_experiment_name_building, embedding_model=embedding_model, config=config
     )
 
 
 def run_evaluation() -> None:
-
     mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
     mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
     filesystem = s3fs.S3FileSystem(endpoint_url=config.get("AWS_ENDPOINT_URL"))
@@ -128,13 +122,12 @@ def run_evaluation() -> None:
             model=embedding_model,
             base_url=config.get("OPENAI_API_BASE"),
             api_key=config.get("OPENAI_API_KEY"),
-        ) # should we use src.utils.utils_vllm ?  
+        )  # should we use src.utils.utils_vllm ?
 
         # Ensure correct database is used
         client = QdrantClient(
-            url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"),
-            port="443", https="true"
-            )
+            url=config.get("QDRANT_URL"), api_key=config.get("QDRANT_API_KEY"), port="443", https="true"
+        )
         logger.success("Connection to DB client successful")
 
         vectorstore = QdrantVectorStore(
@@ -146,16 +139,12 @@ def run_evaluation() -> None:
 
         logger.success("Vectorstore initialization successful")
 
-
         # ------------------------
         # II - CREATING RETRIEVER
 
         logger.info(f"Creating retriever {80 * '='}")
 
-        retriever = vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": args.top_k_statistics}
-        )
+        retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": args.top_k_statistics})
 
         # Log retriever
         retrieved_docs = retriever.invoke("Quels sont les chiffres du chômage en 2023 ?")
@@ -165,16 +154,13 @@ def run_evaluation() -> None:
             artifact_file="retrieved_documents_retriever_raw.json",
         )
 
-
         # --------------------------------
         # III - RETRIEVER STATISTICS
 
         logger.info("Evaluating model performance against expectations")
 
         answers_bot = answer_faq_by_bot(retriever, faq)
-        eval_reponses_bot, answers_bot_topk = transform_answers_bot(
-            answers_bot, k=args.top_k_statistics
-        )
+        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=args.top_k_statistics)
 
         document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
         document_is_top = answers_bot_topk["cumsum_url_expected"].min()
@@ -217,8 +203,6 @@ def run_evaluation() -> None:
 
             # Log all Python files to MLflow artifact
             mlflow.log_artifacts(tmp_dir, artifact_path="environment")
-
-
 
         # OLDIES ------------------------------
         # ------------------------

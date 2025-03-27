@@ -159,11 +159,7 @@ def run_build_database() -> None:
         unique_collection_name = f"{collection_name}_{run_id}"
 
         logger.info("Setting connection")
-        client = QdrantClient(
-            url=url_database_client,
-            api_key=api_key_database_client,
-            port="443", https="true"
-        )
+        client = QdrantClient(url=url_database_client, api_key=api_key_database_client, port="443", https="true")
 
         logger.info(f"Creating vector collection ({unique_collection_name})")
         client.create_collection(
@@ -176,7 +172,6 @@ def run_build_database() -> None:
             openai_api_base=config_embedding_model.get("OPENAI_API_BASE"),
             openai_api_key=config_embedding_model.get("OPENAI_API_KEY"),
         )
-
 
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
         logger.info("Putting documents in vector database")
@@ -214,24 +209,13 @@ def run_build_database() -> None:
         # LOGGING DATABASE STATISTICS --------------------------
 
         collection_info = client.get_collection(collection_name=unique_collection_name)
-        embedding_size = (
-            collection_info
-            .config
-            .params.vectors
-            .get(embedding_model)
-            .size
-        )
+        embedding_size = collection_info.config.params.vectors.get(embedding_model).size
 
         n_documents = collection_info.points_count
 
         mlflow.log_params(
-            {
-                "embedding_size": embedding_size,
-                "n_documents": n_documents,
-                "embedding_model": embedding_model
-            }
+            {"embedding_size": embedding_size, "n_documents": n_documents, "embedding_model": embedding_model}
         )
-
 
         # CREATING SNAPSHOT FOR LOGGING -------------------
         logger.info("Logging database snapshot")
@@ -241,11 +225,7 @@ def run_build_database() -> None:
         url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
 
         # Intermediate save snapshot in local for logging in MLFlow
-        response = requests.get(
-            url_snapshot,
-            headers={"api-key": api_key_database_client},
-            timeout=60*5
-        )
+        response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 5)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
             temp_file.write(response.content)
             temp_file_path = temp_file.name  # Store temp file path

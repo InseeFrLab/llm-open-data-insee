@@ -1,17 +1,19 @@
 import os
-import streamlit as st
+import pathlib
+import uuid
+from datetime import datetime
+
 import pandas as pd
+import streamlit as st
 from dotenv import load_dotenv
-from loguru import logger
-from qdrant_client import QdrantClient
-from openai import OpenAI
-from langchain_qdrant import QdrantVectorStore
 from langchain_openai import OpenAIEmbeddings
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain.memory import ConversationBufferMemory, StreamlitChatMessageHistory
+from langchain_qdrant import QdrantVectorStore
+from loguru import logger
+from openai import OpenAI
+from qdrant_client import QdrantClient
 from streamlit_feedback import streamlit_feedback
 
-from src.utils import create_prompt_from_instructions, format_docs
+from src.utils import create_prompt_from_instructions, format_docs, question_instructions, system_instructions
 from src.utils.utils_vllm import get_model_from_env
 
 # Load environment variables
@@ -38,12 +40,16 @@ config_generative_model = {
     "OPENAI_API_KEY_GENERATIVE": os.getenv("OPENAI_API_KEY", "EMPTY"),
 }
 
-config = {
-    **config_s3, **config_database_client, **config_embedding_model, **config_generative_model
-}
+config = {**config_s3, **config_database_client, **config_embedding_model, **config_generative_model}
 
 embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
 generative_model = get_model_from_env("URL_GENERATIVE_MODEL")
+logger.debug(f"Embedding model used: {embedding_model}")
+logger.debug(f"Generative model used: {generative_model}")
+
+unique_id = str(uuid.uuid1())
+pathlib.Path("./logs/history").mkdir(parents=True, exist_ok=True)
+pathlib.Path("./logs/feedbacks").mkdir(parents=True, exist_ok=True)
 
 
 # ---------------- INITIALIZATION ---------------- #
@@ -77,48 +83,17 @@ def initialize_clients(config):
     )
     return retriever, chat_client, qdrant_client
 
-retriever, chat_client, qdrant_client = initialize_clients(config)
-
 
 def get_number_docs_collection(qdrant_client, collection_name=config.get("QDRANT_COLLECTION_NAME")):
     collection_info = qdrant_client.get_collection(collection_name=collection_name)
     return collection_info.points_count
-
-n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
-
-
-# ---------------- PROMPT TEMPLATE ---------------- #
-system_instructions = """
-Tu es un assistant spécialisé dans la statistique publique.
-Tu réponds à des questions concernant les données de l'Insee, l'institut national statistique Français.
-
-Réponds en FRANCAIS UNIQUEMENT. Utilise une mise en forme au format markdown.
-
-En utilisant UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
-
-Cite 5 sources maximum et mentionne l'url d'origine.
-
-Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
-
-Voici le contexte sur lequel tu dois baser ta réponse :
-Contexte: {context}
-"""
-
-question_instructions = """
-Voici la question à laquelle tu dois répondre :
-Question: {question}
-
-Réponse:
-"""
-
-prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
 
 def generate_answer_from_context(retriever, prompt, question):
     best_documents = retriever.invoke(question)
     context = format_docs(best_documents)
     question_with_context = prompt.format(question=question, context=context)
-    
+
     stream = chat_client.chat.completions.create(
         model=generative_model,
         messages=[{"role": "user", "content": question_with_context}],
@@ -127,8 +102,25 @@ def generate_answer_from_context(retriever, prompt, question):
     return stream
 
 
+retriever, chat_client, qdrant_client = initialize_clients(config)
+n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
+prompt = create_prompt_from_instructions(system_instructions, question_instructions)
+
+
 # ---------------- STREAMLIT UI ---------------- #
 st.set_page_config(page_title="Chat with AI")
+
+st.markdown(
+    """
+<style>
+    .st-emotion-cache-janbn0 {
+        flex-direction: row-reverse;
+        text-align: right;
+    }
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -136,11 +128,66 @@ if "history" not in st.session_state:
 if "feedback" not in st.session_state:
     st.session_state.feedback = []
 
-def handle_feedback(response, index):
-    st.toast("✔️ Feedback received!")
-    st.session_state.feedback.append({"index": index, "response": response})
-    logger.debug(st.session_state)
 
+# FEEDBACK RELATED STUFF ------------------
+
+css_annotation_title = "text-align: right; font-weight: bold; font-style: italic;"
+
+
+def handle_feedback(response, index, history, feedback_type="retriever"):
+    st.toast("✔️ Feedback received!")
+    message = history[index]["content"]
+    question = history[index - 1]["content"]
+    submission_time = datetime.now().strftime("%H:%M:%S")  # Only the time as string
+
+    st.session_state.feedback.append(
+        {
+            "discussion_index": index,
+            "evaluation": response["score"],
+            "evaluation_text": response["text"],
+            "question": question,
+            "answer": message,
+            "type": feedback_type,
+            "submitted_at": submission_time,
+            "unique_id": unique_id,
+        }
+    )
+    # st.write(st.session_state.feedback)
+
+
+def render_feedback_section(index, message, title, optional_text, key_prefix, feedback_type):
+    with st.container(key=f"{key_prefix}-{index}"):
+        st.markdown(f"<p style='{css_annotation_title}'>{title}</p>", unsafe_allow_html=True)
+        return streamlit_feedback(
+            on_submit=lambda response, idx=index, msg=message: handle_feedback(
+                response, idx, st.session_state.history, feedback_type=feedback_type
+            ),
+            feedback_type="faces",
+            optional_text_label=optional_text,
+            key=f"{key_prefix}_{index}",
+        )
+
+
+feedback_titles = [
+    {
+        "title": "Evaluation de la pertinence des documents renvoyés",
+        "optional_text": "Pertinence des documents",
+        "key_prefix": "feedback-retriever",
+        "feedback_type": "retriever",
+    },
+    {
+        "title": "Evaluation de la qualité de la réponse à l'aune du contexte fourni (fond):",
+        "optional_text": "Qualité du fond",
+        "key_prefix": "feedback-generation",
+        "feedback_type": "generation_fond",
+    },
+    {
+        "title": "Evaluation de la qualité de la réponse (style, mise en forme, etc.):",
+        "optional_text": "Qualité de la forme",
+        "key_prefix": "feedback-generation-mef",
+        "feedback_type": "generation_forme",
+    },
+]
 
 initial_message = f"Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)"
 
@@ -151,12 +198,34 @@ for i, message in enumerate(st.session_state.history):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message["role"] == "assistant":
-            feedback = streamlit_feedback(
-                on_submit=lambda response, idx=i: handle_feedback(response, idx),
-                feedback_type="faces",
-                optional_text_label="Qualité du retriever",
-                key=f"feedback_{i}"
-            )
+            if i > 0:
+                best_documents = retriever.invoke(st.session_state.history[i - 1]["content"])
+                best_documents_df = [docs.metadata for docs in best_documents]
+                best_documents_df = pd.DataFrame(best_documents_df)
+                # stoggle(
+                # "Documents renvoyés",
+                # st.write(best_documents_df),
+                # )
+                feedback_results = []
+                for cfg in feedback_titles:
+                    feedback_results.append(
+                        render_feedback_section(
+                            index=i,
+                            message=message,
+                            title=cfg["title"],
+                            optional_text=cfg["optional_text"],
+                            key_prefix=cfg["key_prefix"],
+                            feedback_type=cfg["feedback_type"],
+                        )
+                    )
+
+        conversation_history = pd.DataFrame(st.session_state["history"])
+        feedback_history = pd.DataFrame(st.session_state["feedback"])
+        conversation_history.to_parquet(f"logs/history/{unique_id}.parquet")
+        feedback_history.to_parquet(f"logs/feedbacks/{unique_id}.parquet")
+        # st.write(conversation_history)
+        # st.write(feedback_history)
+
 
 if user_query := st.chat_input("Poser une question sur le site insee"):
     st.session_state.history.append({"role": "user", "content": user_query})
@@ -165,4 +234,5 @@ if user_query := st.chat_input("Poser une question sur le site insee"):
     with st.chat_message("assistant"):
         response = st.write_stream(generate_answer_from_context(retriever, prompt, user_query))
     st.session_state.history.append({"role": "assistant", "content": response})
+    # with open()
     st.rerun()
