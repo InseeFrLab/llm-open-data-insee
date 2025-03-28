@@ -116,60 +116,62 @@ with st.sidebar:
         st.session_state.has_initialized_conversation = True
         st.session_state.just_loaded_history = False
         st.rerun()
+    
+    if st.session_state.username == "anonymous":
+        st.markdown("### To get a conversation history, change the username")
+    else:
+        st.markdown("### 💬 Past Conversations")
 
-if st.session_state.username != "anonymous":
-    st.markdown("### 💬 Past Conversations")
+        if st.session_state.sidebar_conversations is None:
+            try:
+                directory = fs.ls(f"{path_log}/{username}/history")
+                directory = [dir for dir in directory if dir.endswith(".parquet")]
+            except FileNotFoundError:
+                directory = []
 
-    if st.session_state.sidebar_conversations is None:
-        try:
-            directory = fs.ls(f"{path_log}/{username}/history")
-            directory = [dir for dir in directory if dir.endswith(".parquet")]
-        except FileNotFoundError:
-            directory = []
+            history_as_parquet = [pd.read_parquet(f, filesystem=fs) for f in directory]
 
-        history_as_parquet = [pd.read_parquet(f, filesystem=fs) for f in directory]
+            old_conversations = [
+                summarize_conversation(chat_client, generative_model, history)
+                for history in history_as_parquet
+                if history is not None
+            ]
 
-        old_conversations = [
-            summarize_conversation(chat_client, generative_model, history)
-            for history in history_as_parquet
-            if history is not None
-        ]
+            st.session_state.sidebar_conversations = old_conversations
 
-        st.session_state.sidebar_conversations = old_conversations
+            # ✅ Save sidebar conversations as a snapshot
+            if old_conversations:
+                df_conversations = pd.DataFrame(old_conversations)
+                df_conversations["date"] = pd.to_datetime(df_conversations["date"], errors="coerce")
+                df_conversations = df_conversations.sort_values(by="date", ascending=False)
+                df_conversations.to_parquet(
+                    f"{path_log}/{username}/conversation_history.parquet", index=False, filesystem=fs
+                )
 
-        # ✅ Save sidebar conversations as a snapshot
-        if old_conversations:
-            df_conversations = pd.DataFrame(old_conversations)
-            df_conversations["date"] = pd.to_datetime(df_conversations["date"], errors="coerce")
-            df_conversations = df_conversations.sort_values(by="date", ascending=False)
-            df_conversations.to_parquet(
-                f"{path_log}/{username}/conversation_history.parquet", index=False, filesystem=fs
-            )
+        for conversations in st.session_state.sidebar_conversations:
+            convo_id = conversations["id"]
+            title = conversations["summary"]
 
-    for conversations in st.session_state.sidebar_conversations:
-        convo_id = conversations["id"]
-        title = conversations["summary"]
+            is_active = st.session_state.active_chat_history == convo_id
 
-        is_active = st.session_state.active_chat_history == convo_id
-
-        if is_active:
-            st.markdown(
-                f"""
-                <div style='
-                    background-color: #2e3a48;
-                    padding: 0.5em;
-                    border-radius: 0.5em;
-                    margin-bottom: 0.3em;
-                    color: white;
-                    font-weight: bold;
-                '>
-                    {title}
-                </div>
-                """, unsafe_allow_html=True
-            )
-        else:
-            if st.button(title, key=f"{convo_id}", on_click=activate_old_conversation, args=(convo_id, title)):
-                pass
+            if is_active:
+                st.markdown(
+                    f"""
+                    <div style='
+                        background-color: #2e3a48;
+                        padding: 0.5em;
+                        border-radius: 0.5em;
+                        margin-bottom: 0.3em;
+                        color: white;
+                        font-weight: bold;
+                    '>
+                        {title}
+                    </div>
+                    """, unsafe_allow_html=True
+                )
+            else:
+                if st.button(title, key=f"{convo_id}", on_click=activate_old_conversation, args=(convo_id, title)):
+                    pass
 
 
 # ---------------- INITIAL MESSAGE / LOAD HISTORY ---------------- #
