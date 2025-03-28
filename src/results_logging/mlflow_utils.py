@@ -3,8 +3,13 @@ from loguru import logger
 
 
 def retrieve_unique_collection_id(
-    experiment_name: str = "vector_database_building", embedding_model: str = "model-org/model-name", config: dict = {}
+    experiment_name: str = "vector_database_building",
+    embedding_model: str = "model-org/model-name",
+    config: dict = None,
 ):
+    if config is None:
+        config = {}
+
     logger.debug("Checking if collection_name can be retrieved from MLFlow")
 
     df = mlflow.search_runs(experiment_names=[experiment_name])

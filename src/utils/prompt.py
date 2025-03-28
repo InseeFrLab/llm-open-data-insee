@@ -21,3 +21,12 @@ Question: {question}
 
 Réponse:
 """
+
+system_instructions_summarizer = """
+You are a summary assistant. Your only task is to summarize a conversation in 5 words. NOT MORE THAN 5 WORDS! Use the same language as the conversation.
+"""
+
+question_instructions_summarizer = """
+Here is the conversation you must summarize (not more than 5 words):
+{conversation}
+"""
