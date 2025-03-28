@@ -14,6 +14,16 @@ def getenv_from_vault():
     return vault_variables
 
 
+def get_config_s3():
+    config_s3 = {
+        "endpoint_url": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr"),
+        "key": os.getenv("AWS_ACCESS_KEY_ID"),
+        "secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "token": os.getenv("AWS_SESSION_TOKEN"),
+    }
+    return config_s3
+
+
 def create_config_app(use_vault=True):
     if use_vault is True:
         logger.info("Checking environment variables from vault")
@@ -21,9 +31,7 @@ def create_config_app(use_vault=True):
         for key, value in vault_env_vars.items():
             os.environ[key] = value
 
-    config_s3 = {
-        "AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr"),
-    }
+    config_s3 = get_config_s3()
 
     config_database_client = {
         "QDRANT_URL": os.getenv("QDRANT_URL"),

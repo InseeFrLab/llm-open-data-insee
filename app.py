@@ -8,7 +8,7 @@ import torch
 from dotenv import load_dotenv
 from loguru import logger
 
-from src.app.config import create_config_app
+from src.app.config import create_config_app, get_config_s3
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
 from src.app.utils import generate_answer_from_context, initialize_clients
@@ -21,7 +21,9 @@ from src.utils.utils_vllm import get_model_from_env
 load_dotenv(override=True)
 config = create_config_app()
 
-fs = s3fs.S3FileSystem(endpoint_url=os.getenv("AWS_ENDPOINT_URL"))
+fs = s3fs.S3FileSystem(
+    **get_config_s3()
+    )
 path_log = os.getenv("PATH_LOG_APP")
 
 
@@ -179,7 +181,7 @@ if st.session_state.active_chat_history is not None and not st.session_state.jus
     id_unique = st.session_state.active_chat_history
 
     # Read and sort history
-    history = pd.read_parquet(f"./logs/{username}/history/{id_unique}.parquet")
+    history = pd.read_parquet(f"{path_log}/{username}/history/{id_unique}.parquet", filesystem=fs)
     history["date"] = pd.to_datetime(history["date"], errors="coerce")
     history = history.sort_values(by="date")
     history["date"] = history["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
