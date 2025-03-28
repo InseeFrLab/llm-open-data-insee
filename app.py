@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from pathlib import Path
+import s3fs
 
 import pandas as pd
 import streamlit as st
@@ -19,6 +20,10 @@ from src.app.history import activate_old_conversation, create_unique_id, summari
 # ---------------- CONFIGURATION ---------------- #
 load_dotenv(override=True)
 config = create_config_app()
+
+fs = s3fs.S3FileSystem(endpoint_url="https://minio.lab.sspcloud.fr")
+path_log = os.getenv("PATH_LOG_APP")
+
 
 # Fix marker warning from torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
@@ -77,7 +82,6 @@ active_user = st.session_state.username
 sc1, sc2 = st.sidebar.columns((6, 1))
 
 with st.sidebar:
-
     username = st.text_input("username", DEFAULT_USERNAME)
 
     if username != st.session_state.username:
@@ -93,7 +97,6 @@ with st.sidebar:
 
         st.rerun()
 
-    st.markdown("### 🟠 Nouvelle conversation")
     if st.button("➕ Nouvelle conversation", key="new_convo"):
         st.session_state.unique_id = create_unique_id()
         st.session_state.history = [{
@@ -111,11 +114,14 @@ with st.sidebar:
     st.markdown("### 💬 Past Conversations")
 
     if st.session_state.sidebar_conversations is None:
-        Path(f"./logs/{username}/history").mkdir(parents=True, exist_ok=True)
-        Path(f"./logs/{username}/feedbacks").mkdir(parents=True, exist_ok=True)
 
-        directory = Path(f"./logs/{username}/history").glob("*.parquet")
-        history_as_parquet = [pd.read_parquet(f) for f in directory]
+        try:
+            directory = fs.ls(f"{path_log}/{username}/history")
+            directory = [dir for dir in directory if dir.endswith(".parquet")]
+        except FileNotFoundError:
+            directory=[]
+
+        history_as_parquet = [pd.read_parquet(f, filesystem=fs) for f in directory]
 
         old_conversations = [
             summarize_conversation(chat_client, generative_model, history)
@@ -124,9 +130,21 @@ with st.sidebar:
 
         st.session_state.sidebar_conversations = old_conversations
 
+        # ✅ Save sidebar conversations as a snapshot
+        if old_conversations:
+            df_conversations = pd.DataFrame(old_conversations)
+            df_conversations["date"] = pd.to_datetime(df_conversations["date"], errors="coerce")
+            df_conversations = df_conversations.sort_values(by="date", ascending=False)
+            df_conversations.to_parquet(
+                f"{path_log}/{username}/conversation_history.parquet", index=False,
+                filesystem=fs
+            )
+
+            
+
     for conversations in st.session_state.sidebar_conversations:
         convo_id = conversations["id"]
-        title = conversations["summary"] + f" ({convo_id})"
+        title = conversations["summary"]
 
         is_active = st.session_state.active_chat_history == convo_id
 
@@ -149,7 +167,6 @@ with st.sidebar:
         else:
             if st.button(title, key=f"{convo_id}", on_click=activate_old_conversation, args=(convo_id, title)):
                 pass
-
 
 # ---------------- INITIAL MESSAGE / LOAD HISTORY ---------------- #
 if (
@@ -208,8 +225,16 @@ for i, message in enumerate(st.session_state.history):
         if len(st.session_state["history"]) > 1:
             conversation_history = pd.DataFrame(st.session_state["history"])
             feedback_history = pd.DataFrame(st.session_state["feedback"])
-            conversation_history.to_parquet(f"logs/{username}/history/{unique_id}.parquet")
-            feedback_history.to_parquet(f"logs/{username}/feedbacks/{unique_id}.parquet")
+            conversation_history.to_parquet(
+                f"{path_log}/{username}/history/{unique_id}.parquet",
+                index=False,
+                filesystem=fs
+            )
+            feedback_history.to_parquet(
+                f"{path_log}/{username}/feedbacks/{unique_id}.parquet",
+                index=False,
+                filesystem=fs
+            )
 
 # ---------------- HANDLE USER INPUT ---------------- #
 if user_query := st.chat_input("Poser une question sur le site insee"):
