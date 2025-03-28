@@ -6,8 +6,8 @@ from loguru import logger
 from openai import OpenAI
 from qdrant_client import QdrantClient
 
-from src.utils import format_docs, create_prompt_from_instructions
-from src.utils.prompt import system_instructions_summarizer, question_instructions_summarizer
+from src.utils import create_prompt_from_instructions, format_docs
+from src.utils.prompt import question_instructions_summarizer, system_instructions_summarizer
 
 
 def initialize_clients(config: dict, embedding_model: str):
@@ -40,18 +40,12 @@ def initialize_clients(config: dict, embedding_model: str):
     return retriever, chat_client, qdrant_client
 
 
-
-def get_conversation_title(
-    chat_client, generative_model,
-    full_text
-):
-
+def get_conversation_title(chat_client, generative_model, full_text):
     prompt_summarizer = create_prompt_from_instructions(
         system_instructions_summarizer, question_instructions_summarizer
     )
 
     prompt_summarizer = prompt_summarizer.format(conversation=full_text)
-
 
     response = chat_client.chat.completions.create(
         model=generative_model,
