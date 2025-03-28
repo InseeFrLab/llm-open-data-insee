@@ -1,27 +1,27 @@
 import os
 from datetime import datetime
-from pathlib import Path
-import s3fs
 
 import pandas as pd
+import s3fs
 import streamlit as st
 import torch
 from dotenv import load_dotenv
 from loguru import logger
 
+from src.app.config import create_config_app
+from src.app.feedbacks import feedback_titles, render_feedback_section
+from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
+from src.app.utils import generate_answer_from_context, initialize_clients
 from src.db_building.get_number_documents import get_number_docs_collection
 from src.utils import create_prompt_from_instructions, question_instructions, system_instructions
 from src.utils.utils_vllm import get_model_from_env
 
-from src.app.feedbacks import feedback_titles, render_feedback_section
-from src.app.utils import create_config_app, generate_answer_from_context, initialize_clients
-from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
-
 # ---------------- CONFIGURATION ---------------- #
+
 load_dotenv(override=True)
 config = create_config_app()
 
-fs = s3fs.S3FileSystem(endpoint_url="https://minio.lab.sspcloud.fr")
+fs = s3fs.S3FileSystem(endpoint_url=os.environ("AWS_ENDPOINT_URL"))
 path_log = os.getenv("PATH_LOG_APP")
 
 
@@ -33,10 +33,14 @@ generative_model = get_model_from_env("URL_GENERATIVE_MODEL")
 logger.debug(f"Embedding model used: {embedding_model}")
 logger.debug(f"Generative model used: {generative_model}")
 
+
 # ---------------- INITIALIZATION ---------------- #
+
+
 @st.cache_resource(show_spinner=False)
 def initialize_clients_cache(config: dict, embedding_model=embedding_model):
     return initialize_clients(config=config, embedding_model=embedding_model)
+
 
 retriever, chat_client, qdrant_client = initialize_clients_cache(config=config, embedding_model=embedding_model)
 n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
@@ -99,12 +103,14 @@ with st.sidebar:
 
     if st.button("➕ Nouvelle conversation", key="new_convo"):
         st.session_state.unique_id = create_unique_id()
-        st.session_state.history = [{
-            "role": "assistant",
-            "content": f"Bonjour ! Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)",
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "id": st.session_state.unique_id,
-        }]
+        st.session_state.history = [
+            {
+                "role": "assistant",
+                "content": f"Bonjour ! Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)",
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "id": st.session_state.unique_id,
+            }
+        ]
         st.session_state.feedback = []
         st.session_state.active_chat_history = None
         st.session_state.has_initialized_conversation = True
@@ -114,18 +120,18 @@ with st.sidebar:
     st.markdown("### 💬 Past Conversations")
 
     if st.session_state.sidebar_conversations is None:
-
         try:
             directory = fs.ls(f"{path_log}/{username}/history")
             directory = [dir for dir in directory if dir.endswith(".parquet")]
         except FileNotFoundError:
-            directory=[]
+            directory = []
 
         history_as_parquet = [pd.read_parquet(f, filesystem=fs) for f in directory]
 
         old_conversations = [
             summarize_conversation(chat_client, generative_model, history)
-            for history in history_as_parquet if history is not None
+            for history in history_as_parquet
+            if history is not None
         ]
 
         st.session_state.sidebar_conversations = old_conversations
@@ -136,11 +142,8 @@ with st.sidebar:
             df_conversations["date"] = pd.to_datetime(df_conversations["date"], errors="coerce")
             df_conversations = df_conversations.sort_values(by="date", ascending=False)
             df_conversations.to_parquet(
-                f"{path_log}/{username}/conversation_history.parquet", index=False,
-                filesystem=fs
+                f"{path_log}/{username}/conversation_history.parquet", index=False, filesystem=fs
             )
-
-            
 
     for conversations in st.session_state.sidebar_conversations:
         convo_id = conversations["id"]
@@ -162,23 +165,20 @@ with st.sidebar:
                     {title}
                 </div>
                 """,
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
         else:
             if st.button(title, key=f"{convo_id}", on_click=activate_old_conversation, args=(convo_id, title)):
                 pass
 
 # ---------------- INITIAL MESSAGE / LOAD HISTORY ---------------- #
-if (
-    st.session_state.active_chat_history is not None
-    and not st.session_state.just_loaded_history
-):
+if st.session_state.active_chat_history is not None and not st.session_state.just_loaded_history:
     id_unique = st.session_state.active_chat_history
 
     # Read and sort history
     history = pd.read_parquet(f"./logs/{username}/history/{id_unique}.parquet")
-    history['date'] = pd.to_datetime(history['date'], errors='coerce')
-    history = history.sort_values(by='date')
+    history["date"] = pd.to_datetime(history["date"], errors="coerce")
+    history = history.sort_values(by="date")
     history["date"] = history["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
     # Store back to session state
@@ -188,16 +188,15 @@ if (
     st.session_state.just_loaded_history = True
     st.rerun()
 
-if (
-    not st.session_state.has_initialized_conversation
-    and st.session_state.active_chat_history is None
-):
-    st.session_state.history = [{
-        "role": "assistant",
-        "content": f"Bonjour ! Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)",
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "id": st.session_state.unique_id,
-    }]
+if not st.session_state.has_initialized_conversation and st.session_state.active_chat_history is None:
+    st.session_state.history = [
+        {
+            "role": "assistant",
+            "content": f"Bonjour ! Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)",
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "id": st.session_state.unique_id,
+        }
+    ]
     st.session_state.has_initialized_conversation = True
 
 # ---------------- CHAT MESSAGES & FEEDBACK ---------------- #
@@ -226,24 +225,17 @@ for i, message in enumerate(st.session_state.history):
             conversation_history = pd.DataFrame(st.session_state["history"])
             feedback_history = pd.DataFrame(st.session_state["feedback"])
             conversation_history.to_parquet(
-                f"{path_log}/{username}/history/{unique_id}.parquet",
-                index=False,
-                filesystem=fs
+                f"{path_log}/{username}/history/{unique_id}.parquet", index=False, filesystem=fs
             )
             feedback_history.to_parquet(
-                f"{path_log}/{username}/feedbacks/{unique_id}.parquet",
-                index=False,
-                filesystem=fs
+                f"{path_log}/{username}/feedbacks/{unique_id}.parquet", index=False, filesystem=fs
             )
 
 # ---------------- HANDLE USER INPUT ---------------- #
 if user_query := st.chat_input("Poser une question sur le site insee"):
-    st.session_state.history.append({
-        "role": "user",
-        "content": user_query,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "id": unique_id
-    })
+    st.session_state.history.append(
+        {"role": "user", "content": user_query, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "id": unique_id}
+    )
 
     with st.chat_message("user"):
         st.markdown(user_query)
@@ -259,11 +251,13 @@ if user_query := st.chat_input("Poser une question sur le site insee"):
             )
         )
 
-    st.session_state.history.append({
-        "role": "assistant",
-        "content": response,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "id": unique_id
-    })
+    st.session_state.history.append(
+        {
+            "role": "assistant",
+            "content": response,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "id": unique_id,
+        }
+    )
 
     st.rerun()

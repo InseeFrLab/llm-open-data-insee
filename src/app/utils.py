@@ -1,4 +1,3 @@
-import os
 
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
@@ -68,29 +67,3 @@ def generate_answer_from_context(retriever, chat_client, generative_model: str, 
         stream=True,
     )
     return stream
-
-
-def create_config_app():
-    config_s3 = {
-        "AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr"),
-    }
-
-    config_database_client = {
-        "QDRANT_URL": os.getenv("QDRANT_URL"),
-        "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY"),
-        "QDRANT_COLLECTION_NAME": os.getenv("COLLECTION_NAME", "dirag_mistral_small"),
-    }
-
-    config_embedding_model = {
-        "OPENAI_API_BASE_EMBEDDING": os.getenv("OPENAI_API_BASE", os.getenv("URL_EMBEDDING_MODEL")),
-        "OPENAI_API_KEY_EMBEDDING": os.getenv("OPENAI_API_KEY", "EMPTY"),
-    }
-
-    config_generative_model = {
-        "OPENAI_API_BASE_GENERATIVE": os.getenv("OPENAI_API_BASE", os.getenv("URL_GENERATIVE_MODEL")),
-        "OPENAI_API_KEY_GENERATIVE": os.getenv("OPENAI_API_KEY", "EMPTY"),
-    }
-
-    config = {**config_s3, **config_database_client, **config_embedding_model, **config_generative_model}
-
-    return config
