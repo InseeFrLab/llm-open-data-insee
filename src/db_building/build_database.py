@@ -9,7 +9,6 @@ from langchain_qdrant import QdrantVectorStore
 from loguru import logger
 from qdrant_client import QdrantClient
 
-from src.config import Configurable, DefaultFullConfig, FullConfig
 from src.model_building import cache_model_from_hf_hub
 
 logger.add("./logging/logs.log")

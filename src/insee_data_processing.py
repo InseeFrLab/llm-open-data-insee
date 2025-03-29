@@ -6,7 +6,6 @@ import s3fs
 from markdownify import markdownify as md
 
 from db_building.utils_db import complete_url_builder
-from src.config import DefaultFullConfig, process_args, simple_argparser
 
 FILES = [
     "applishare_extract",

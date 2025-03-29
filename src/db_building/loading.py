@@ -14,20 +14,6 @@ from src.utils import compare_params
 logger = logging.getLogger(__name__)
 
 
-class LocalLoadingConfig(BaseModel):
-    chroma_db_local_path: str
-    collection_name: str
-
-
-class MLFlowLoadingConfig(BaseModel):
-    mlflow_load_artifacts: bool
-    mlflow_run_id: str | None
-
-
-class LoadingConfig(LocalLoadingConfig, MLFlowLoadingConfig, BaseModel):
-    pass
-
-
 # LOADING VECTOR DATABASE FROM DIRECTORY -------------------------
 
 
