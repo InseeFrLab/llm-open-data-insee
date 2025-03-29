@@ -21,9 +21,7 @@ from src.utils.utils_vllm import get_model_from_env
 load_dotenv(override=True)
 config = create_config_app()
 
-fs = s3fs.S3FileSystem(
-    **get_config_s3()
-    )
+fs = s3fs.S3FileSystem(**get_config_s3())
 path_log = os.getenv("PATH_LOG_APP")
 
 
@@ -118,7 +116,7 @@ with st.sidebar:
         st.session_state.has_initialized_conversation = True
         st.session_state.just_loaded_history = False
         st.rerun()
-    
+
     if st.session_state.username == "anonymous":
         st.markdown("### To get a conversation history, change the username")
     else:
@@ -169,7 +167,8 @@ with st.sidebar:
                     '>
                         {title}
                     </div>
-                    """, unsafe_allow_html=True
+                    """,
+                    unsafe_allow_html=True,
                 )
             else:
                 if st.button(title, key=f"{convo_id}", on_click=activate_old_conversation, args=(convo_id, title)):

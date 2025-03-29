@@ -2448,6 +2448,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "ragatouille" },
     { name = "rank-bm25" },
+    { name = "ruff" },
     { name = "s3fs" },
     { name = "scipy" },
     { name = "streamlit" },
@@ -2456,6 +2457,7 @@ dependencies = [
     { name = "tqdm" },
     { name = "transformers" },
     { name = "vllm" },
+    { name = "vulture" },
 ]
 
 [package.dev-dependencies]
@@ -2493,6 +2495,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "ragatouille", specifier = ">=0.0.9" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
+    { name = "ruff", specifier = ">=0.11.0" },
     { name = "s3fs", specifier = ">=2025.3.0" },
     { name = "scipy", specifier = ">=1.15.2" },
     { name = "streamlit", specifier = ">=1.43.2" },
@@ -2501,6 +2504,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "transformers", specifier = ">=4.49.0" },
     { name = "vllm", specifier = ">=0.7.3" },
+    { name = "vulture", specifier = ">=2.14" },
 ]
 
 [package.metadata.requires-dev]
