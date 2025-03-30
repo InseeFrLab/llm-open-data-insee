@@ -6,19 +6,16 @@ from collections.abc import Iterable
 import s3fs
 from transformers import AutoModelForCausalLM
 
-from src.config import Configurable, DefaultFullConfig, FullConfig, models_only_argparser, process_args
-
 logger = logging.getLogger(__name__)
 
 
-@Configurable()
 def cache_model_from_hf_hub(
     model_name: str,
     s3_bucket: str = "models-hf",
     s3_cache_dir: str = "hf_hub",
     s3_token: str = None,
     hf_token: str = None,
-    config: FullConfig = DefaultFullConfig(),
+    config: dict = None,
 ):
     """Use S3 as proxy cache from HF hub if a model is not already cached locally.
 
@@ -28,6 +25,9 @@ def cache_model_from_hf_hub(
         s3_cache_dir (str): Path of the cache directory on S3.
     """
     assert "MC_HOST_s3" in os.environ, "Please set the MC_HOST_s3 environment variable."
+
+    if config is None:
+        config = {}
 
     # Local cache config
     LOCAL_HF_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
@@ -84,14 +84,3 @@ def cache_models_from_hf_hub(
 ):
     for model_name in models_names:
         cache_model_from_hf_hub(model_name, s3_endpoint, s3_bucket, s3_cache_dir)
-
-
-if __name__ == "__main__":
-    process_args(models_only_argparser())
-    config = DefaultFullConfig()
-    cache_models_from_hf_hub(
-        [config.embedding_model, config.llm_model],
-        config.s3_bucket,
-        config.s3_endpoint_url,
-        config.s3_model_cache_dir,
-    )

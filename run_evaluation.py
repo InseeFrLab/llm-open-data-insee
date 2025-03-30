@@ -102,6 +102,7 @@ def run_evaluation() -> None:
 
     with mlflow.start_run() as run:
         run_id = run.info.run_id
+        logger.info(run_id)
 
         # Logging the full configuration to mlflow
 

@@ -1,6 +1,4 @@
 import re
-from collections.abc import Generator, Sequence
-from typing import Any
 
 # import logging
 import pandas as pd
@@ -189,30 +187,6 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
         parsed_pages["content"].append(remove_excessive_newlines(parsed_page))
 
     return pd.DataFrame(parsed_pages).set_index("id")
-
-
-def split_list(input_list: Sequence[Any], chunk_size: int) -> Generator[Sequence[Any], None, None]:
-    """
-    Splits a list into smaller chunks of a specified size.
-
-    Parameters:
-    -----------
-    input_list : Sequence[Any]
-        The list to be split into chunks.
-    chunk_size : int
-        The size of each chunk.
-
-    Yields:
-    -------
-    Generator[Sequence[Any]]
-        A generator that yields chunks of the input list.
-    """
-
-    if not chunk_size > 0:
-        raise ValueError("chunk_size must be a strictly positive integer.")
-
-    for i in range(0, len(input_list), chunk_size):
-        yield input_list[i : i + chunk_size]
 
 
 def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:

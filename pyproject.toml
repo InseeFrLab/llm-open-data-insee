@@ -52,13 +52,6 @@ extend-include = ["*.ipynb"]
 extend-exclude = ["notebooks/*"]
 target-version = "py312"
 
-[[tool.mypy.overrides]]
-module = "s3fs"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "transformers"
-ignore_missing_imports = true
 
 [dependency-groups]
 dev = [
