@@ -16,6 +16,7 @@ from loguru import logger
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import Distance, VectorParams
 
+from src.config import set_config
 from src.db_building.corpus import constructor_corpus
 from src.db_building.document_chunker import parse_transform_documents
 from src.utils.utils_vllm import get_model_from_env, get_model_max_len
@@ -66,18 +67,7 @@ args = parser.parse_args()
 
 # CONFIGURATION ------------------------------------------
 
-config_s3 = {"AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")}
 
-config_database_client = {
-    "QDRANT_URL": os.getenv("QDRANT_URL", None),
-    "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY", None),
-    "QDRANT_COLLECTION_NAME": args.collection_name,
-}
-
-config_mlflow = {
-    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", None),
-    "MLFLOW_EXPERIMENT_NAME": args.mlflow_experiment_name,
-}
 
 config_embedding_model = {
     # Assuming an OpenAI compatible client is used (VLLM, Ollama, etc.)
@@ -86,7 +76,13 @@ config_embedding_model = {
 }
 
 
-config = {**config_s3, **config_database_client, **config_mlflow, **config_embedding_model}
+config = set_config(
+    components=["s3", "mlflow", "database"],
+    mlflow_experiment_name=args.mlflow_experiment_name,
+    override={"QDRANT_COLLECTION_NAME": args.collection_name},
+    verbose=True
+)
+# config = {**config_s3, **config_database_client, **config_mlflow, **config_embedding_model}
 
 # PARAMETERS ------------------------------------------
 
