@@ -1,12 +1,10 @@
 import logging
 
 import pandas as pd
-
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
-from transformers import AutoTokenizer
 
 from .utils_db import parse_xmls
 

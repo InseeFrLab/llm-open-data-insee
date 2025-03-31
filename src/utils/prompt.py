@@ -1,5 +1,5 @@
 similarity_search_instructions = (
-    f"Instruct: Given a specific query in French, retrieve the most relevant documents that answer the query"
+    "Instruct: Given a specific query in French, retrieve the most relevant documents that answer the query"
 )
 
 system_instructions = """

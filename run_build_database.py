@@ -1,5 +1,4 @@
 import argparse
-import os
 import shutil
 import subprocess
 import tempfile
@@ -17,10 +16,9 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import Distance, VectorParams
 
 from src.config import set_config
-from src.utils.prompt import similarity_search_instructions
-
 from src.db_building.corpus import constructor_corpus
-from src.db_building.document_chunker import parse_documents, chunk_documents
+from src.db_building.document_chunker import chunk_documents, parse_documents
+from src.utils.prompt import similarity_search_instructions
 from src.utils.utils_vllm import get_model_from_env, get_model_max_len
 
 load_dotenv(override=True)
@@ -75,7 +73,9 @@ parser.add_argument(
     help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
 )
 parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
-parser.add_argument("--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)")
+parser.add_argument(
+    "--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)"
+)
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
@@ -240,7 +240,6 @@ def run_build_database() -> None:
 
         # CREATING SNAPSHOT FOR LOGGING -------------------
         if args.log_database_snapshot is True:
-
             logger.info("Logging database snapshot")
 
             snapshot = client.create_snapshot(collection_name=unique_collection_name)

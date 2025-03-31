@@ -1,8 +1,8 @@
 import os
-from loguru import logger
 
 import hvac
 from dotenv import load_dotenv
+from loguru import logger
 
 load_dotenv(override=True)
 
@@ -13,8 +13,7 @@ load_dotenv(override=True)
 def getenv_from_vault():
     client = hvac.Client(url=os.environ["VAULT_ADDR"], token=os.environ["VAULT_TOKEN"])
     encryptFiles = client.secrets.kv.read_secret_version(
-        path="projet-llm-insee-open-data/chatbot", mount_point="onyxia-kv",
-        raise_on_deleted_version=False
+        path="projet-llm-insee-open-data/chatbot", mount_point="onyxia-kv", raise_on_deleted_version=False
     )
     vault_variables = encryptFiles.get("data").get("data")
 
@@ -22,39 +21,35 @@ def getenv_from_vault():
 
 
 def get_config_s3(s3_endpoint_only: bool = True, **kwargs):
-
     if "verbose" in kwargs and kwargs["verbose"] is True:
         logger.info("Setting 'endpoint_url', 'key', 'secret' and 'token' parameters")
 
-    config_s3 = {
-        "endpoint_url": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")
-    }
+    config_s3 = {"endpoint_url": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")}
 
     if s3_endpoint_only is True:
         return config_s3
-    
+
     config_s3 = {
         **config_s3,
         **{
             "key": os.getenv("AWS_ACCESS_KEY_ID"),
             "secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
             "token": os.getenv("AWS_SESSION_TOKEN"),
-        }
+        },
     }
 
     return config_s3
 
 
 def setenv_from_vault(s3_endpoint_only: bool = True):
-    
     logger.info("Setting environment variables from values provided to Vault")
-    
+
     vault_env_vars = getenv_from_vault()
 
     if s3_endpoint_only is True:
         for keys in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
             vault_env_vars.pop(keys, None)
-    
+
     for key, value in vault_env_vars.items():
         os.environ[key] = value
 

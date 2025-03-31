@@ -9,13 +9,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None) -> str:
-    if config_dict is not None:
-        url_model = config_dict.get(env_var_api)
-    else:
-        url_model = os.getenv(env_var_api)
+
+    url_model = config_dict.get(env_var_api) if config_dict is not None else os.getenv(env_var_api)
 
     if url_model:
-        logger.debug(f"Model called from {url_model} API (inferred from {env_var_api} environment variable)")
+        logger.debug(
+            f"Model called from {url_model} API (inferred from {env_var_api} environment variable)"
+        )
         try:
             response = requests.get(f"{url_model}models")
             response.raise_for_status()  # Ensure the request was successful
