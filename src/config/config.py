@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-#import logging
-#logger = logging.getLogger(__name__)
+# import logging
+# logger = logging.getLogger(__name__)
 
 
 def getenv_from_vault():
@@ -21,11 +21,8 @@ def getenv_from_vault():
 
 
 def get_config_s3(**kwargs):
-    
-    if "verbose" in kwargs and kwargs['verbose'] is True:
-        logger.info(
-                "Setting 'endpoint_url', 'key', 'secret' and 'token' parameters"
-        )
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info("Setting 'endpoint_url', 'key', 'secret' and 'token' parameters")
 
     config_s3 = {
         "endpoint_url": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr"),
@@ -37,18 +34,15 @@ def get_config_s3(**kwargs):
 
 
 def setenv_from_vault():
-    logger.info("Checking environment variables from vault")
+    logger.info("Setting environment variables from values provided to Vault")
     vault_env_vars = getenv_from_vault()
     for key, value in vault_env_vars.items():
         os.environ[key] = value
 
 
 def get_config_database_qdrant(default_collection_name: str = "dirag_mistral_small", **kwargs):
-    # avoid warning for unused kwargs set for programmatic reasons
-    if "verbose" in kwargs and kwargs['verbose'] is True:
-        logger.info(
-            "Setting 'QDRANT_URL', 'QDRANT_API_KEY' and 'QDRANT_COLLECTION_NAME' parameters"
-        )
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info("Setting 'QDRANT_URL', 'QDRANT_API_KEY' and 'QDRANT_COLLECTION_NAME' parameters")
 
     config_database_client = {
         "QDRANT_URL": os.getenv("QDRANT_URL"),
@@ -59,25 +53,59 @@ def get_config_database_qdrant(default_collection_name: str = "dirag_mistral_sma
 
 
 def get_config_mlflow(mlflow_experiment_name: str = "experiment_name", **kwargs):
-    # avoid warning for unused kwargs set for programmatic reasons
-    if "verbose" in kwargs and kwargs['verbose'] is True:
-        logger.info(
-            "Setting 'MLFLOW_TRACKING_URI' and 'MLFLOW_EXPERIMENT_NAME' parameters"
-        )
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info("Setting 'MLFLOW_TRACKING_URI' and 'MLFLOW_EXPERIMENT_NAME' parameters")
 
     config_mlflow = {
         "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", None),
-        "MLFLOW_EXPERIMENT_NAME": mlflow_experiment_name
+        "MLFLOW_EXPERIMENT_NAME": mlflow_experiment_name,
     }
     return config_mlflow
 
 
+def get_config_openai(suffix: str = "", default_values: dict = None, **kwargs):
+    if suffix.startswith("_") is False and suffix != "":
+        suffix = "_" + suffix
+
+    if default_values is None:
+        default_values = {}
+
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info(f"Setting 'OPENAI_API_BASE{suffix}' and 'OPENAI_API_KEY{suffix}' parameters")
+
+    config_openai = {
+        f"OPENAI_API_BASE{suffix}": default_values.get("OPENAI_API_BASE", os.getenv("OPENAI_API_BASE")),
+        f"OPENAI_API_KEY{suffix}": default_values.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "EMPTY")),
+    }
+
+    return config_openai
+
+
+def get_config_vllm(url_embedding_model: str = None, url_generative_model: str = None, **kwargs):
+    if url_embedding_model is not None:
+        config = get_config_openai(
+            suffix="EMBEDDING", default_values={"OPENAI_API_BASE": url_embedding_model}, **kwargs
+        )
+    else:
+        config = {}
+
+    if url_generative_model is not None:
+        config_generative = get_config_openai(
+            suffix="GENERATIVE", default_values={"OPENAI_API_BASE": url_generative_model}, **kwargs
+        )
+        config = {**config, **config_generative}
+
+    return config
+
+
 def set_config(
-    use_vault: bool = False, components: list = None,
+    use_vault: bool = False,
+    components: list = None,
     database_manager: str = "Qdrant",
+    models_location: dict = None,
     override: dict = None,
     verbose: bool = False,
-    **kwargs
+    **kwargs,
 ):
     if database_manager.lower() != "qdrant":
         message = (
@@ -86,6 +114,9 @@ def set_config(
             "you are on your own"
         )
         raise ValueError(message)
+
+    if models_location is None:
+        models_location = {}
 
     kwargs = {**kwargs, **{"verbose": verbose}}
 
@@ -105,6 +136,9 @@ def set_config(
 
     if "database" in components and database_manager.lower() == "qdrant":
         config = {**config, **get_config_database_qdrant(**kwargs)}
+
+    if "model" in components:
+        config = {**config, **get_config_vllm(**models_location, **kwargs)}
 
     if override is not None:
         for key, value in override.items():

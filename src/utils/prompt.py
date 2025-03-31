@@ -1,4 +1,8 @@
-# ---------------- PROMPT TEMPLATE ---------------- #
+similarity_search_instructions = (
+    "Instruct: Given a specific query in French, "
+    f"retrieve the most relevant documents that answer the query"
+)
+
 system_instructions = """
 Tu es un assistant spécialisé dans la statistique publique.
 Tu réponds à des questions concernant les données de l'Insee, l'institut national statistique Français.

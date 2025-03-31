@@ -8,26 +8,14 @@ from langchain_openai import OpenAIEmbeddings
 logger = logging.getLogger(__name__)
 
 
-def get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL") -> str:
-    """
-    Retrieves the model ID either from an API or a local environment variable.
+def get_model_from_env(
+    env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None
+) -> str:
 
-    This function first checks for an environment variable (`env_var_api`) that
-    provides the URL for fetching available models. If the URL exists, it queries
-    the API and retrieves the first available model's ID.
-
-    If the API URL is not set or the request fails, it falls back to a local
-    environment variable (inferred by removing "URL_" from `env_var_api`).
-    If no local model is specified, it defaults to `"OrdalieTech/Solon-embeddings-large-0.1"`.
-
-    Args:
-        env_var_api (str, optional): The environment variable name that stores
-                                     the API URL. Defaults to "URL_EMBEDDING_MODEL".
-
-    Returns:
-        str: The ID of the selected model.
-    """
-    url_model = os.getenv(env_var_api)
+    if config_dict is not None:
+        url_model = config_dict.get(env_var_api)
+    else:
+        url_model = os.getenv(env_var_api)
 
     if url_model:
         logger.debug(f"Model called from {url_model} API (inferred from {env_var_api} environment variable)")

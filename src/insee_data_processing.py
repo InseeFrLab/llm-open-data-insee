@@ -64,6 +64,8 @@ def extract_rmes_data(data: dict):
     partenaires = get_content(data, "partenaires", 0, "label", 0)
     # services_collecteurs = get_content(data, "servicesCollecteurs", 0, "label", 0)
     url = f"https://www.insee.fr/fr/metadonnees/source/serie/{id}"
+    # author = get_content(data, "autheur", 0)
+
 
     parts = [
         f"## {label}",
@@ -80,7 +82,7 @@ def extract_rmes_data(data: dict):
     parts.append(f"### Partenaires\n{partenaires}\n") if partenaires else None
     formatted_page = "\n".join(parts).replace("\\.", ".").replace("\\-", "-")
 
-    return id, label, url, formatted_page
+    return id, label, url, formatted_page  # , resume, author
 
 
 def process_row(row):

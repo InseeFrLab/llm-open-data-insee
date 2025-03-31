@@ -17,8 +17,10 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import Distance, VectorParams
 
 from src.config import set_config
+from src.utils.prompt import similarity_search_instructions
+
 from src.db_building.corpus import constructor_corpus
-from src.db_building.document_chunker import parse_transform_documents
+from src.db_building.document_chunker import parse_documents, chunk_documents
 from src.utils.utils_vllm import get_model_from_env, get_model_max_len
 
 load_dotenv(override=True)
@@ -43,12 +45,28 @@ parser.add_argument(
     help="Experiment name in mlflow",
 )
 parser.add_argument(
+    "--chunking_strategy",
+    type=str,
+    default="None",
+    choices=["None", "Recursive", "recursive"],
+    help="Chunking strategy for documents"
+    "If None (default), corpus is left asis. "
+    "If recursive, use Langchain's CharacterTextSplitter",
+)
+parser.add_argument(
     "--max_document_size",
     type=int,
-    default=None,
+    default=2000,
     help="Threshold size for documents. "
     "If None (default), corpus is left asis. "
-    "If value provided, CharacterTextSplitter.from_tiktoken_encoder is applied",
+    "If value provided, passed to Langchain's CharacterTextSplitter is applied",
+)
+parser.add_argument(
+    "--chunk_overlap",
+    type=int,
+    default=100,
+    help="Chunk overlap when documents are split. "
+    "If value provided, passed to Langchain's CharacterTextSplitter is applied",
 )
 parser.add_argument(
     "--dataset",
@@ -67,40 +85,34 @@ args = parser.parse_args()
 
 # CONFIGURATION ------------------------------------------
 
-
-
-config_embedding_model = {
-    # Assuming an OpenAI compatible client is used (VLLM, Ollama, etc.)
-    "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", os.getenv("URL_EMBEDDING_MODEL")),
-    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "EMPTY"),
-}
-
-
 config = set_config(
-    components=["s3", "mlflow", "database"],
+    components=["s3", "mlflow", "database", "model"],
     mlflow_experiment_name=args.mlflow_experiment_name,
+    models_location={
+        "url_embedding_model": os.getenv("URL_EMBEDDING_MODEL"),
+        "url_generative_model": os.getenv("URL_GENERATIVE_MODEL"),
+    },
     override={"QDRANT_COLLECTION_NAME": args.collection_name},
-    verbose=True
+    verbose=True,
 )
-# config = {**config_s3, **config_database_client, **config_mlflow, **config_embedding_model}
+
 
 # PARAMETERS ------------------------------------------
 
-SIMILARITY_SEARCH_INSTRUCTION = (
-    "Instruct: Given a specific query in french, retrieve the most relevant passages that answer the query"
-)
 S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
 collection_name = args.collection_name
 
-url_database_client = config_database_client.get("QDRANT_URL")
-api_key_database_client = config_database_client.get("QDRANT_API_KEY")
+url_database_client = config.get("QDRANT_URL")
+api_key_database_client = config.get("QDRANT_API_KEY")
 max_document_size = args.max_document_size
-embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
+chunk_overlap = args.chunk_overlap
+embedding_model = get_model_from_env("OPENAI_API_BASE_EMBEDDING", config)
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
     "QDRANT_URL_API": url_database_client,
     "max_document_size": max_document_size,
+    "chunk_overlap": chunk_overlap
 }
 print(parameters_database_construction)
 logger.debug(f"Using {embedding_model} for database retrieval")
@@ -116,9 +128,13 @@ def run_build_database() -> None:
 
     with mlflow.start_run() as run:
         run_id = run.info.run_id
-        filesystem = s3fs.S3FileSystem(endpoint_url=config.get("AWS_ENDPOINT_URL"))
+        filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
 
-        filtered_config = {k: v for k, v in config.items() if "KEY" not in k}
+        filtered_config = {
+            k: v for k, v in config.items()
+            if not any(s in k.lower() for s in ["key", "token", "secret"])
+        }
+
         mlflow.log_params(filtered_config)
         mlflow.log_params(parameters_database_construction)
         mlflow.log_params({"dataset": args.dataset})
@@ -144,11 +160,24 @@ def run_build_database() -> None:
 
         logger.info("Starting to parse XMLs")
 
-        documents = parse_transform_documents(data=data, max_document_size=max_document_size, engine_output="langchain")
+        documents = parse_documents(
+            data=data, engine_output="langchain"
+        )
 
         logger.success("XMLs have been parsed")
 
+
+        # SPLITTING STRATEGY -------------------------------
+ 
+        if max_document_size is not None:
+            documents = chunk_documents(
+                documents,
+                **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap}
+            )
+
+
         # CREATE DATABASE COLLECTION -----------------------
+
         logger.info("Connecting to vector database")
 
         model_max_len = get_model_max_len(embedding_model)
@@ -160,13 +189,15 @@ def run_build_database() -> None:
         logger.info(f"Creating vector collection ({unique_collection_name})")
         client.create_collection(
             collection_name=unique_collection_name,
-            vectors_config=VectorParams(size=model_max_len, distance=Distance.COSINE),
+            vectors_config=VectorParams(
+                size=model_max_len,
+                distance=Distance.COSINE),
         )
 
         emb_model = OpenAIEmbeddings(
             model=embedding_model,
-            openai_api_base=config_embedding_model.get("OPENAI_API_BASE"),
-            openai_api_key=config_embedding_model.get("OPENAI_API_KEY"),
+            openai_api_base=config.get("OPENAI_API_BASE_EMBEDDING"),
+            openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
         )
 
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
@@ -190,7 +221,9 @@ def run_build_database() -> None:
         client.update_collection_aliases(
             change_aliases_operations=[
                 models.CreateAliasOperation(
-                    create_alias=models.CreateAlias(collection_name=unique_collection_name, alias_name=collection_name)
+                    create_alias=models.CreateAlias(
+                        collection_name=unique_collection_name, alias_name=collection_name
+                    )
                 )
             ]
         )
@@ -221,7 +254,11 @@ def run_build_database() -> None:
         url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
 
         # Intermediate save snapshot in local for logging in MLFlow
-        response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 5)
+        response = requests.get(
+            url_snapshot,
+            headers={"api-key": api_key_database_client},
+            timeout=60*10
+        )
         with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
             temp_file.write(response.content)
             temp_file_path = temp_file.name  # Store temp file path
@@ -242,7 +279,8 @@ def run_build_database() -> None:
         mlflow.log_table(data=data.head(10), artifact_file="web4g_data.json")
 
         # Log a result of a similarity search
-        query = f"{SIMILARITY_SEARCH_INSTRUCTION}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
+        query = f"{similarity_search_instructions}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
+        mlflow.log_param("prompt_retriever", similarity_search_instructions)
 
         retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 

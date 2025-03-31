@@ -5,7 +5,7 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from loguru import logger
-from markdownify import MarkdownConverter
+from markdownify import MarkdownConverter, markdownify
 from tqdm import tqdm
 
 # logger = logging.getLogger(__name__)
@@ -138,7 +138,7 @@ def prepend_text_to_tag(tag, text):
     text (str): The text to prepend to the tag's content.
 
     """
-    if tag.string is not None:
+    if tag.get_text() is not None:
         tag.insert(0, text)
     else:
         tag.string = text
@@ -158,13 +158,20 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
     Returns:
     - pd.DataFrame: A DataFrame with 'id' as the index and formatted content in the 'content' column
     """
-    parsed_pages: dict[str, list] = {"id": [], "content": []}
+
+    data = data.reset_index(names="index")
+    parsed_pages: dict[str, list] = {
+        "id": [],
+        "content": [],
+        "abstract": []
+        }
 
     logstep = 1 + (len(data) // 10)
     for i, row in data.iterrows():
-        page_id = row[id]
+        page_id = row["id"]
+        page_number = row["index"]
         if i % logstep == 0:
-            logger.info(f"Parsing XML from page {page_id} -- {i}/{len(data)} ({100 * i / len(data):.2f}%)")
+            logger.info(f"Parsing XML from page {page_number} -- {i}/{len(data)} ({100 * i / len(data):.2f}%)")
 
         if not row[xml_column]:
             # When xml_content is empty, we skip the page
@@ -183,10 +190,17 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
             heading_style="ATX",
         )
 
+        abstract = markdownify(
+            "\n".join([str(content) for content in soup.find("h2").contents])
+        )
+
         parsed_pages["id"].append(page_id)
         parsed_pages["content"].append(remove_excessive_newlines(parsed_page))
+        parsed_pages["abstract"].append(abstract.replace("Résumé :\n\n", ""))
 
-    return pd.DataFrame(parsed_pages).set_index("id")
+    data_as_md = pd.DataFrame(parsed_pages).set_index("id")
+
+    return data_as_md
 
 
 def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:

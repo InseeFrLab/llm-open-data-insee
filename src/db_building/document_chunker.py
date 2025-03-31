@@ -1,7 +1,8 @@
 import logging
 
 import pandas as pd
-from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
+
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter
@@ -22,68 +23,22 @@ HEADERS_TO_SPLIT_ON = [
 
 
 def chunk_documents(
-    data: pd.DataFrame,
-    embedding_model: str,
-    markdown_split: bool = False,
-    chunk_size: int | None = None,
-    chunk_overlap: int | None = None,
-    separators: list[str] | None = None,
+    documents: list[Document],
+    **kwargs
 ) -> list[Document]:
-    """
-    Chunks documents from a dataframe into smaller pieces using specified tokenizer settings
-    or custom settings.
-
-    Parameters:
-    - data (pd.DataFrame): The dataframe containing documents to be chunked.
-    - embedding_model (str): The name of the Hugging Face tokenizer to use.
-    - markdown_split (bool): Whether to split markdown headers into separate chunks.
-    - chunk_size (int, optional): Size of each chunk if not using hf_tokenizer.
-    - chunk_overlap (int, optional): Overlap size between chunks if not using hf_tokenizer.
-    - separators (list, optional): List of separators to use for splitting the text.
-
-    Returns:
-    - list[Document]: The list of processed unique document chunks
-    """
 
     logging.info("Building the list of document objects")
-
-    # advantage of using a loader
-    # No need to know which metadata are stored in the dataframe
-    # Every column except page_content_column contains metadata
-    document_list = DataFrameLoader(data, page_content_column="content").load()
-
-    if markdown_split:
-        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=HEADERS_TO_SPLIT_ON, strip_headers=False)
-        document_list = make_md_splits(document_list, markdown_splitter)
-
-    # Load the tokenizer
-    autokenizer = AutoTokenizer.from_pretrained(embedding_model)
-
-    if autokenizer.model_max_length is not None:
-        chunk_size = autokenizer.model_max_length
+    logging.info(f"The following parameters have been applied: {kwargs}")
 
     # Initialize token splitter
-    text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
-        autokenizer,
-        chunk_size=chunk_size,
-        # chunk_overlap=chunk_overlap,
-        separators=separators,
+    docs_processed = (
+        RecursiveCharacterTextSplitter(**kwargs)
+        .split_documents(documents)
     )
 
-    # Split documents into chunks
-    docs_processed = text_splitter.split_documents(document_list)
+    logging.info(f"Number of created chunks: {len(docs_processed)} in the Vector Database")
 
-    # Remove duplicates
-    unique_texts = set()
-    docs_processed_unique = []
-    for doc in docs_processed:
-        if doc.page_content not in unique_texts:
-            unique_texts.add(doc.page_content)
-            docs_processed_unique.append(doc)
-
-    logging.info(f"Number of created chunks: {len(docs_processed_unique)} in the Vector Database")
-
-    return docs_processed_unique
+    return docs_processed
 
 
 def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
@@ -135,6 +90,7 @@ def _parser_xml_web4g(data: pd.DataFrame) -> pd.DataFrame:
             "collection",
             "libelleAffichageGeo",
             "content",
+            "abstract"
         ],
     ]
 
@@ -143,9 +99,8 @@ def _parser_xml_web4g(data: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def parse_transform_documents(
+def parse_documents(
     data: pd.DataFrame,
-    max_document_size: int | None = None,
     page_column_content: str = "content",
     engine_output: str = "pandas",
 ) -> pd.DataFrame | list:
@@ -187,11 +142,5 @@ def parse_transform_documents(
     # Load DataFrame into LangChain document format
     loader = DataFrameLoader(df, page_content_column=page_column_content)
     documents = loader.load()
-
-    # Optionally split documents into smaller chunks
-    if max_document_size:
-        logger.debug(f"Splitting documents if they exceed {max_document_size} tokens")
-        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(chunk_size=max_document_size, chunk_overlap=0)
-        documents = text_splitter.split_documents(documents)
 
     return documents
