@@ -144,6 +144,7 @@ def prepend_text_to_tag(tag, text):
         tag.string = text
 
 
+
 def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
     """
     Parses XML content from a DataFrame, extracts data, formats it,

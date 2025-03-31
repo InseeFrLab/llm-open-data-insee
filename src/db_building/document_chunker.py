@@ -4,20 +4,10 @@ import pandas as pd
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
-from langchain_text_splitters import MarkdownHeaderTextSplitter
 
 from .utils_db import parse_xmls
 
 logger = logging.getLogger(__name__)
-
-HEADERS_TO_SPLIT_ON = [
-    ("#", "Header 1"),
-    ("##", "Header 2"),
-    ("###", "Header 3"),
-    ("####", "Header 4"),
-    ("#####", "Header 5"),
-    ("######", "Header 6"),
-]
 
 
 def chunk_documents(documents: list[Document], **kwargs) -> list[Document]:
@@ -30,33 +20,6 @@ def chunk_documents(documents: list[Document], **kwargs) -> list[Document]:
     logging.info(f"Number of created chunks: {len(docs_processed)} in the Vector Database")
 
     return docs_processed
-
-
-def make_md_splits(document_list: list[Document], markdown_splitter: MarkdownHeaderTextSplitter) -> list[Document]:
-    """
-    Splits the content of each document in the document list based on Markdown headers,
-    and preserves the original metadata in each split section.
-
-    Args:
-        document_list (list[Document]): List of Document objects to be split.
-        markdown_splitter (MarkdownHeaderTextSplitter): An instance of MarkdownHeaderTextSplitter
-            used to perform the text splitting based on Markdown headers.
-
-    Returns:
-        list[Document]: List of split Document objects with updated metadata.
-    """
-    splitted_docs = []
-
-    for doc in document_list:
-        # Split the document content into sections based on Markdown headers
-        md_header_splits = markdown_splitter.split_text(doc.page_content)
-
-        for md_section in md_header_splits:
-            # Update metadata for each split section with the original document's metadata
-            md_section.metadata.update(doc.metadata)
-            splitted_docs.append(md_section)
-
-    return splitted_docs
 
 
 def _parser_xml_web4g(data: pd.DataFrame) -> pd.DataFrame:

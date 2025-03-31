@@ -16,8 +16,10 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import Distance, VectorParams
 
 from src.config import set_config
+from src.db_building import chroma_topk_to_df
 from src.db_building.corpus import constructor_corpus
 from src.db_building.document_chunker import chunk_documents, parse_documents
+from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.utils.prompt import similarity_search_instructions
 from src.utils.utils_vllm import get_model_from_env, get_model_max_len
 
@@ -76,6 +78,12 @@ parser.add_argument("--verbose", action="store_true", help="Enable verbose outpu
 parser.add_argument(
     "--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)"
 )
+parser.add_argument(
+    "--top_k_statistics",
+    type=int,
+    default=10,
+    help="Number of documents that should be given by retriever for evaluation",
+)
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
@@ -104,6 +112,8 @@ config = set_config(
 
 S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
 collection_name = args.collection_name
+s3_bucket = "projet-llm-insee-open-data"
+faq_s3_path = "data/FAQ_site/faq.parquet"
 
 url_database_client = config.get("QDRANT_URL")
 api_key_database_client = config.get("QDRANT_API_KEY")
@@ -256,7 +266,56 @@ def run_build_database() -> None:
 
             logger.success("Database building successful")
 
+
+        # PART II : EVALUATION ---------------------------------
+
+        logger.info("Importing evaluation dataset")
+
+        faq = pd.read_parquet(f"s3://{s3_bucket}/{faq_s3_path}", filesystem=filesystem)
+        # Extract all URLs from the 'sources' column
+        faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
+
+        retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
+
+        # Log a result of a similarity search
+        query = f"{similarity_search_instructions}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
+        mlflow.log_param("prompt_retriever", similarity_search_instructions)
+        retrieved_docs = retriever.invoke(query)
+        result_retriever_raw = chroma_topk_to_df(retrieved_docs)
+
+        mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents.json")
+        mlflow.log_param("question_asked", query)
+
+        # --------------------------------
+        # III - RETRIEVER STATISTICS
+
+        logger.info("Evaluating model performance against expectations")
+
+        answers_bot = answer_faq_by_bot(retriever, faq)
+        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=args.top_k_statistics)
+
+        document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
+        document_is_top = answers_bot_topk["cumsum_url_expected"].min()
+
+        mlflow.log_metric("document_is_first", 100 * document_is_top)
+        mlflow.log_metric("document_among_topk", 100 * document_among_topk)
+        mlflow.log_metrics(
+            {
+                f"document_in_top_{int(row['document_position'])}": 100 * row["cumsum_url_expected"]
+                for _, row in answers_bot_topk.iterrows()
+            }
+        )
+        mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+
+
         # LOGGING OTHER USEFUL THINGS --------------------------
+
+        logger.info("Storing additional metadata")
+
+        # Store FAQ
+        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=faq_s3_path, name="FAQ_data")
+        mlflow.log_input(mlflow_faq_raw, context="faq-raw")
+        mlflow.log_table(data=faq, artifact_file="faq_data.json")
 
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
@@ -267,24 +326,7 @@ def run_build_database() -> None:
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=data.head(10), artifact_file="web4g_data.json")
 
-        # Log a result of a similarity search
-        query = f"{similarity_search_instructions}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
-        mlflow.log_param("prompt_retriever", similarity_search_instructions)
-
         retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
-
-        retrieved_docs = retriever.invoke(query)
-        result_list = []
-        for doc in retrieved_docs:
-            row = {"page_content": doc.page_content}
-            row.update(doc.metadata)
-            result_list.append(row)
-        result = pd.DataFrame(result_list)
-        mlflow.log_table(data=result, artifact_file="retrieved_documents.json")
-        mlflow.log_param("question_asked", query)
-
-        # Log parameters and metrics
-        # mlflow.log_metric("number_documents", len(db_docs))
 
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")

@@ -19,7 +19,18 @@ from src.utils.utils_vllm import get_model_from_env
 # ---------------- CONFIGURATION ---------------- #
 
 load_dotenv(override=True)
-config = create_config_app()
+
+from src.config import set_config
+
+config = set_config(
+    use_vault=True,
+    components=["s3", "mlflow", "database", "model"],
+    models_location={
+        "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
+        "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
+    },
+    override={"QDRANT_COLLECTION_NAME": "dirag_mistral_small"},
+)
 
 fs = s3fs.S3FileSystem(**get_config_s3())
 path_log = os.getenv("PATH_LOG_APP")
