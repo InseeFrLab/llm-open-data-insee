@@ -143,5 +143,8 @@ def set_config(
     if override is not None:
         for key, value in override.items():
             config[key] = value
+        
+    if verbose is True:
+        logger.info(config)
 
     return config

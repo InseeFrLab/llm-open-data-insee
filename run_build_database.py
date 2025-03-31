@@ -74,6 +74,11 @@ parser.add_argument(
     default="complete",
     help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
 )
+parser.add_argument(
+    "--verbose",
+    action="store_true",
+    help="Enable verbose output (default: False)"
+)
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
@@ -93,7 +98,7 @@ config = set_config(
         "url_generative_model": os.getenv("URL_GENERATIVE_MODEL"),
     },
     override={"QDRANT_COLLECTION_NAME": args.collection_name},
-    verbose=True,
+    verbose=args.verbose,
 )
 
 
