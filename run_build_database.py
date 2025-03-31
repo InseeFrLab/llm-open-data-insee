@@ -75,6 +75,7 @@ parser.add_argument(
     help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
 )
 parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
+parser.add_argument("--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)")
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
@@ -113,6 +114,7 @@ embedding_model = get_model_from_env("OPENAI_API_BASE_EMBEDDING", config)
 parameters_database_construction = {
     "embedding_model": embedding_model,
     "QDRANT_URL_API": url_database_client,
+    "chunking_strategy": args.chunking_strategy,
     "max_document_size": max_document_size,
     "chunk_overlap": chunk_overlap,
 }
@@ -237,21 +239,23 @@ def run_build_database() -> None:
         )
 
         # CREATING SNAPSHOT FOR LOGGING -------------------
-        logger.info("Logging database snapshot")
+        if args.log_database_snapshot is True:
 
-        snapshot = client.create_snapshot(collection_name=unique_collection_name)
+            logger.info("Logging database snapshot")
 
-        url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
+            snapshot = client.create_snapshot(collection_name=unique_collection_name)
 
-        # Intermediate save snapshot in local for logging in MLFlow
-        response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 10)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
-            temp_file.write(response.content)
-            temp_file_path = temp_file.name  # Store temp file path
+            url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
 
-        mlflow.log_artifact(local_path=temp_file_path)
+            # Intermediate save snapshot in local for logging in MLFlow
+            response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 10)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
+                temp_file.write(response.content)
+                temp_file_path = temp_file.name  # Store temp file path
 
-        logger.success("Database building successful")
+            mlflow.log_artifact(local_path=temp_file_path)
+
+            logger.success("Database building successful")
 
         # LOGGING OTHER USEFUL THINGS --------------------------
 

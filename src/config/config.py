@@ -13,7 +13,8 @@ load_dotenv(override=True)
 def getenv_from_vault():
     client = hvac.Client(url=os.environ["VAULT_ADDR"], token=os.environ["VAULT_TOKEN"])
     encryptFiles = client.secrets.kv.read_secret_version(
-        path="projet-llm-insee-open-data/chatbot", mount_point="onyxia-kv", raise_on_deleted_version=False
+        path="projet-llm-insee-open-data/chatbot", mount_point="onyxia-kv",
+        raise_on_deleted_version=False
     )
     vault_variables = encryptFiles.get("data").get("data")
 
