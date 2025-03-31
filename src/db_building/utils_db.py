@@ -160,11 +160,7 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
     """
 
     data = data.reset_index(names="index")
-    parsed_pages: dict[str, list] = {
-        "id": [],
-        "content": [],
-        "abstract": []
-        }
+    parsed_pages: dict[str, list] = {"id": [], "content": [], "abstract": []}
 
     logstep = 1 + (len(data) // 10)
     for i, row in data.iterrows():
@@ -190,9 +186,7 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
             heading_style="ATX",
         )
 
-        abstract = markdownify(
-            "\n".join([str(content) for content in soup.find("h2").contents])
-        )
+        abstract = markdownify("\n".join([str(content) for content in soup.find("h2").contents]))
 
         parsed_pages["id"].append(page_id)
         parsed_pages["content"].append(remove_excessive_newlines(parsed_page))

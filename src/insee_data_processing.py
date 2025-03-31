@@ -66,7 +66,6 @@ def extract_rmes_data(data: dict):
     url = f"https://www.insee.fr/fr/metadonnees/source/serie/{id}"
     # author = get_content(data, "autheur", 0)
 
-
     parts = [
         f"## {label}",
         f"{titre}",

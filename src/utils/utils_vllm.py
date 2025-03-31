@@ -8,10 +8,7 @@ from langchain_openai import OpenAIEmbeddings
 logger = logging.getLogger(__name__)
 
 
-def get_model_from_env(
-    env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None
-) -> str:
-
+def get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None) -> str:
     if config_dict is not None:
         url_model = config_dict.get(env_var_api)
     else:

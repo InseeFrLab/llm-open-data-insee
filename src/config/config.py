@@ -20,22 +20,40 @@ def getenv_from_vault():
     return vault_variables
 
 
-def get_config_s3(**kwargs):
+def get_config_s3(s3_endpoint_only: bool = True, **kwargs):
+
     if "verbose" in kwargs and kwargs["verbose"] is True:
         logger.info("Setting 'endpoint_url', 'key', 'secret' and 'token' parameters")
 
     config_s3 = {
-        "endpoint_url": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr"),
-        "key": os.getenv("AWS_ACCESS_KEY_ID"),
-        "secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "token": os.getenv("AWS_SESSION_TOKEN"),
+        "endpoint_url": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")
     }
+
+    if s3_endpoint_only is True:
+        return config_s3
+    
+    config_s3 = {
+        **config_s3,
+        **{
+            "key": os.getenv("AWS_ACCESS_KEY_ID"),
+            "secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
+            "token": os.getenv("AWS_SESSION_TOKEN"),
+        }
+    }
+
     return config_s3
 
 
-def setenv_from_vault():
+def setenv_from_vault(s3_endpoint_only: bool = True):
+    
     logger.info("Setting environment variables from values provided to Vault")
+    
     vault_env_vars = getenv_from_vault()
+
+    if s3_endpoint_only is True:
+        for keys in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
+            vault_env_vars.pop(keys, None)
+    
     for key, value in vault_env_vars.items():
         os.environ[key] = value
 
@@ -83,6 +101,10 @@ def get_config_openai(suffix: str = "", default_values: dict = None, **kwargs):
 
 def get_config_vllm(url_embedding_model: str = None, url_generative_model: str = None, **kwargs):
     if url_embedding_model is not None:
+        if url_embedding_model.startswith("ENV_"):
+            url_embedding_model = url_embedding_model.replace("ENV_", "")
+            url_embedding_model = os.getenv(url_embedding_model)
+
         config = get_config_openai(
             suffix="EMBEDDING", default_values={"OPENAI_API_BASE": url_embedding_model}, **kwargs
         )
@@ -90,6 +112,10 @@ def get_config_vllm(url_embedding_model: str = None, url_generative_model: str =
         config = {}
 
     if url_generative_model is not None:
+        if url_generative_model.startswith("ENV_"):
+            url_generative_model = url_generative_model.replace("ENV_", "")
+            url_generative_model = os.getenv(url_generative_model)
+
         config_generative = get_config_openai(
             suffix="GENERATIVE", default_values={"OPENAI_API_BASE": url_generative_model}, **kwargs
         )
@@ -102,6 +128,7 @@ def set_config(
     use_vault: bool = False,
     components: list = None,
     database_manager: str = "Qdrant",
+    s3_endpoint_only: bool = True,
     models_location: dict = None,
     override: dict = None,
     verbose: bool = False,
@@ -121,7 +148,7 @@ def set_config(
     kwargs = {**kwargs, **{"verbose": verbose}}
 
     if use_vault is True:
-        setenv_from_vault()
+        setenv_from_vault(s3_endpoint_only=s3_endpoint_only)
 
     config = {}
 
@@ -129,7 +156,7 @@ def set_config(
         return config
 
     if "s3" in components:
-        config = {**config, **get_config_s3(**kwargs)}
+        config = {**config, **get_config_s3(s3_endpoint_only=s3_endpoint_only, **kwargs)}
 
     if "mlflow" in components:
         config = {**config, **get_config_mlflow(**kwargs)}
@@ -143,7 +170,7 @@ def set_config(
     if override is not None:
         for key, value in override.items():
             config[key] = value
-        
+
     if verbose is True:
         logger.info(config)
 

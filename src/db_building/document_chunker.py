@@ -22,19 +22,12 @@ HEADERS_TO_SPLIT_ON = [
 ]
 
 
-def chunk_documents(
-    documents: list[Document],
-    **kwargs
-) -> list[Document]:
-
+def chunk_documents(documents: list[Document], **kwargs) -> list[Document]:
     logging.info("Building the list of document objects")
     logging.info(f"The following parameters have been applied: {kwargs}")
 
     # Initialize token splitter
-    docs_processed = (
-        RecursiveCharacterTextSplitter(**kwargs)
-        .split_documents(documents)
-    )
+    docs_processed = RecursiveCharacterTextSplitter(**kwargs).split_documents(documents)
 
     logging.info(f"Number of created chunks: {len(docs_processed)} in the Vector Database")
 
@@ -90,7 +83,7 @@ def _parser_xml_web4g(data: pd.DataFrame) -> pd.DataFrame:
             "collection",
             "libelleAffichageGeo",
             "content",
-            "abstract"
+            "abstract",
         ],
     ]
 

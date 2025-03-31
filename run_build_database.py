@@ -74,11 +74,7 @@ parser.add_argument(
     default="complete",
     help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
 )
-parser.add_argument(
-    "--verbose",
-    action="store_true",
-    help="Enable verbose output (default: False)"
-)
+parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
@@ -91,11 +87,12 @@ args = parser.parse_args()
 # CONFIGURATION ------------------------------------------
 
 config = set_config(
+    use_vault=True,
     components=["s3", "mlflow", "database", "model"],
     mlflow_experiment_name=args.mlflow_experiment_name,
     models_location={
-        "url_embedding_model": os.getenv("URL_EMBEDDING_MODEL"),
-        "url_generative_model": os.getenv("URL_GENERATIVE_MODEL"),
+        "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
+        "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
     },
     override={"QDRANT_COLLECTION_NAME": args.collection_name},
     verbose=args.verbose,
@@ -117,7 +114,7 @@ parameters_database_construction = {
     "embedding_model": embedding_model,
     "QDRANT_URL_API": url_database_client,
     "max_document_size": max_document_size,
-    "chunk_overlap": chunk_overlap
+    "chunk_overlap": chunk_overlap,
 }
 print(parameters_database_construction)
 logger.debug(f"Using {embedding_model} for database retrieval")
@@ -136,8 +133,7 @@ def run_build_database() -> None:
         filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
 
         filtered_config = {
-            k: v for k, v in config.items()
-            if not any(s in k.lower() for s in ["key", "token", "secret"])
+            k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])
         }
 
         mlflow.log_params(filtered_config)
@@ -165,21 +161,14 @@ def run_build_database() -> None:
 
         logger.info("Starting to parse XMLs")
 
-        documents = parse_documents(
-            data=data, engine_output="langchain"
-        )
+        documents = parse_documents(data=data, engine_output="langchain")
 
         logger.success("XMLs have been parsed")
 
-
         # SPLITTING STRATEGY -------------------------------
- 
-        if max_document_size is not None:
-            documents = chunk_documents(
-                documents,
-                **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap}
-            )
 
+        if args.chunking_strategy != "None":
+            documents = chunk_documents(documents, **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap})
 
         # CREATE DATABASE COLLECTION -----------------------
 
@@ -194,9 +183,7 @@ def run_build_database() -> None:
         logger.info(f"Creating vector collection ({unique_collection_name})")
         client.create_collection(
             collection_name=unique_collection_name,
-            vectors_config=VectorParams(
-                size=model_max_len,
-                distance=Distance.COSINE),
+            vectors_config=VectorParams(size=model_max_len, distance=Distance.COSINE),
         )
 
         emb_model = OpenAIEmbeddings(
@@ -226,9 +213,7 @@ def run_build_database() -> None:
         client.update_collection_aliases(
             change_aliases_operations=[
                 models.CreateAliasOperation(
-                    create_alias=models.CreateAlias(
-                        collection_name=unique_collection_name, alias_name=collection_name
-                    )
+                    create_alias=models.CreateAlias(collection_name=unique_collection_name, alias_name=collection_name)
                 )
             ]
         )
@@ -259,11 +244,7 @@ def run_build_database() -> None:
         url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
 
         # Intermediate save snapshot in local for logging in MLFlow
-        response = requests.get(
-            url_snapshot,
-            headers={"api-key": api_key_database_client},
-            timeout=60*10
-        )
+        response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 10)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
             temp_file.write(response.content)
             temp_file_path = temp_file.name  # Store temp file path
