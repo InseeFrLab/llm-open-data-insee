@@ -186,7 +186,10 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
             heading_style="ATX",
         )
 
-        abstract = markdownify("\n".join([str(content) for content in soup.find("h2").contents]))
+        h2_tag = soup.find("h2")
+        abstract = markdownify(
+            "\n".join([str(content) for content in h2_tag.contents])
+        ) if h2_tag is not None else ""
 
         parsed_pages["id"].append(page_id)
         parsed_pages["content"].append(remove_excessive_newlines(parsed_page))
