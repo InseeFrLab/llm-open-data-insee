@@ -1,12 +1,12 @@
 import json
 import logging
+import os
 
 import pandas as pd
 import s3fs
 from markdownify import markdownify as md
 
 from db_building.utils_db import complete_url_builder
-from src.config import DefaultFullConfig, process_args, simple_argparser
 
 FILES = [
     "applishare_extract",
@@ -14,6 +14,7 @@ FILES = [
     "rmes_extract_sources",
     # "applishare_extract_indicateurs",
 ]
+S3_BUCKET = "projet-llm-insee-open-data"
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ def extract_rmes_data(data: dict):
     partenaires = get_content(data, "partenaires", 0, "label", 0)
     # services_collecteurs = get_content(data, "servicesCollecteurs", 0, "label", 0)
     url = f"https://www.insee.fr/fr/metadonnees/source/serie/{id}"
+    # author = get_content(data, "autheur", 0)
 
     parts = [
         f"## {label}",
@@ -79,19 +81,19 @@ def extract_rmes_data(data: dict):
     parts.append(f"### Partenaires\n{partenaires}\n") if partenaires else None
     formatted_page = "\n".join(parts).replace("\\.", ".").replace("\\-", "-")
 
-    return id, label, url, formatted_page
+    return id, label, url, formatted_page  # , resume, author
 
 
 def process_row(row):
     return extract_rmes_data(json.loads(row))
 
 
-def main():
-    config = DefaultFullConfig()
-    fs = s3fs.S3FileSystem(endpoint_url=config.s3_endpoint_url)
+def main(s3_bucket=S3_BUCKET, list_of_sources=FILES):  # , #config=None):
+    fs = s3fs.S3FileSystem(endpoint_url=f"https://{os.getenv('AWS_S3_ENDPOINT')}")
 
     tables = {
-        file: pd.read_parquet(f"s3://{config.s3_bucket}/data/raw_data/{file}.parquet", filesystem=fs) for file in FILES
+        file: pd.read_parquet(f"s3://{s3_bucket}/data/raw_data/{file}.parquet", filesystem=fs)
+        for file in list_of_sources
     }
 
     for key, table in tables.items():
@@ -119,18 +121,17 @@ def main():
     subset_table["dateDiffusion"] = pd.to_datetime(subset_table["dateDiffusion"], format="mixed").dt.strftime(
         "%Y-%m-%d %H:%M"
     )
-    subset_table.to_parquet(f"s3://{config.s3_bucket}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs)
+    subset_table.to_parquet(f"s3://{s3_bucket}/data/raw_data/applishare_solr_joined.parquet", filesystem=fs)
 
     rmes_sources_content = pd.DataFrame(
         tables["rmes_extract_sources"]["xml_content"].apply(process_row).to_list(),
         columns=["id", "titre", "url", "content"],
     )
     rmes_sources_content.set_index("id").to_parquet(
-        f"s3://{config.s3_bucket}/data/processed_data/rmes_sources_content.parquet",
+        f"s3://{s3_bucket}/data/processed_data/rmes_sources_content.parquet",
         filesystem=fs,
     )
 
 
 if __name__ == "__main__":
-    process_args(simple_argparser())
     main()

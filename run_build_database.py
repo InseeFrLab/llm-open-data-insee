@@ -1,5 +1,4 @@
 import argparse
-import os
 import shutil
 import subprocess
 import tempfile
@@ -16,8 +15,12 @@ from loguru import logger
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import Distance, VectorParams
 
+from src.config import set_config
+from src.db_building import chroma_topk_to_df
 from src.db_building.corpus import constructor_corpus
-from src.db_building.document_chunker import parse_transform_documents
+from src.db_building.document_chunker import chunk_documents, parse_documents
+from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
+from src.utils.prompt import similarity_search_instructions
 from src.utils.utils_vllm import get_model_from_env, get_model_max_len
 
 load_dotenv(override=True)
@@ -42,18 +45,44 @@ parser.add_argument(
     help="Experiment name in mlflow",
 )
 parser.add_argument(
+    "--chunking_strategy",
+    type=str,
+    default="None",
+    choices=["None", "Recursive", "recursive"],
+    help="Chunking strategy for documents"
+    "If None (default), corpus is left asis. "
+    "If recursive, use Langchain's CharacterTextSplitter",
+)
+parser.add_argument(
     "--max_document_size",
     type=int,
-    default=None,
+    default=2000,
     help="Threshold size for documents. "
     "If None (default), corpus is left asis. "
-    "If value provided, CharacterTextSplitter.from_tiktoken_encoder is applied",
+    "If value provided, passed to Langchain's CharacterTextSplitter is applied",
+)
+parser.add_argument(
+    "--chunk_overlap",
+    type=int,
+    default=100,
+    help="Chunk overlap when documents are split. "
+    "If value provided, passed to Langchain's CharacterTextSplitter is applied",
 )
 parser.add_argument(
     "--dataset",
     choices=["dirag", "complete"],
     default="complete",
     help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
+)
+parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
+parser.add_argument(
+    "--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)"
+)
+parser.add_argument(
+    "--top_k_statistics",
+    type=int,
+    default=10,
+    help="Number of documents that should be given by retriever for evaluation",
 )
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
@@ -66,45 +95,38 @@ args = parser.parse_args()
 
 # CONFIGURATION ------------------------------------------
 
-config_s3 = {"AWS_ENDPOINT_URL": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")}
+config = set_config(
+    use_vault=True,
+    components=["s3", "mlflow", "database", "model"],
+    mlflow_experiment_name=args.mlflow_experiment_name,
+    models_location={
+        "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
+        "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
+    },
+    override={"QDRANT_COLLECTION_NAME": args.collection_name},
+    verbose=args.verbose,
+)
 
-config_database_client = {
-    "QDRANT_URL": os.getenv("QDRANT_URL", None),
-    "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY", None),
-    "QDRANT_COLLECTION_NAME": args.collection_name,
-}
-
-config_mlflow = {
-    "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", None),
-    "MLFLOW_EXPERIMENT_NAME": args.mlflow_experiment_name,
-}
-
-config_embedding_model = {
-    # Assuming an OpenAI compatible client is used (VLLM, Ollama, etc.)
-    "OPENAI_API_BASE": os.getenv("OPENAI_API_BASE", os.getenv("URL_EMBEDDING_MODEL")),
-    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "EMPTY"),
-}
-
-
-config = {**config_s3, **config_database_client, **config_mlflow, **config_embedding_model}
 
 # PARAMETERS ------------------------------------------
 
-SIMILARITY_SEARCH_INSTRUCTION = (
-    "Instruct: Given a specific query in french, retrieve the most relevant passages that answer the query"
-)
 S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
 collection_name = args.collection_name
+s3_bucket = "projet-llm-insee-open-data"
+faq_s3_path = "data/FAQ_site/faq.parquet"
 
-url_database_client = config_database_client.get("QDRANT_URL")
-api_key_database_client = config_database_client.get("QDRANT_API_KEY")
+url_database_client = config.get("QDRANT_URL")
+api_key_database_client = config.get("QDRANT_API_KEY")
 max_document_size = args.max_document_size
-embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
+chunk_overlap = args.chunk_overlap
+embedding_model = get_model_from_env("OPENAI_API_BASE_EMBEDDING", config)
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
     "QDRANT_URL_API": url_database_client,
+    "chunking_strategy": args.chunking_strategy,
     "max_document_size": max_document_size,
+    "chunk_overlap": chunk_overlap,
 }
 print(parameters_database_construction)
 logger.debug(f"Using {embedding_model} for database retrieval")
@@ -120,9 +142,12 @@ def run_build_database() -> None:
 
     with mlflow.start_run() as run:
         run_id = run.info.run_id
-        filesystem = s3fs.S3FileSystem(endpoint_url=config.get("AWS_ENDPOINT_URL"))
+        filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
 
-        filtered_config = {k: v for k, v in config.items() if "KEY" not in k}
+        filtered_config = {
+            k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])
+        }
+
         mlflow.log_params(filtered_config)
         mlflow.log_params(parameters_database_construction)
         mlflow.log_params({"dataset": args.dataset})
@@ -148,11 +173,17 @@ def run_build_database() -> None:
 
         logger.info("Starting to parse XMLs")
 
-        documents = parse_transform_documents(data=data, max_document_size=max_document_size, engine_output="langchain")
+        documents = parse_documents(data=data, engine_output="langchain")
 
         logger.success("XMLs have been parsed")
 
+        # SPLITTING STRATEGY -------------------------------
+
+        if args.chunking_strategy != "None":
+            documents = chunk_documents(documents, **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap})
+
         # CREATE DATABASE COLLECTION -----------------------
+
         logger.info("Connecting to vector database")
 
         model_max_len = get_model_max_len(embedding_model)
@@ -169,8 +200,8 @@ def run_build_database() -> None:
 
         emb_model = OpenAIEmbeddings(
             model=embedding_model,
-            openai_api_base=config_embedding_model.get("OPENAI_API_BASE"),
-            openai_api_key=config_embedding_model.get("OPENAI_API_KEY"),
+            openai_api_base=config.get("OPENAI_API_BASE_EMBEDDING"),
+            openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
         )
 
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
@@ -218,23 +249,73 @@ def run_build_database() -> None:
         )
 
         # CREATING SNAPSHOT FOR LOGGING -------------------
-        logger.info("Logging database snapshot")
+        if args.log_database_snapshot is True:
+            logger.info("Logging database snapshot")
 
-        snapshot = client.create_snapshot(collection_name=unique_collection_name)
+            snapshot = client.create_snapshot(collection_name=unique_collection_name)
 
-        url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
+            url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
 
-        # Intermediate save snapshot in local for logging in MLFlow
-        response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 5)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
-            temp_file.write(response.content)
-            temp_file_path = temp_file.name  # Store temp file path
+            # Intermediate save snapshot in local for logging in MLFlow
+            response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 10)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
+                temp_file.write(response.content)
+                temp_file_path = temp_file.name  # Store temp file path
 
-        mlflow.log_artifact(local_path=temp_file_path)
+            mlflow.log_artifact(local_path=temp_file_path)
 
-        logger.success("Database building successful")
+            logger.success("Database building successful")
+
+
+        # PART II : EVALUATION ---------------------------------
+
+        logger.info("Importing evaluation dataset")
+
+        faq = pd.read_parquet(f"s3://{s3_bucket}/{faq_s3_path}", filesystem=filesystem)
+        # Extract all URLs from the 'sources' column
+        faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
+
+        retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
+
+        # Log a result of a similarity search
+        query = f"{similarity_search_instructions}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
+        mlflow.log_param("prompt_retriever", similarity_search_instructions)
+        retrieved_docs = retriever.invoke(query)
+        result_retriever_raw = chroma_topk_to_df(retrieved_docs)
+
+        mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents.json")
+        mlflow.log_param("question_asked", query)
+
+        # --------------------------------
+        # III - RETRIEVER STATISTICS
+
+        logger.info("Evaluating model performance against expectations")
+
+        answers_bot = answer_faq_by_bot(retriever, faq)
+        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=args.top_k_statistics)
+
+        document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
+        document_is_top = answers_bot_topk["cumsum_url_expected"].min()
+
+        mlflow.log_metric("document_is_first", 100 * document_is_top)
+        mlflow.log_metric("document_among_topk", 100 * document_among_topk)
+        mlflow.log_metrics(
+            {
+                f"document_in_top_{int(row['document_position'])}": 100 * row["cumsum_url_expected"]
+                for _, row in answers_bot_topk.iterrows()
+            }
+        )
+        mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+
 
         # LOGGING OTHER USEFUL THINGS --------------------------
+
+        logger.info("Storing additional metadata")
+
+        # Store FAQ
+        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=faq_s3_path, name="FAQ_data")
+        mlflow.log_input(mlflow_faq_raw, context="faq-raw")
+        mlflow.log_table(data=faq, artifact_file="faq_data.json")
 
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
@@ -245,23 +326,7 @@ def run_build_database() -> None:
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=data.head(10), artifact_file="web4g_data.json")
 
-        # Log a result of a similarity search
-        query = f"{SIMILARITY_SEARCH_INSTRUCTION}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
-
         retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
-
-        retrieved_docs = retriever.invoke(query)
-        result_list = []
-        for doc in retrieved_docs:
-            row = {"page_content": doc.page_content}
-            row.update(doc.metadata)
-            result_list.append(row)
-        result = pd.DataFrame(result_list)
-        mlflow.log_table(data=result, artifact_file="retrieved_documents.json")
-        mlflow.log_param("question_asked", query)
-
-        # Log parameters and metrics
-        # mlflow.log_metric("number_documents", len(db_docs))
 
         # Log environment necessary to reproduce the experiment
         current_dir = Path(".")

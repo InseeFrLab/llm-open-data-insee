@@ -1,179 +1,173 @@
-import inspect
 import os
-from dataclasses import dataclass
-from functools import wraps
 
-import mlflow
-import toml
-from confz import CLArgSource, ConfigSource, DataSource, EnvSource, FileSource
-from confz.base_config import BaseConfigMetaclass
-from confz.loaders import Loader, register_loader
+import hvac
+from dotenv import load_dotenv
+from loguru import logger
 
-from .models import FullConfig
+load_dotenv(override=True)
 
-default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "default.toml")
+# import logging
+# logger = logging.getLogger(__name__)
 
 
-@dataclass
-class MLFlowSource(ConfigSource):
-    pass
-
-
-class MLFlowLoader(Loader):
-    @classmethod
-    def populate_config(cls, config: dict, config_source: MLFlowSource):
-        if config.get("mlflow_run_id") and config.get("mlflow_tracking_uri"):
-            client = mlflow.tracking.MlflowClient(tracking_uri=config["mlflow_tracking_uri"])
-            mlflow_params = client.get_run(config["mlflow_run_id"]).data.params
-            # Do not override ML Flow loading parameters
-            mlflow_params.pop("experiment_name", None)
-            mlflow_params.pop("mlflow_tracking_uri", None)
-            mlflow_params.pop("mlflow_run_id", None)
-            cls.update_dict_recursively(config, mlflow_params)
-
-
-register_loader(MLFlowSource, MLFlowLoader)
-
-
-@dataclass
-class TemplatePassSource(ConfigSource):
-    pass
-
-
-class TemplatePassLoader(Loader):
-    @classmethod
-    def populate_config(cls, config: dict, config_source: TemplatePassSource):
-        templated_params = config.get("__templated_params__")
-        if templated_params:
-            for p in templated_params:
-                if config.get(p):
-                    cls.update_dict_recursively(config, {p: config[p].format(**config)})
-
-
-register_loader(TemplatePassSource, TemplatePassLoader)
-
-
-class DefaultFullConfig(FullConfig, metaclass=BaseConfigMetaclass):
-    """
-    Configuration class for the FullConfig model with preconfigured sources.
-
-    Singleton mechanism:
-    - DefaultFullConfig cannot be instantiated with custom keyword arguments
-    - Calls to the constructor DefaultFullConfig() are cached and basically "free":
-      the config is not reloaded from sources
-    """
-
-    CONFIG_SOURCES = [
-        # Set default parameters from default config file
-        FileSource(file=default_config_path),
-        # Set parameters from config file from env
-        FileSource(file_from_env="RAG_CONFIG_FILE", optional=True),
-        # Set parameter xxxx directly with the XXXX env variable
-        EnvSource(allow=["AWS_S3_ENDPOINT", "WORK_DIR"]),
-        # Set parameter xxxx using the RAG_XXXX (case insensitive) env variable
-        EnvSource(allow_all=True, prefix="RAG_"),
-        # Set parameters from config file from command line argument
-        FileSource(file_from_cl="--config_file", optional=True),
-        # Set parameters from command line argument
-        CLArgSource(
-            remap={
-                # Add explicit command line arguments remapping if needed
-                "config_mlflow": "mlflow_run_id"
-            }
-        ),
-        # Set parameters from a previous MLFlow run identified with its mlflow_run_id
-        MLFlowSource(),
-        # Final pass to template all parameters listed in __templated_params__
-        TemplatePassSource(),
-    ]
-
-
-def custom_config(defaults: dict | None = None, overrides: dict | None = None):
-    """
-    Load a configuration from files, environment and command line argument but:
-    - Default values are taken from [defaults] (if specified) rather than from the default file
-    - All values are overriden with [overrides] (if specified)
-    """
-    defaults = {k.lower(): v for k, v in defaults.items()} if defaults else {}
-    overrides = {k.lower(): v for k, v in overrides.items()} if overrides else {}
-    return FullConfig(
-        config_sources=[
-            FileSource(file=default_config_path),  # Load defaults
-            DataSource(data=defaults),  # Override default with custom defaults
-        ]
-        + DefaultFullConfig.CONFIG_SOURCES[1:-1]  # Load all other sources
-        + [
-            DataSource(data=overrides),  # Override with custom overrides
-            TemplatePassSource(),  # Final templating pass
-        ],
-        experiment_name="test",
+def getenv_from_vault():
+    client = hvac.Client(url=os.environ["VAULT_ADDR"], token=os.environ["VAULT_TOKEN"])
+    encryptFiles = client.secrets.kv.read_secret_version(
+        path="projet-llm-insee-open-data/chatbot", mount_point="onyxia-kv", raise_on_deleted_version=False
     )
+    vault_variables = encryptFiles.get("data").get("data")
+
+    return vault_variables
 
 
-class Configurable:
-    """
-    Decorator for functions with a special "configuration" argument.
+def get_config_s3(s3_endpoint_only: bool = True, **kwargs):
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info("Setting 'endpoint_url', 'key', 'secret' and 'token' parameters")
 
-    The configuration argument must be a keyword (named) argument (after the / special argument)
-    """
+    config_s3 = {"endpoint_url": os.getenv("AWS_ENDPOINT_URL", "https://minio.lab.sspcloud.fr")}
 
-    def __init__(self, config_arg_name: str = "config"):
-        """Decorator initialised with the configuration argument name"""
-        self.config_arg_name = config_arg_name
+    if s3_endpoint_only is True:
+        return config_s3
 
-    def __call__(self, f):
-        sig = inspect.signature(f)
-        # The original arguments from the annotated function
-        declared_parameters = sig.parameters
-        # The configuration argument's annotation (required) and default value (optional)
-        config_default = declared_parameters[self.config_arg_name].default
-        config_class = declared_parameters[self.config_arg_name].annotation
-        # All fields from the config's class
-        config_parameters = config_class.model_fields.keys()
-        # All config fields without the ones already explicitely specified in the decorated function's arguments
-        overridable_params = set(config_parameters) - set(declared_parameters.keys())
+    config_s3 = {
+        **config_s3,
+        **{
+            "key": os.getenv("AWS_ACCESS_KEY_ID"),
+            "secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
+            "token": os.getenv("AWS_SESSION_TOKEN"),
+        },
+    }
 
-        # The returned function
-        @wraps(f)
-        def wrapped_f(*args, **kwargs):
-            # Map args and kwargs to a single dict of named variables
-            ba = sig.bind(*args, **kwargs)
-            override_args = [k for k in ba.arguments if k in overridable_params]
-            if not override_args:
-                # If no overriding argument is provided, simply call f
-                return f(*args, **kwargs)
-            else:
-                # Get original config argument from kwargs (and remove it) or use default
-                orig_config = ba.arguments.get(self.config_arg_name, config_default)
-
-                # Dict with the original config overriden with keyword args (which are removed from the kwargs dict)
-                new_config_params = {
-                    k: ba.arguments[k] if k in override_args else getattr(orig_config, k) for k in config_parameters
-                }
-                for k in override_args:
-                    del ba.arguments[k]
-                # Updated config object buily by passing overriden parameters to the config_class constructor
-                # NOTE: this only works if the class annotation of config can be built this way
-                # # (e.g. pydantic BaseModel)
-                new_config = config_class(**new_config_params)
-                # Set the config_param to the updated object
-                ba.arguments[self.config_param] = new_config
-                # Call the original function with the updated config object
-                return f(*ba.args, **ba.kwargs)
-
-        return wrapped_f
+    return config_s3
 
 
-# Example:
-# from src.config.config import config_test
-# config_test() # Return the default 'default' unless env variable (or others) set it otherwise
-# config_test(experiment_name="test") # Returns 'test'
-# config_test(experiment_name=3) # Fails, as it should, since the config_class cannot build using ill-typed arguments
-# config_test(toto=3)            # Fails, as it should, with "unexpected keyword argument"
-@Configurable("config_arg")
-def config_test(config_arg: FullConfig = DefaultFullConfig()) -> str:  # noqa: B008
-    return config_arg.experiment_name
+def setenv_from_vault(s3_endpoint_only: bool = True):
+    logger.info("Setting environment variables from values provided to Vault")
+
+    vault_env_vars = getenv_from_vault()
+
+    if s3_endpoint_only is True:
+        for keys in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]:
+            vault_env_vars.pop(keys, None)
+
+    for key, value in vault_env_vars.items():
+        os.environ[key] = value
 
 
-if __name__ == "__main__":
-    print(toml.dumps(vars(FullConfig())))
+def get_config_database_qdrant(default_collection_name: str = "dirag_mistral_small", **kwargs):
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info("Setting 'QDRANT_URL', 'QDRANT_API_KEY' and 'QDRANT_COLLECTION_NAME' parameters")
+
+    config_database_client = {
+        "QDRANT_URL": os.getenv("QDRANT_URL"),
+        "QDRANT_API_KEY": os.getenv("QDRANT_API_KEY"),
+        "QDRANT_COLLECTION_NAME": os.getenv("COLLECTION_NAME", default_collection_name),
+    }
+    return config_database_client
+
+
+def get_config_mlflow(mlflow_experiment_name: str = "experiment_name", **kwargs):
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info("Setting 'MLFLOW_TRACKING_URI' and 'MLFLOW_EXPERIMENT_NAME' parameters")
+
+    config_mlflow = {
+        "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", None),
+        "MLFLOW_EXPERIMENT_NAME": mlflow_experiment_name,
+    }
+    return config_mlflow
+
+
+def get_config_openai(suffix: str = "", default_values: dict = None, **kwargs):
+    if suffix.startswith("_") is False and suffix != "":
+        suffix = "_" + suffix
+
+    if default_values is None:
+        default_values = {}
+
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info(f"Setting 'OPENAI_API_BASE{suffix}' and 'OPENAI_API_KEY{suffix}' parameters")
+
+    config_openai = {
+        f"OPENAI_API_BASE{suffix}": default_values.get("OPENAI_API_BASE", os.getenv("OPENAI_API_BASE")),
+        f"OPENAI_API_KEY{suffix}": default_values.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", "EMPTY")),
+    }
+
+    return config_openai
+
+
+def get_config_vllm(url_embedding_model: str = None, url_generative_model: str = None, **kwargs):
+    if url_embedding_model is not None:
+        if url_embedding_model.startswith("ENV_"):
+            url_embedding_model = url_embedding_model.replace("ENV_", "")
+            url_embedding_model = os.getenv(url_embedding_model)
+
+        config = get_config_openai(
+            suffix="EMBEDDING", default_values={"OPENAI_API_BASE": url_embedding_model}, **kwargs
+        )
+    else:
+        config = {}
+
+    if url_generative_model is not None:
+        if url_generative_model.startswith("ENV_"):
+            url_generative_model = url_generative_model.replace("ENV_", "")
+            url_generative_model = os.getenv(url_generative_model)
+
+        config_generative = get_config_openai(
+            suffix="GENERATIVE", default_values={"OPENAI_API_BASE": url_generative_model}, **kwargs
+        )
+        config = {**config, **config_generative}
+
+    return config
+
+
+def set_config(
+    use_vault: bool = False,
+    components: list = None,
+    database_manager: str = "Qdrant",
+    s3_endpoint_only: bool = True,
+    models_location: dict = None,
+    override: dict = None,
+    verbose: bool = False,
+    **kwargs,
+):
+    if database_manager.lower() != "qdrant":
+        message = (
+            "Only Qdrant database is handled properly right now."
+            "If you want to use another provider (Milvus, Chroma...), "
+            "you are on your own"
+        )
+        raise ValueError(message)
+
+    if models_location is None:
+        models_location = {}
+
+    kwargs = {**kwargs, **{"verbose": verbose}}
+
+    if use_vault is True:
+        setenv_from_vault(s3_endpoint_only=s3_endpoint_only)
+
+    config = {}
+
+    if components is None:
+        return config
+
+    if "s3" in components:
+        config = {**config, **get_config_s3(s3_endpoint_only=s3_endpoint_only, **kwargs)}
+
+    if "mlflow" in components:
+        config = {**config, **get_config_mlflow(**kwargs)}
+
+    if "database" in components and database_manager.lower() == "qdrant":
+        config = {**config, **get_config_database_qdrant(**kwargs)}
+
+    if "model" in components:
+        config = {**config, **get_config_vllm(**models_location, **kwargs)}
+
+    if override is not None:
+        for key, value in override.items():
+            config[key] = value
+
+    if verbose is True:
+        logger.info(config)
+
+    return config

@@ -8,7 +8,7 @@ import torch
 from dotenv import load_dotenv
 from loguru import logger
 
-from src.app.config import create_config_app, get_config_s3
+from src.config import set_config
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
 from src.app.utils import generate_answer_from_context, initialize_clients
@@ -19,9 +19,21 @@ from src.utils.utils_vllm import get_model_from_env
 # ---------------- CONFIGURATION ---------------- #
 
 load_dotenv(override=True)
-config = create_config_app()
 
-fs = s3fs.S3FileSystem(**get_config_s3())
+# Patch for https://github.com/VikParuchuri/marker/issues/442
+torch.classes.__path__ = []
+
+config = set_config(
+    use_vault=True,
+    components=["s3", "mlflow", "database", "model"],
+    models_location={
+        "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
+        "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
+    },
+    override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_8006a5c299de4a0f9d87d81844bcf895"},
+)
+
+fs = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
 path_log = os.getenv("PATH_LOG_APP")
 
 

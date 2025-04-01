@@ -52,18 +52,12 @@ extend-include = ["*.ipynb"]
 extend-exclude = ["notebooks/*"]
 target-version = "py312"
 
-[[tool.mypy.overrides]]
-module = "s3fs"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "transformers"
-ignore_missing_imports = true
 
 [dependency-groups]
 dev = [
     "vulture>=2.14",
     "ruff>=0.11.0",
+    "pre-commit>=4.2.0",
 ]
 
 [tool.ruff.lint]
@@ -82,11 +76,6 @@ select = [
     "I",
 ]
 #ignore  = ["B024"]
-
-[tool.ruff.lint.flake8-bugbear]
-extend-immutable-calls = [
-    "src.config.DefaultFullConfig"
-]
 
 [tool.ruff.format]
 indent-style = "space"
