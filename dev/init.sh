@@ -6,4 +6,4 @@ cd llm-open-data-insee
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv pip install -r pyproject.toml --system
 
-pre-commit
+pre-commit install
