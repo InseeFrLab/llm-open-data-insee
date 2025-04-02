@@ -30,7 +30,7 @@ config = set_config(
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
     },
-    override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_8006a5c299de4a0f9d87d81844bcf895"},
+    override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
 )
 
 fs = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
