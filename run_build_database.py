@@ -120,7 +120,7 @@ url_database_client = config.get("QDRANT_URL")
 api_key_database_client = config.get("QDRANT_API_KEY")
 max_document_size = args.max_document_size
 chunk_overlap = args.chunk_overlap
-embedding_model = get_models_from_env(url_embedding="OPENAI_API_BASE_EMBEDDING", config_dict=config).get("embedding")
+embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", config_dict=config).get("embedding")
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
