@@ -10,18 +10,19 @@ import requests
 import s3fs
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
-from langchain_qdrant import QdrantVectorStore
 from loguru import logger
-from qdrant_client import QdrantClient, models
-from qdrant_client.http.models import Distance, VectorParams
 
 from src.config import set_config
-from src.db_building import chroma_topk_to_df
-from src.db_building.corpus import constructor_corpus
-from src.db_building.document_chunker import chunk_documents, parse_documents
+from src.data.corpus import constructor_corpus
+from src.vectordatabase.output_parsing import langchain_documents_to_df
+from src.vectordatabase.document_chunker import chunk_documents, parse_documents
+from src.vectordatabase.embed_by_piece import chunk_documents_and_store
+from src.vectordatabase.qdrant import (
+    create_client_and_collection_qdrant
+)
 from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.utils.prompt import similarity_search_instructions
-from src.utils.utils_vllm import get_model_from_env, get_model_max_len
+from src.utils.utils_vllm import get_models_from_env, get_model_max_len
 
 load_dotenv(override=True)
 
@@ -119,7 +120,7 @@ url_database_client = config.get("QDRANT_URL")
 api_key_database_client = config.get("QDRANT_API_KEY")
 max_document_size = args.max_document_size
 chunk_overlap = args.chunk_overlap
-embedding_model = get_model_from_env("OPENAI_API_BASE_EMBEDDING", config)
+embedding_model = get_models_from_env(url_embedding="OPENAI_API_BASE_EMBEDDING", config_dict=config).get("embedding")
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
@@ -128,7 +129,7 @@ parameters_database_construction = {
     "max_document_size": max_document_size,
     "chunk_overlap": chunk_overlap,
 }
-print(parameters_database_construction)
+
 logger.debug(f"Using {embedding_model} for database retrieval")
 logger.debug(f"Setting {url_database_client} as vector database endpoint")
 
@@ -186,16 +187,14 @@ def run_build_database() -> None:
 
         logger.info("Connecting to vector database")
 
-        model_max_len = get_model_max_len(embedding_model)
+        model_max_len = get_model_max_len(model_id=embedding_model)
         unique_collection_name = f"{collection_name}_{run_id}"
 
-        logger.info("Setting connection")
-        client = QdrantClient(url=url_database_client, api_key=api_key_database_client, port="443", https="true")
-
-        logger.info(f"Creating vector collection ({unique_collection_name})")
-        client.create_collection(
+        client = create_client_and_collection_qdrant(
+            url=url_database_client,
+            api_key=api_key_database_client,
             collection_name=unique_collection_name,
-            vectors_config=VectorParams(size=model_max_len, distance=Distance.COSINE),
+            model_max_len=model_max_len,
         )
 
         emb_model = OpenAIEmbeddings(
@@ -207,17 +206,12 @@ def run_build_database() -> None:
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
         logger.info("Putting documents in vector database")
 
-        db = QdrantVectorStore.from_documents(
+        chunk_documents_and_store(
             documents,
             emb_model,
+            collection_name=unique_collection_name,
             url=url_database_client,
             api_key=api_key_database_client,
-            vector_name=embedding_model,
-            prefer_grpc=False,
-            port="443",
-            https="true",
-            collection_name=unique_collection_name,
-            force_recreate=True,
         )
 
         # SETTING ALIAS -----------------------
@@ -266,7 +260,6 @@ def run_build_database() -> None:
 
             logger.success("Database building successful")
 
-
         # PART II : EVALUATION ---------------------------------
 
         logger.info("Importing evaluation dataset")
@@ -281,7 +274,7 @@ def run_build_database() -> None:
         query = f"{similarity_search_instructions}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
         mlflow.log_param("prompt_retriever", similarity_search_instructions)
         retrieved_docs = retriever.invoke(query)
-        result_retriever_raw = chroma_topk_to_df(retrieved_docs)
+        result_retriever_raw = langchain_documents_to_df(retrieved_docs)
 
         mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents.json")
         mlflow.log_param("question_asked", query)
@@ -306,7 +299,6 @@ def run_build_database() -> None:
             }
         )
         mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
-
 
         # LOGGING OTHER USEFUL THINGS --------------------------
 

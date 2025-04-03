@@ -27,16 +27,12 @@ def handle_feedback(response, index, history, unique_id, feedback_type="retrieve
     # st.write(st.session_state.feedback)
 
 
-def render_feedback_section(
-    index, message, title, optional_text,
-    key_prefix, unique_id, feedback_type
-):
+def render_feedback_section(index, message, title, optional_text, key_prefix, unique_id, feedback_type):
     with st.container(key=f"{key_prefix}-{index}"):
         st.markdown(f"<p style='{css_annotation_title}'>{title}</p>", unsafe_allow_html=True)
         return streamlit_feedback(
             on_submit=lambda response, idx=index, msg=message: handle_feedback(
-                response, idx, st.session_state.history, unique_id=unique_id,
-                feedback_type=feedback_type
+                response, idx, st.session_state.history, unique_id=unique_id, feedback_type=feedback_type
             ),
             feedback_type="faces",
             optional_text_label=optional_text,

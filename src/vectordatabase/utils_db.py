@@ -144,7 +144,6 @@ def prepend_text_to_tag(tag, text):
         tag.string = text
 
 
-
 def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
     """
     Parses XML content from a DataFrame, extracts data, formats it,
@@ -188,9 +187,7 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
         )
 
         h2_tag = soup.find("h2")
-        abstract = markdownify(
-            "\n".join([str(content) for content in h2_tag.contents])
-        ) if h2_tag is not None else ""
+        abstract = markdownify("\n".join([str(content) for content in h2_tag.contents])) if h2_tag is not None else ""
 
         parsed_pages["id"].append(page_id)
         parsed_pages["content"].append(remove_excessive_newlines(parsed_page))
@@ -374,24 +371,3 @@ def md(soup, **options):
 
 # Attention 10613 (id : 1521268) ("xml_null")
 # 29281 (definitions pas présentes dans xml)
-
-
-def chroma_topk_to_df(retrieved_docs):
-    """
-    Converts a list of retrieved documents into a pandas DataFrame.
-
-    Parameters:
-    retrieved_docs (list): A list of documents, where each document has
-                           `page_content` and `metadata` attributes.
-
-    Returns:
-    pd.DataFrame: A DataFrame containing the page content and metadata of each document.
-    """
-    result_list = []
-    for doc in retrieved_docs:
-        row = {"page_content": doc.page_content}
-        row.update(doc.metadata)
-        result_list.append(row)
-
-    result = pd.DataFrame(result_list)
-    return result

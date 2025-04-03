@@ -8,7 +8,7 @@ from src.utils import create_prompt_from_instructions, format_docs
 from src.utils.prompt import question_instructions_summarizer, system_instructions_summarizer
 
 
-def initialize_clients(config: dict, embedding_model: str):
+def initialize_clients(config: dict, embedding_model: str, number_retrieved_documents: str = 5):
     emb_model = OpenAIEmbeddings(
         model=embedding_model,
         base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
@@ -29,7 +29,7 @@ def initialize_clients(config: dict, embedding_model: str):
 
     logger.success("Vectorstore initialized successfully")
 
-    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
+    retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": number_retrieved_documents})
 
     chat_client = OpenAI(
         base_url=config.get("OPENAI_API_BASE_GENERATIVE"),

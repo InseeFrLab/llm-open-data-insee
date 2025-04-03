@@ -8,7 +8,19 @@ from langchain_openai import OpenAIEmbeddings
 logger = logging.getLogger(__name__)
 
 
-def get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None) -> str:
+def get_models_from_env(
+    url_embedding: str = "URL_EMBEDDING_MODEL", url_generative: str = "URL_GENERATIVE_MODEL", config_dict: dict = None
+):
+    embedding_model = _get_model_from_env(url_embedding)
+    generative_model = _get_model_from_env(url_generative)
+
+    logger.debug(f"Embedding model used: {embedding_model}")
+    logger.debug(f"Generative model used: {generative_model}")
+
+    return {"embedding": embedding_model, "completion": generative_model}
+
+
+def _get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None) -> str:
     url_model = config_dict.get(env_var_api) if config_dict is not None else os.getenv(env_var_api)
 
     if url_model:
@@ -28,7 +40,7 @@ def get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: di
     local_env_var = env_var_api.replace("URL_", "")
     logger.debug(f"Using local model, checking if value provided in {local_env_var}")
 
-    return os.getenv(local_env_var, "OrdalieTech/Solon-embeddings-large-0.1")
+    return os.getenv(local_env_var, None)
 
 
 def get_model_max_len(
@@ -39,7 +51,7 @@ def get_model_max_len(
     response = requests.get(f"{url_model}models")
     response.raise_for_status()  # Ensure the request was successful
     available_models = response.json().get("data", [])
-    max_model_len = [model["max_model_len"] for model in available_models if model["id"] == model_id][0]
+    max_model_len = [model["max_model_len"] for model in available_models if model["id"].lower() == model_id.lower()][0]
     return max_model_len
 
 

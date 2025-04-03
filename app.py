@@ -12,9 +12,9 @@ from src.config import set_config
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
 from src.app.utils import generate_answer_from_context, initialize_clients
-from src.db_building.get_number_documents import get_number_docs_collection
+from src.vectordatabase.qdrant import get_number_docs_collection
 from src.utils import create_prompt_from_instructions, question_instructions, system_instructions
-from src.utils.utils_vllm import get_model_from_env
+from src.utils.utils_vllm import get_models_from_env
 
 # ---------------- CONFIGURATION ---------------- #
 
@@ -30,7 +30,7 @@ config = set_config(
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
     },
-    override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
+    # override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
 )
 
 fs = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
@@ -40,10 +40,9 @@ path_log = os.getenv("PATH_LOG_APP")
 # Fix marker warning from torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
 
-embedding_model = get_model_from_env("URL_EMBEDDING_MODEL")
-generative_model = get_model_from_env("URL_GENERATIVE_MODEL")
-logger.debug(f"Embedding model used: {embedding_model}")
-logger.debug(f"Generative model used: {generative_model}")
+models = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", url_generative="URL_GENERATIVE_MODEL")
+embedding_model = models.get("embedding")
+generative_model = models.get("completion")
 
 
 # ---------------- INITIALIZATION ---------------- #
