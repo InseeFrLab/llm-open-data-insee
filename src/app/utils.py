@@ -87,6 +87,8 @@ def generate_answer_from_context(retriever, chat_client, generative_model: str, 
     context = format_docs(best_documents)
     question_with_context = prompt.format(question=question, context=context)
 
+    logger.debug(question_with_context)
+
     stream = chat_client.chat.completions.create(
         model=generative_model,
         messages=[{"role": "user", "content": question_with_context}],

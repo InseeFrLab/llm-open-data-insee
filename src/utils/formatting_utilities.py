@@ -14,13 +14,17 @@ def create_prompt_from_instructions(system_instructions: str, question_instructi
 
 
 def format_docs(docs: list):
-    return "\n\n".join(
+    docs_in_prompt = "\n\n".join(
         [
-            f"""
-            Doc {i + 1}:\nTitle: {doc.metadata.get("Header 1")}\n
-            Source: {doc.metadata.get("url")}\n
-            Content:\n{doc.page_content}
-            """
+            f"""--------------\n
+Doc {i + 1}:\n
+Title: {doc.metadata.get("titre", "").replace("#", "")}\n
+Abstract: {doc.metadata.get("abstract", "")}\n
+Source: {doc.metadata.get("url", "")}\n
+Content:\n{doc.page_content or "[No content]"}\n
+"""
             for i, doc in enumerate(docs)
         ]
     )
+    return docs_in_prompt
+
