@@ -13,12 +13,12 @@ En utilisant UNIQUEMENT les informations présentes dans le contexte, réponds d
 Cite 5 sources maximum et mentionne l'url d'origine.
 
 Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
-
-Voici le contexte sur lequel tu dois baser ta réponse :
-Contexte: {context}
 """
 
 question_instructions = """
+Voici le contexte sur lequel tu dois baser ta réponse :
+Contexte: {context}
+
 Voici la question à laquelle tu dois répondre :
 Question: {question}
 

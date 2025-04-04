@@ -1,9 +1,13 @@
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
 from openai import OpenAI
+from langchain_core.prompts import PromptTemplate
 
-from src.utils import create_prompt_from_instructions, format_docs
-from src.utils.prompt import question_instructions_summarizer, system_instructions_summarizer
+from src.vectordatabase.output_parsing import format_docs
+from src.model.prompt import (
+    system_instructions,
+    question_instructions_summarizer, system_instructions_summarizer
+)
 
 from src.vectordatabase.client import create_client_and_collection
 from src.vectordatabase.qdrant import (
@@ -63,8 +67,9 @@ def initialize_clients(
 
 
 def get_conversation_title(chat_client, generative_model, full_text):
-    prompt_summarizer = create_prompt_from_instructions(
-        system_instructions_summarizer, question_instructions_summarizer
+
+    prompt_summarizer = PromptTemplate.from_template(
+        question_instructions_summarizer
     )
 
     prompt_summarizer = prompt_summarizer.format(conversation=full_text)
@@ -91,7 +96,10 @@ def generate_answer_from_context(retriever, chat_client, generative_model: str, 
 
     stream = chat_client.chat.completions.create(
         model=generative_model,
-        messages=[{"role": "user", "content": question_with_context}],
+        messages=[
+            {"role": "system", "content": system_instructions},
+            {"role": "user", "content": question_with_context}
+            ],
         stream=True,
     )
     return stream

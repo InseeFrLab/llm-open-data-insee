@@ -7,11 +7,13 @@ import streamlit as st
 import torch
 from dotenv import load_dotenv
 
+from langchain_core.prompts import PromptTemplate
+
+from src.config import set_config
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
 from src.app.utils import generate_answer_from_context, initialize_clients
-from src.config import set_config
-from src.utils import create_prompt_from_instructions, question_instructions, system_instructions
+from src.model.prompt import question_instructions
 from src.utils.utils_vllm import get_models_from_env
 
 
@@ -62,7 +64,7 @@ def initialize_clients_cache(
 retriever, chat_client, qdrant_client = initialize_clients_cache(config=config, embedding_model=embedding_model)
 n_docs = "XXXXX"
 #n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
-prompt = create_prompt_from_instructions(system_instructions, question_instructions)
+prompt = PromptTemplate.from_template(question_instructions)
 
 # ---------------- STREAMLIT UI ---------------- #
 st.set_page_config(page_title="Chat with AI")

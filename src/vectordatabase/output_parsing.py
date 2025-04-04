@@ -20,3 +20,19 @@ def langchain_documents_to_df(retrieved_docs):
 
     result = pd.DataFrame(result_list)
     return result
+
+
+def format_docs(docs: list):
+    docs_in_prompt = "\n\n".join(
+        [
+            f"""--------------\n
+Doc {i + 1}:\n
+Title: {doc.metadata.get("titre", "").replace("#", "")}\n
+Abstract: {doc.metadata.get("abstract", "")}\n
+Source: {doc.metadata.get("url", "")}\n
+Content:\n{doc.page_content or "[No content]"}\n
+"""
+            for i, doc in enumerate(docs)
+        ]
+    )
+    return docs_in_prompt

@@ -12,7 +12,7 @@ from src.data.corpus import constructor_corpus
 
 from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 
-from src.utils.prompt import similarity_search_instructions
+from src.model.prompt import similarity_search_instructions
 from src.utils.utils_vllm import get_model_max_len, get_models_from_env
 from src.results_logging.mlflow_utils import mlflow_log_source_files
 

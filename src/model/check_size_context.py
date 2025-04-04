@@ -1,7 +1,8 @@
 import numpy as np
 from loguru import logger
+from langchain_core.prompts import PromptTemplate
 
-from src.utils import create_prompt_from_instructions, format_docs
+from src.vectordatabase.output_parsing import format_docs
 
 from .tokenizer import tokenize_prompt
 
@@ -38,7 +39,7 @@ def check_size_context(
     context = format_docs(best_documents)
 
     # Create a prompt template and fill it with question and context
-    prompt = create_prompt_from_instructions(system_instructions, question_instructions)
+    prompt = PromptTemplate.from_template(question_instructions)
     question_with_context = prompt.format(question=question, context=context)
 
     # Tokenize the entire composed prompt
