@@ -6,7 +6,6 @@ import s3fs
 import streamlit as st
 import torch
 from dotenv import load_dotenv
-from loguru import logger
 
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
