@@ -6,6 +6,7 @@ import s3fs
 import streamlit as st
 import torch
 from dotenv import load_dotenv
+from loguru import logger
 
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
@@ -13,6 +14,7 @@ from src.app.utils import generate_answer_from_context, initialize_clients
 from src.config import set_config
 from src.utils import create_prompt_from_instructions, question_instructions, system_instructions
 from src.utils.utils_vllm import get_models_from_env
+from src.vectordatabase.output_parsing import langchain_documents_to_df
 
 # ---------------- CONFIGURATION ---------------- #
 
@@ -227,7 +229,6 @@ for i, message in enumerate(st.session_state.history):
 
         if message["role"] == "assistant" and i > 0:
             best_documents = retriever.invoke(st.session_state.history[i - 1]["content"])
-            best_documents_df = pd.DataFrame([docs.metadata for docs in best_documents])
 
             feedback_results = [
                 render_feedback_section(

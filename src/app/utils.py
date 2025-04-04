@@ -1,8 +1,6 @@
 from langchain_openai import OpenAIEmbeddings
-from langchain_qdrant import QdrantVectorStore
 from loguru import logger
 from openai import OpenAI
-from qdrant_client import QdrantClient
 
 from src.utils import create_prompt_from_instructions, format_docs
 from src.utils.prompt import question_instructions_summarizer, system_instructions_summarizer
@@ -15,6 +13,7 @@ from src.vectordatabase.chroma import (
     chroma_vectorstore_as_retriever
 )
 from src.utils.utils_vllm import get_model_max_len
+from src.vectordatabase.output_parsing import langchain_documents_to_df
 
 
 def initialize_clients(
@@ -56,7 +55,6 @@ def initialize_clients(
 
     logger.success("Vectorstore initialized successfully")
 
-
     chat_client = OpenAI(
         base_url=config.get("OPENAI_API_BASE_GENERATIVE"),
         api_key=config.get("OPENAI_API_KEY_GENERATIVE"),
@@ -82,8 +80,10 @@ def get_conversation_title(chat_client, generative_model, full_text):
 
 
 def generate_answer_from_context(retriever, chat_client, generative_model: str, prompt: str, question: str):
-    
+
     best_documents = retriever.invoke(question)
+    best_documents_df = langchain_documents_to_df(best_documents)
+    logger.debug(best_documents_df)
     context = format_docs(best_documents)
     question_with_context = prompt.format(question=question, context=context)
 
