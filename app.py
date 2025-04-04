@@ -14,7 +14,7 @@ from src.app.utils import generate_answer_from_context, initialize_clients
 from src.config import set_config
 from src.utils import create_prompt_from_instructions, question_instructions, system_instructions
 from src.utils.utils_vllm import get_models_from_env
-from src.vectordatabase.output_parsing import langchain_documents_to_df
+
 
 # ---------------- CONFIGURATION ---------------- #
 
