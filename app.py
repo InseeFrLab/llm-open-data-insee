@@ -13,7 +13,6 @@ from src.app.utils import generate_answer_from_context, initialize_clients
 from src.config import set_config
 from src.utils import create_prompt_from_instructions, question_instructions, system_instructions
 from src.utils.utils_vllm import get_models_from_env
-from src.vectordatabase.qdrant import get_number_docs_collection
 
 # ---------------- CONFIGURATION ---------------- #
 
@@ -22,6 +21,8 @@ load_dotenv(override=True)
 # Patch for https://github.com/VikParuchuri/marker/issues/442
 torch.classes.__path__ = []
 
+ENGINE = "chroma"
+
 config = set_config(
     use_vault=True,
     components=["s3", "mlflow", "database", "model"],
@@ -29,6 +30,7 @@ config = set_config(
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
     },
+    database_manager=ENGINE
     # override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
 )
 
@@ -48,12 +50,17 @@ generative_model = models.get("completion")
 
 
 @st.cache_resource(show_spinner=False)
-def initialize_clients_cache(config: dict, embedding_model=embedding_model):
-    return initialize_clients(config=config, embedding_model=embedding_model)
+def initialize_clients_cache(
+    config: dict,
+    embedding_model=embedding_model,
+    engine=ENGINE
+):
+    return initialize_clients(config=config, embedding_model=embedding_model, engine=engine)
 
 
 retriever, chat_client, qdrant_client = initialize_clients_cache(config=config, embedding_model=embedding_model)
-n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
+n_docs = "XXXXX"
+#n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
 prompt = create_prompt_from_instructions(system_instructions, question_instructions)
 
 # ---------------- STREAMLIT UI ---------------- #

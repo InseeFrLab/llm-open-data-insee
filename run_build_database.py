@@ -120,7 +120,7 @@ config = set_config(
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
     },
-    override={"QDRANT_COLLECTION_NAME": args.collection_name},
+    override={f"{engine}_COLLECTION_NAME": args.collection_name},
     verbose=args.verbose,
 )
 
@@ -139,7 +139,7 @@ embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", confi
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
-    "QDRANT_URL_API": url_database_client,
+    f"{engine.upper()}_URL_API": url_database_client,
     "chunking_strategy": args.chunking_strategy,
     "max_document_size": max_document_size,
     "chunk_overlap": chunk_overlap,
