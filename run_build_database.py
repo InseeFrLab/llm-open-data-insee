@@ -10,19 +10,19 @@ import requests
 import s3fs
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import QdrantVectorStore
 from loguru import logger
+from qdrant_client import models
 
 from src.config import set_config
 from src.data.corpus import constructor_corpus
-from src.vectordatabase.output_parsing import langchain_documents_to_df
-from src.vectordatabase.document_chunker import chunk_documents, parse_documents
-from src.vectordatabase.embed_by_piece import chunk_documents_and_store
-from src.vectordatabase.qdrant import (
-    create_client_and_collection_qdrant
-)
 from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.utils.prompt import similarity_search_instructions
-from src.utils.utils_vllm import get_models_from_env, get_model_max_len
+from src.utils.utils_vllm import get_model_max_len, get_models_from_env
+from src.vectordatabase.document_chunker import chunk_documents, parse_documents
+from src.vectordatabase.embed_by_piece import chunk_documents_and_store
+from src.vectordatabase.output_parsing import langchain_documents_to_df
+from src.vectordatabase.qdrant import create_client_and_collection_qdrant
 
 load_dotenv(override=True)
 
@@ -130,11 +130,12 @@ parameters_database_construction = {
     "chunk_overlap": chunk_overlap,
 }
 
-logger.debug(f"Using {embedding_model} for database retrieval")
-logger.debug(f"Setting {url_database_client} as vector database endpoint")
-
 if args.dataset == "dirag":
     logger.warning("Restricting publications to DIRAG related content")
+
+
+logger.debug(f"Using {embedding_model} for database retrieval")
+logger.debug(f"Setting {url_database_client} as vector database endpoint")
 
 
 def run_build_database() -> None:
@@ -149,9 +150,13 @@ def run_build_database() -> None:
             k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])
         }
 
-        mlflow.log_params(filtered_config)
-        mlflow.log_params(parameters_database_construction)
-        mlflow.log_params({"dataset": args.dataset})
+        mlflow.log_params(
+            {
+                **filtered_config,
+                **parameters_database_construction,
+                **{"dataset": args.dataset, "max_pages": args.max_pages, "max_document_size": max_document_size},
+            }
+        )
 
         # LOAD AND PROCESS CORPUS -----------------------------------
         logger.debug(f"Importing raw data {30 * '-'}")
@@ -168,9 +173,6 @@ def run_build_database() -> None:
         if args.max_pages is not None:
             logger.debug(f"Limiting database to {args.max_pages} pages")
             data = data.head(args.max_pages)
-
-        mlflow.log_param("max_pages", args.max_pages)
-        mlflow.log_param("max_document_size", max_document_size)
 
         logger.info("Starting to parse XMLs")
 
@@ -243,6 +245,7 @@ def run_build_database() -> None:
         )
 
         # CREATING SNAPSHOT FOR LOGGING -------------------
+
         if args.log_database_snapshot is True:
             logger.info("Logging database snapshot")
 
@@ -268,10 +271,18 @@ def run_build_database() -> None:
         # Extract all URLs from the 'sources' column
         faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
 
+        db = QdrantVectorStore(
+            client=client,
+            collection_name=config.get("QDRANT_COLLECTION_NAME"),
+            embedding=emb_model,
+            vector_name=embedding_model,
+        )
+
         retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
         # Log a result of a similarity search
-        query = f"{similarity_search_instructions}\nQuery: Quels sont les chiffres du chômage en 2023 ?"
+        test_query = "Quels sont les chiffres du chômage en 2023 ?"
+        query = f"{similarity_search_instructions}\nQuery: {test_query}"
         mlflow.log_param("prompt_retriever", similarity_search_instructions)
         retrieved_docs = retriever.invoke(query)
         result_retriever_raw = langchain_documents_to_df(retrieved_docs)

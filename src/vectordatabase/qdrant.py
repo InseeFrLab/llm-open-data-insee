@@ -1,9 +1,6 @@
 import logging
 
 from langchain.vectorstores import Qdrant as QdrantVectorStore
-from langchain.embeddings import OpenAIEmbeddings
-
-
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 

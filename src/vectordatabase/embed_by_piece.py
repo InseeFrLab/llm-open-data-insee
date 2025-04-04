@@ -1,4 +1,5 @@
 from loguru import logger
+
 from .qdrant import database_from_documents_qdrant
 
 

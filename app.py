@@ -6,15 +6,14 @@ import s3fs
 import streamlit as st
 import torch
 from dotenv import load_dotenv
-from loguru import logger
 
-from src.config import set_config
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
 from src.app.utils import generate_answer_from_context, initialize_clients
-from src.vectordatabase.qdrant import get_number_docs_collection
+from src.config import set_config
 from src.utils import create_prompt_from_instructions, question_instructions, system_instructions
 from src.utils.utils_vllm import get_models_from_env
+from src.vectordatabase.qdrant import get_number_docs_collection
 
 # ---------------- CONFIGURATION ---------------- #
 
