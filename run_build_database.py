@@ -1,28 +1,33 @@
 import argparse
-import shutil
-import subprocess
-import tempfile
-from pathlib import Path, PosixPath
 
 import mlflow
 import pandas as pd
-import requests
 import s3fs
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
-from langchain_qdrant import QdrantVectorStore
 from loguru import logger
-from qdrant_client import models
 
 from src.config import set_config
 from src.data.corpus import constructor_corpus
+
 from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
+
 from src.utils.prompt import similarity_search_instructions
 from src.utils.utils_vllm import get_model_max_len, get_models_from_env
+from src.results_logging.mlflow_utils import mlflow_log_source_files
+
 from src.vectordatabase.document_chunker import chunk_documents, parse_documents
+from src.vectordatabase.client import create_client_and_collection
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
+from src.vectordatabase.qdrant import (
+    create_collection_alias_qrant, create_snapshot_collection_qdrant,
+    qdrant_vectorstore_as_retriever
+)
+from src.vectordatabase.chroma import (
+    chroma_vectorstore_as_retriever
+)
 from src.vectordatabase.output_parsing import langchain_documents_to_df
-from src.vectordatabase.qdrant import create_client_and_collection_qdrant
+
 
 load_dotenv(override=True)
 
@@ -75,7 +80,6 @@ parser.add_argument(
     default="complete",
     help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
 )
-parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
 parser.add_argument(
     "--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)"
 )
@@ -84,6 +88,15 @@ parser.add_argument(
     type=int,
     default=10,
     help="Number of documents that should be given by retriever for evaluation",
+)
+parser.add_argument(
+    "--database_engine",
+    type=str,
+    default="qdrant",
+    help="Vector database engine",
+)
+parser.add_argument(
+    "--verbose", action="store_true", help="Enable verbose output (default: False)"
 )
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
@@ -96,10 +109,13 @@ args = parser.parse_args()
 
 # CONFIGURATION ------------------------------------------
 
+engine = args.database_engine
+
 config = set_config(
     use_vault=True,
     components=["s3", "mlflow", "database", "model"],
     mlflow_experiment_name=args.mlflow_experiment_name,
+    database_manager=engine,
     models_location={
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
@@ -108,7 +124,6 @@ config = set_config(
     verbose=args.verbose,
 )
 
-
 # PARAMETERS ------------------------------------------
 
 S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
@@ -116,8 +131,8 @@ collection_name = args.collection_name
 s3_bucket = "projet-llm-insee-open-data"
 faq_s3_path = "data/FAQ_site/faq.parquet"
 
-url_database_client = config.get("QDRANT_URL")
-api_key_database_client = config.get("QDRANT_API_KEY")
+url_database_client = config.get(f"{engine.upper()}_URL")
+api_key_database_client = config.get(f"{engine.upper()}_API_KEY")
 max_document_size = args.max_document_size
 chunk_overlap = args.chunk_overlap
 embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", config_dict=config).get("embedding")
@@ -128,6 +143,7 @@ parameters_database_construction = {
     "chunking_strategy": args.chunking_strategy,
     "max_document_size": max_document_size,
     "chunk_overlap": chunk_overlap,
+    "engine": engine
 }
 
 if args.dataset == "dirag":
@@ -192,11 +208,12 @@ def run_build_database() -> None:
         model_max_len = get_model_max_len(model_id=embedding_model)
         unique_collection_name = f"{collection_name}_{run_id}"
 
-        client = create_client_and_collection_qdrant(
+        client = create_client_and_collection(
             url=url_database_client,
             api_key=api_key_database_client,
             collection_name=unique_collection_name,
             model_max_len=model_max_len,
+            engine=engine
         )
 
         emb_model = OpenAIEmbeddings(
@@ -214,71 +231,76 @@ def run_build_database() -> None:
             collection_name=unique_collection_name,
             url=url_database_client,
             api_key=api_key_database_client,
+            engine=engine,
+            client=client
         )
 
         # SETTING ALIAS -----------------------
 
-        client.update_collection_aliases(
-            change_aliases_operations=[
-                models.CreateAliasOperation(
-                    create_alias=models.CreateAlias(collection_name=unique_collection_name, alias_name=collection_name)
-                )
-            ]
-        )
+        if engine == "qdrant":
+            create_collection_alias_qrant(
+                client=client,
+                initial_collection_name=unique_collection_name,
+                alias_collection_name=collection_name
+            )
 
         mlflow.log_params(
             {
-                "QDRANT_COLLECTION_UNIQUE": unique_collection_name,
-                "QDRANT_COLLECTION_ALIAS": collection_name,
+                "COLLECTION_UNIQUE": unique_collection_name,
+                "COLLECTION_ALIAS": collection_name,
             }
         )
 
         # LOGGING DATABASE STATISTICS --------------------------
 
-        collection_info = client.get_collection(collection_name=unique_collection_name)
-        embedding_size = collection_info.config.params.vectors.get(embedding_model).size
-
-        n_documents = collection_info.points_count
-
-        mlflow.log_params(
-            {"embedding_size": embedding_size, "n_documents": n_documents, "embedding_model": embedding_model}
+        from src.vectordatabase.client import get_number_docs_collection
+        n_documents = get_number_docs_collection(
+            client=client, collection_name=unique_collection_name, engine=engine
         )
+
+        dict_metadata_collection = {
+            "n_documents": n_documents
+        }
+
+        if engine == "qdrant":
+            collection_info = client.get_collection(collection_name=unique_collection_name)
+            embedding_size = collection_info.config.params.vectors.get(embedding_model).size
+            dict_metadata_collection = {
+                **{"embedding_size": embedding_size, "embedding_model": embedding_model},
+                **dict_metadata_collection
+            }
+
+        mlflow.log_params(dict_metadata_collection)
 
         # CREATING SNAPSHOT FOR LOGGING -------------------
 
-        if args.log_database_snapshot is True:
+        if args.log_database_snapshot is True and engine == "qdrant":
             logger.info("Logging database snapshot")
 
-            snapshot = client.create_snapshot(collection_name=unique_collection_name)
-
-            url_snapshot = f"{url_database_client}/collections/{unique_collection_name}/snapshots/{snapshot.name}"
-
-            # Intermediate save snapshot in local for logging in MLFlow
-            response = requests.get(url_snapshot, headers={"api-key": api_key_database_client}, timeout=60 * 10)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
-                temp_file.write(response.content)
-                temp_file_path = temp_file.name  # Store temp file path
-
-            mlflow.log_artifact(local_path=temp_file_path)
+            create_snapshot_collection_qdrant(
+                client=client,
+                collection_name=unique_collection_name,
+                url=url_database_client,
+                api_key=api_key_database_client
+            )
 
             logger.success("Database building successful")
 
-        # PART II : EVALUATION ---------------------------------
 
-        logger.info("Importing evaluation dataset")
+        # TURNING DATABASE INTO RETRIEVER ----------------------
 
-        faq = pd.read_parquet(f"s3://{s3_bucket}/{faq_s3_path}", filesystem=filesystem)
-        # Extract all URLs from the 'sources' column
-        faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
+        constructor_retriever = qdrant_vectorstore_as_retriever
+        if engine == "chroma":
+            constructor_retriever = chroma_vectorstore_as_retriever
 
-        db = QdrantVectorStore(
+        retriever = constructor_retriever(
             client=client,
-            collection_name=config.get("QDRANT_COLLECTION_NAME"),
-            embedding=emb_model,
-            vector_name=embedding_model,
+            collection_name=unique_collection_name,
+            embedding_function=emb_model,
+            vector_name=emb_model.model,
+            number_retrieved_docs=10
         )
 
-        retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
         # Log a result of a similarity search
         test_query = "Quels sont les chiffres du chômage en 2023 ?"
@@ -289,6 +311,17 @@ def run_build_database() -> None:
 
         mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents.json")
         mlflow.log_param("question_asked", query)
+
+
+        # PART II : EVALUATION ---------------------------------
+
+        logger.info("Importing evaluation dataset")
+
+        faq = pd.read_parquet(f"s3://{s3_bucket}/{faq_s3_path}", filesystem=filesystem)
+        # Extract all URLs from the 'sources' column
+        faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
+
+
 
         # --------------------------------
         # III - RETRIEVER STATISTICS
@@ -329,26 +362,8 @@ def run_build_database() -> None:
         mlflow.log_input(mlflow_data_raw, context="pre-embedding")
         mlflow.log_table(data=data.head(10), artifact_file="web4g_data.json")
 
-        retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 10})
-
-        # Log environment necessary to reproduce the experiment
-        current_dir = Path(".")
-        FILES_TO_LOG = list(current_dir.glob("src/**/*.py")) + [PosixPath("run_build_database.py")]
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_dir_path = Path(tmp_dir)
-
-            for file_path in FILES_TO_LOG:
-                relative_path = file_path.relative_to(current_dir)
-                destination_path = tmp_dir_path / relative_path.parent
-                destination_path.mkdir(parents=True, exist_ok=True)
-                shutil.copy(file_path, destination_path)
-
-            # Generate requirements.txt using pipreqs
-            subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
-
-            # Log all Python files to MLflow artifact
-            mlflow.log_artifacts(tmp_dir, artifact_path="environment")
+        # Log src/*.py and run_build_database.py
+        mlflow_log_source_files()
 
         logger.info("Program ended with success.")
 

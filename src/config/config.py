@@ -66,6 +66,19 @@ def get_config_database_qdrant(default_collection_name: str = "dirag_mistral_sma
     return config_database_client
 
 
+def get_config_database_chroma(
+    default_collection_name: str = "dirag_mistral_small", **kwargs    
+):
+    if "verbose" in kwargs and kwargs["verbose"] is True:
+        logger.info(
+            "Setting 'CHROMA_URL', 'CHROMA_CLIENT_AUTH_CREDENTIALS', 'CHROMA_CLIENT_AUTH_PROVIDER', 'CHROMA_SERVER_HOST' and 'CHROMA_SERVER_HTTP_PORT'"
+        )
+    config_database_client = {
+        "CHROMA_URL": os.getenv("CHROMA_URL"),
+        "CHROMA_COLLECTION_NAME": os.getenv("COLLECTION_NAME", default_collection_name),
+    }
+    return config_database_client
+
 def get_config_mlflow(mlflow_experiment_name: str = "experiment_name", **kwargs):
     if "verbose" in kwargs and kwargs["verbose"] is True:
         logger.info("Setting 'MLFLOW_TRACKING_URI' and 'MLFLOW_EXPERIMENT_NAME' parameters")
@@ -130,10 +143,10 @@ def set_config(
     verbose: bool = False,
     **kwargs,
 ):
-    if database_manager.lower() != "qdrant":
+    if database_manager.lower() not in ["qdrant", "chroma"]:
         message = (
-            "Only Qdrant database is handled properly right now."
-            "If you want to use another provider (Milvus, Chroma...), "
+            "Only Qdrant and Chroma database are handled properly right now."
+            "If you want to use another provider (Milvus...), "
             "you are on your own"
         )
         raise ValueError(message)
@@ -159,6 +172,9 @@ def set_config(
 
     if "database" in components and database_manager.lower() == "qdrant":
         config = {**config, **get_config_database_qdrant(**kwargs)}
+
+    if "database" in components and database_manager.lower() == "chroma":
+        config = {**config, **get_config_database_chroma(**kwargs)}
 
     if "model" in components:
         config = {**config, **get_config_vllm(**models_location, **kwargs)}

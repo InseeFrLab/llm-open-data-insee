@@ -1,3 +1,8 @@
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path, PosixPath
+
 import mlflow
 from loguru import logger
 
@@ -51,3 +56,26 @@ def retrieve_unique_collection_id(
     logger.success(f"Using {unique_run_identifier} collection for evaluation")
 
     return unique_run_identifier
+
+
+def mlflow_log_source_files(list_files_to_log=None):
+    # Log environment necessary to reproduce the experiment
+    current_dir = Path(".")
+
+    if list_files_to_log is None:
+        list_files_to_log = list(current_dir.glob("src/**/*.py")) + [PosixPath("run_build_database.py")]
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_dir_path = Path(tmp_dir)
+
+        for file_path in list_files_to_log:
+            relative_path = file_path.relative_to(current_dir)
+            destination_path = tmp_dir_path / relative_path.parent
+            destination_path.mkdir(parents=True, exist_ok=True)
+            shutil.copy(file_path, destination_path)
+
+        # Generate requirements.txt using pipreqs
+        subprocess.run(["pipreqs", str(tmp_dir_path)], check=True)
+
+        # Log all Python files to MLflow artifact
+        mlflow.log_artifacts(tmp_dir, artifact_path="environment")
