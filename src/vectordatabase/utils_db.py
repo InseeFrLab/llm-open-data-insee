@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 from loguru import logger
 from markdownify import MarkdownConverter, markdownify
-from tqdm import tqdm
 
 # logger = logging.getLogger(__name__)
 
@@ -35,98 +34,6 @@ def get_soup(xml_string: str) -> BeautifulSoup:
     """
     soup = BeautifulSoup(xml_string, features="xml")
     return soup
-
-
-def url_builder(row: pd.Series) -> str | None:
-    """
-    Constructs a URL based on the category and id of a given pandas Series row.
-
-    Parameters:
-    row (pd.Series): A pandas Series containing 'categorie' and 'id' fields.
-
-    Returns:
-    str: Constructed URL if valid category and id are present, otherwise None.
-    """
-    category = row.get("categorie")
-    if category is None:
-        return None
-
-    dict_url = {
-        "Publications grand public": "statistiques",
-        "Communiqués de presse": "information",
-        "Chiffres-clés": "statistiques",
-        "Chiffres détaillés": "statistiques",
-        "Actualités": "statistiques",
-        "L'Insee et la statistique publique": "information",
-        "Services": "information",
-        "Méthodes": "information",
-        "Dossiers de presse": "information",
-        "Courrier des statistiques": "information",
-        "Géographie": "information",
-        "Séries chronologiques": "statistiques",
-        "Sources": "information",
-        "Publications pour expert": "statistiques",
-        "Cartes interactives": "",
-        "Outils interactifs": "statistiques",
-    }
-
-    section = dict_url.get(category)
-    if section is None:
-        return None
-
-    base_url = "https://www.insee.fr/fr"
-    return f"""{base_url}/{section}/{row["id"]}"""
-
-
-def url_builder_metadata(row: pd.Series) -> str | None:
-    """
-    Rebuilds a valid URL for metadata based on the id of a given pandas Series row.
-
-    The base URL looks like: https://www.insee.fr/fr/metadonnees/
-
-    Parameters:
-    row (pd.Series): A pandas Series containing an 'id' field.
-
-    Returns:
-    str: Constructed metadata URL if the id matches a known pattern, otherwise None.
-    """
-    base_url = "https://www.insee.fr/fr/metadonnees"
-    pattern_source = r"^s"
-    pattern_indicator = r"^p"
-
-    row_id = row.get("id")
-    if row_id is None:
-        return None
-
-    if re.match(pattern_source, row_id):
-        return f"{base_url}/source/serie/{row_id}"
-
-    if re.match(pattern_indicator, row_id):
-        return f"{base_url}/source/indicateur/{row_id}/description"
-
-    return None
-
-
-def complete_url_builder(table: pd.DataFrame) -> pd.Series:
-    """
-    Builds a complete list of URLs for each row in the given DataFrame.
-
-    If the URL cannot be constructed using `url_builder`, it tries `url_builder_metadata`.
-
-    Parameters:
-    table (pd.DataFrame): A pandas DataFrame containing rows with necessary fields.
-
-    Returns:
-    pd.Series: A pandas Series containing the constructed URLs or None for each row.
-    """
-    urls = []
-    for _, row in tqdm(table.iterrows(), total=table.shape[0], desc="Building URLs"):
-        url = url_builder(row)
-        if url is None:
-            url = url_builder_metadata(row)
-        urls.append(url)
-
-    return pd.Series(urls)
 
 
 def prepend_text_to_tag(tag, text):

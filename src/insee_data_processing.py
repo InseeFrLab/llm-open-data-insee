@@ -4,7 +4,7 @@ import os
 
 import pandas as pd
 import s3fs
-from db_building.utils_db import complete_url_builder
+from src.data.process import complete_url_builder
 from markdownify import markdownify as md
 
 FILES = [

@@ -24,7 +24,7 @@ load_dotenv(override=True)
 # Patch for https://github.com/VikParuchuri/marker/issues/442
 torch.classes.__path__ = []
 
-ENGINE = "chroma"
+ENGINE = "qdrant"
 
 config = set_config(
     use_vault=True,

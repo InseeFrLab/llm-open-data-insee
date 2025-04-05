@@ -10,7 +10,11 @@ from .utils_db import parse_xmls
 logger = logging.getLogger(__name__)
 
 
-def chunk_documents(documents: list[Document], **kwargs) -> list[Document]:
+def chunk_documents(
+    documents: list[Document], strategy: str = "recursive",
+    **kwargs
+) -> list[Document]:
+
     logging.info("Building the list of document objects")
     logging.info(f"The following parameters have been applied: {kwargs}")
 
