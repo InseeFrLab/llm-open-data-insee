@@ -44,6 +44,10 @@ def create_client_and_collection_qdrant(
         logger.debug("No collection_name provided, skipping that step")
         return client
 
+    if client.collection_exists(collection_name=collection_name) is True:
+        logger.debug(f"Collection {collection_name} exists, skipping creation")
+        return client
+
     logger.info(f"Creating vector collection ({collection_name})")
 
     _initialize_collection_qdrant(client=client, collection_name=collection_name, model_max_len=model_max_len)
