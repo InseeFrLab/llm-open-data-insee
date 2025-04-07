@@ -27,6 +27,7 @@ def create_client_and_collection(
         client = create_client_and_collection_qdrant(
             api_key=kwargs['api_key'],
             model_max_len=kwargs["model_max_len"],
+            vector_name=kwargs['vector_name'],
             **args_to_pass
         )
     else:

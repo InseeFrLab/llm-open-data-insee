@@ -35,14 +35,19 @@ def initialize_clients(
     url_database_client = config.get(f"{engine.upper()}_URL")
     api_key_database_client = config.get(f"{engine.upper()}_API_KEY")
     collection_name = config.get(f"{engine.upper()}_COLLECTION_NAME")
-    model_max_len = get_model_max_len(model_id=emb_model.model)
+
+    model_max_len = len(
+            emb_model.embed_query("retrieving hidden_size")
+        )
+    # model_max_len = get_model_max_len(model_id=emb_model.model)
 
     client = create_client_and_collection(
             url=url_database_client,
             api_key=api_key_database_client,
             collection_name=collection_name,
             model_max_len=model_max_len,
-            engine=engine
+            engine=engine,
+            vector_name=embedding_model
         )
 
     constructor_retriever = qdrant_vectorstore_as_retriever

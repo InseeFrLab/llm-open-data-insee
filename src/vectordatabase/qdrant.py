@@ -20,16 +20,19 @@ def _initialize_client_qdrant(url: str, api_key: str) -> QdrantClient:
     return client
 
 
-def _initialize_collection_qdrant(client: QdrantClient, collection_name: str, model_max_len: float):
+def _initialize_collection_qdrant(client: QdrantClient, collection_name: str, model_max_len: float, vector_name: str):
     client.create_collection(
         collection_name=collection_name,
-        vectors_config=VectorParams(size=model_max_len, distance=Distance.COSINE),
+        vectors_config={
+            vector_name: VectorParams(size=model_max_len, distance=Distance.COSINE),
+        }
     )
     return client
 
 
 def create_client_and_collection_qdrant(
     url: str, api_key: str,
+    vector_name: str,
     collection_name: str = None,
     model_max_len: int = None,
     **kwargs
@@ -50,7 +53,11 @@ def create_client_and_collection_qdrant(
 
     logger.info(f"Creating vector collection ({collection_name})")
 
-    _initialize_collection_qdrant(client=client, collection_name=collection_name, model_max_len=model_max_len)
+    _initialize_collection_qdrant(
+        client=client, collection_name=collection_name, 
+        vector_name=vector_name,
+        model_max_len=model_max_len
+        )
 
     return client
 
@@ -58,9 +65,9 @@ def create_client_and_collection_qdrant(
 def database_from_documents_qdrant(
     documents,
     emb_model,
+    client,
     collection_name: str,
-    url: str,
-    api_key: str,
+    **kwargs
 ):
     """
     Embed documents and create a Qdrant vector store from them.
@@ -68,18 +75,14 @@ def database_from_documents_qdrant(
 
     logger.info("Putting documents in vector database")
 
-    db = QdrantVectorStore.from_documents(
-        documents,
-        emb_model,
-        url=url,
-        api_key=api_key,
-        vector_name=emb_model.model,
-        prefer_grpc=False,
-        port="443",
-        https="true",
+    db = QdrantVectorStore(
+        client=client,
         collection_name=collection_name,
-        force_recreate=True,
+        embedding=emb_model,
+        vector_name=emb_model.model
     )
+
+    _ = db.add_documents(documents=documents)
 
     return db
 

@@ -17,7 +17,9 @@ from src.utils.utils_vllm import get_model_max_len, get_models_from_env
 from src.results_logging.mlflow_utils import mlflow_log_source_files
 
 from src.vectordatabase.document_chunker import chunk_documents, parse_documents
-from src.vectordatabase.client import create_client_and_collection
+from src.vectordatabase.client import (
+    create_client_and_collection, get_number_docs_collection
+)
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
 from src.vectordatabase.qdrant import (
     create_collection_alias_qrant, create_snapshot_collection_qdrant,
@@ -54,7 +56,7 @@ parser.add_argument(
     "--chunking_strategy",
     type=str,
     default="None",
-    choices=["None", "Recursive", "recursive"],
+    choices=["None", "Recursive", "recursive", "Character", "character"],
     help="Chunking strategy for documents"
     "If None (default), corpus is left asis. "
     "If recursive, use Langchain's CharacterTextSplitter",
@@ -188,7 +190,7 @@ def run_build_database() -> None:
 
         if args.max_pages is not None:
             logger.debug(f"Limiting database to {args.max_pages} pages")
-            data = data.head(args.max_pages)
+            data = data.head(50)
 
         logger.info("Starting to parse XMLs")
 
@@ -199,13 +201,27 @@ def run_build_database() -> None:
         # SPLITTING STRATEGY -------------------------------
 
         if args.chunking_strategy != "None":
-            documents = chunk_documents(documents, **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap})
+            documents = chunk_documents(
+                documents, strategy=args.chunking_strategy,
+                **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap}
+            )
 
         # CREATE DATABASE COLLECTION -----------------------
 
         logger.info("Connecting to vector database")
 
-        model_max_len = get_model_max_len(model_id=embedding_model)
+        emb_model = OpenAIEmbeddings(
+            model=embedding_model,
+            openai_api_base=config.get("OPENAI_API_BASE_EMBEDDING"),
+            openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+        )
+
+        model_max_len = len(
+            emb_model.embed_query("retrieving hidden_size")
+        )
+        # confusion between hidden_size and model_max_len
+        # get_model_max_len(model_id=embedding_model)
+        
         unique_collection_name = f"{collection_name}_{run_id}"
 
         client = create_client_and_collection(
@@ -213,13 +229,8 @@ def run_build_database() -> None:
             api_key=api_key_database_client,
             collection_name=unique_collection_name,
             model_max_len=model_max_len,
-            engine=engine
-        )
-
-        emb_model = OpenAIEmbeddings(
-            model=embedding_model,
-            openai_api_base=config.get("OPENAI_API_BASE_EMBEDDING"),
-            openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+            engine=engine,
+            vector_name=embedding_model
         )
 
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
@@ -253,7 +264,6 @@ def run_build_database() -> None:
 
         # LOGGING DATABASE STATISTICS --------------------------
 
-        from src.vectordatabase.client import get_number_docs_collection
         n_documents = get_number_docs_collection(
             client=client, collection_name=unique_collection_name, engine=engine
         )

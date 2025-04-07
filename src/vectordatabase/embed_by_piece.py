@@ -80,7 +80,7 @@ def _embed_documents_in_chunks(
     args_database_constructor = {
         "emb_model": emb_model,
         "collection_name": collection_name,
-        "url": url, "api_key": api_key
+        "client": client
     }
 
     logger.info(f"Starting chunked ingestion with chunk size = {chunk_size}")
@@ -94,8 +94,7 @@ def _embed_documents_in_chunks(
 
         database_construction_func = database_from_documents_qdrant
         if engine == "chroma":
-            database_construction_func = database_from_documents_chroma
-            args_database_constructor = {**args_database_constructor, "client": client}
+            database_construction_func = database_from_documents_qdrant
 
         database_construction_func(
             documents=batch, **args_database_constructor

@@ -1,7 +1,10 @@
 import logging
 
 import pandas as pd
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import (
+    RecursiveCharacterTextSplitter, CharacterTextSplitter
+)
+
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 
@@ -9,9 +12,11 @@ from .utils_db import parse_xmls
 
 logger = logging.getLogger(__name__)
 
+RECURSIVE_HEADERS_TO_CHUNK = ['#', '##', '###', '####', '#####', '######']
 
 def chunk_documents(
     documents: list[Document], strategy: str = "recursive",
+    separators=RECURSIVE_HEADERS_TO_CHUNK,
     **kwargs
 ) -> list[Document]:
 
@@ -19,7 +24,19 @@ def chunk_documents(
     logging.info(f"The following parameters have been applied: {kwargs}")
 
     # Initialize token splitter
-    docs_processed = RecursiveCharacterTextSplitter(**kwargs).split_documents(documents)
+    if strategy.lower() == "recursive":
+        docs_processed = RecursiveCharacterTextSplitter(
+            separators=RECURSIVE_HEADERS_TO_CHUNK, **kwargs
+        ).split_documents(documents)
+    elif strategy.lower() == "character":
+        docs_processed = CharacterTextSplitter(
+            separator="\n\n",
+            length_function=len,
+            is_separator_regex=False,
+            **kwargs).create_documents(
+                [d.page_content for d in documents], metadatas=[d.metadata for d in documents]
+            )
+
 
     logging.info(f"Number of created chunks: {len(docs_processed)} in the Vector Database")
 
