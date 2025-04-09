@@ -16,6 +16,7 @@ from src.vectordatabase.qdrant import (
 from src.vectordatabase.chroma import (
     chroma_vectorstore_as_retriever
 )
+from src.vectordatabase.reranker import RerankerRetriever
 from src.utils.utils_vllm import get_model_max_len
 from src.vectordatabase.output_parsing import langchain_documents_to_df
 
@@ -23,7 +24,9 @@ from src.vectordatabase.output_parsing import langchain_documents_to_df
 def initialize_clients(
     config: dict, embedding_model: str,
     number_retrieved_documents: str = 5,
-    engine: str = "qdrant"
+    engine: str = "qdrant",
+    use_reranking: bool = False,
+    **kwargs
 ):
 
     emb_model = OpenAIEmbeddings(
@@ -61,14 +64,23 @@ def initialize_clients(
             vector_name=emb_model.model,
             number_retrieved_docs=number_retrieved_documents
         )
+    
+    logger.success("Retriever initialized successfully")
 
-    logger.success("Vectorstore initialized successfully")
+    if use_reranking is True:
+        if 'url_reranker' not in kwargs or 'model_reranker' not in kwargs:
+            raise ValueError("url_reranker and model_reranker need to be provided if use_reranking is True")
+        retriever = RerankerRetriever(
+            retriever=retriever,
+            **kwargs
+        )
 
     chat_client = OpenAI(
         base_url=config.get("OPENAI_API_BASE_GENERATIVE"),
         api_key=config.get("OPENAI_API_KEY_GENERATIVE"),
     )
     return retriever, chat_client, retriever
+
 
 
 def get_conversation_title(chat_client, generative_model, full_text):

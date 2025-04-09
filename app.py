@@ -25,6 +25,7 @@ load_dotenv(override=True)
 torch.classes.__path__ = []
 
 ENGINE = "qdrant"
+USE_RERANKING = True
 
 config = set_config(
     use_vault=True,
@@ -32,6 +33,7 @@ config = set_config(
     models_location={
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
+        "url_reranking_model": "ENV_URL_RERANKING_MODEL",
     },
     database_manager=ENGINE
     # override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
@@ -44,9 +46,13 @@ path_log = os.getenv("PATH_LOG_APP")
 # Fix marker warning from torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
 
-models = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", url_generative="URL_GENERATIVE_MODEL")
+models = get_models_from_env(
+    url_embedding="URL_EMBEDDING_MODEL",
+    url_generative="URL_GENERATIVE_MODEL",
+    url_reranking="URL_RERANKING_MODEL")
 embedding_model = models.get("embedding")
 generative_model = models.get("completion")
+reranking_model = models.get("reranking")
 
 
 # ---------------- INITIALIZATION ---------------- #
@@ -56,12 +62,18 @@ generative_model = models.get("completion")
 def initialize_clients_cache(
     config: dict,
     embedding_model=embedding_model,
-    engine=ENGINE
+    engine=ENGINE,
+    **kwargs
 ):
-    return initialize_clients(config=config, embedding_model=embedding_model, engine=engine)
+    return initialize_clients(config=config, embedding_model=embedding_model, engine=engine, **kwargs)
 
 
-retriever, chat_client, qdrant_client = initialize_clients_cache(config=config, embedding_model=embedding_model)
+retriever, chat_client, qdrant_client = initialize_clients_cache(
+    config=config, embedding_model=embedding_model,
+    use_reranking=True,
+    url_reranker=os.getenv("URL_RERANKING_MODEL"),
+    model_reranker=models.get("reranking")
+    )
 n_docs = "XXXXX"
 #n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
 prompt = PromptTemplate.from_template(question_instructions)

@@ -9,15 +9,24 @@ logger = logging.getLogger(__name__)
 
 
 def get_models_from_env(
-    url_embedding: str = "URL_EMBEDDING_MODEL", url_generative: str = "URL_GENERATIVE_MODEL", config_dict: dict = None
+    url_embedding: str = "URL_EMBEDDING_MODEL",
+    url_generative: str = "URL_GENERATIVE_MODEL",
+    url_reranking: str = "URL_RERANKING_MODEL",
+    config_dict: dict = None
 ):
     embedding_model = _get_model_from_env(url_embedding)
     generative_model = _get_model_from_env(url_generative)
+    reranking_model = _get_model_from_env(url_reranking)
 
     logger.debug(f"Embedding model used: {embedding_model}")
     logger.debug(f"Generative model used: {generative_model}")
+    logger.debug(f"Reranking model used: {reranking_model}")
 
-    return {"embedding": embedding_model, "completion": generative_model}
+    return {
+        "embedding": embedding_model,
+        "completion": generative_model,
+        "reranking": reranking_model
+    }
 
 
 def _get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None) -> str:
