@@ -66,9 +66,7 @@ def get_config_database_qdrant(default_collection_name: str = "dirag_mistral_sma
     return config_database_client
 
 
-def get_config_database_chroma(
-    default_collection_name: str = "dirag_mistral_small", **kwargs    
-):
+def get_config_database_chroma(default_collection_name: str = "dirag_mistral_small", **kwargs):
     if "verbose" in kwargs and kwargs["verbose"] is True:
         logger.info(
             "Setting 'CHROMA_URL', 'CHROMA_CLIENT_AUTH_CREDENTIALS', 'CHROMA_CLIENT_AUTH_PROVIDER', 'CHROMA_SERVER_HOST' and 'CHROMA_SERVER_HTTP_PORT'"
@@ -78,6 +76,7 @@ def get_config_database_chroma(
         "CHROMA_COLLECTION_NAME": os.getenv("COLLECTION_NAME", default_collection_name),
     }
     return config_database_client
+
 
 def get_config_mlflow(mlflow_experiment_name: str = "experiment_name", **kwargs):
     if "verbose" in kwargs and kwargs["verbose"] is True:

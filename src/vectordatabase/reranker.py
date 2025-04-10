@@ -2,20 +2,15 @@ import requests
 
 
 def rerank_documents(url, model, query, documents):
-
     headers = {
-        'accept': 'application/json',
-        'Content-Type': 'application/json',
+        "accept": "application/json",
+        "Content-Type": "application/json",
     }
-    
-    payload = {
-        "model": model,
-        "query": query,
-        "documents": documents
-    }
-    
+
+    payload = {"model": model, "query": query, "documents": documents}
+
     response = requests.post(url, headers=headers, json=payload)
-    
+
     if response.status_code == 200:
         return response.json()
     else:
@@ -27,11 +22,9 @@ def flatten_results(response_json):
     flat_data = []
 
     for result in results:
-        flat_data.append({
-            "index": result["index"],
-            "text": result["document"]["text"],
-            "relevance_score": result["relevance_score"]
-        })
+        flat_data.append(
+            {"index": result["index"], "text": result["document"]["text"], "relevance_score": result["relevance_score"]}
+        )
 
     return flat_data
 
@@ -50,19 +43,15 @@ def rerank_top_documents(query, docs_retrieved, url_reranker, model_reranker, to
     Returns:
     - List of top_k documents with relevance scores added to metadata
     """
-    
+
     # For reranking we must use root rather than /v1 endpoint
     url_reranker = url_reranker.replace("v1/", "rerank/")
 
     documents = [doc.page_content for doc in docs_retrieved]
-    result = rerank_documents(
-        url=url_reranker, model=model_reranker, query=query, documents=documents
-    )
+    result = rerank_documents(url=url_reranker, model=model_reranker, query=query, documents=documents)
 
     docs_reranked = flatten_results(result)[:top_k]
-    index_to_score = {
-        doc["index"]: doc["relevance_score"] for doc in docs_reranked
-    }
+    index_to_score = {doc["index"]: doc["relevance_score"] for doc in docs_reranked}
 
     selected_docs = []
     for i, doc in enumerate(docs_retrieved):
@@ -106,8 +95,5 @@ class RerankerRetriever:
             docs_retrieved=docs_retrieved,
             url_reranker=self.url_reranker,
             model_reranker=self.model_reranker,
-            top_k=self.top_k
+            top_k=self.top_k,
         )
-
-
-

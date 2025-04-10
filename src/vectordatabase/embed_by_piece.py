@@ -1,8 +1,7 @@
+from chromadb.api import ClientAPI
 from loguru import logger
 
-from .chroma import database_from_documents_chroma
 from .qdrant import database_from_documents_qdrant
-from chromadb.api import ClientAPI
 
 
 def chunk_documents_and_store(
@@ -15,7 +14,7 @@ def chunk_documents_and_store(
     content_attr: str = "page_content",
     size_step: int = None,
     engine: str = "qdrant",
-    client: ClientAPI = None
+    client: ClientAPI = None,
 ):
     total_docs = len(documents)
 
@@ -29,9 +28,7 @@ def chunk_documents_and_store(
     filtered_documents = _filter_valid_documents(documents, content_attr=content_attr, size_step=size_step)
 
     _embed_documents_in_chunks(
-        filtered_documents, emb_model, collection_name, url, api_key, chunk_size,
-        engine=engine,
-        client=client
+        filtered_documents, emb_model, collection_name, url, api_key, chunk_size, engine=engine, client=client
     )
 
 
@@ -77,16 +74,12 @@ def _embed_documents_in_chunks(
 
     total_docs = len(documents)
 
-    args_database_constructor = {
-        "emb_model": emb_model,
-        "collection_name": collection_name,
-        "client": client
-    }
+    args_database_constructor = {"emb_model": emb_model, "collection_name": collection_name, "client": client}
 
     logger.info(f"Starting chunked ingestion with chunk size = {chunk_size}")
 
     for idx, batch_start in enumerate(range(0, total_docs, chunk_size), start=1):
-        batch = documents[batch_start:(batch_start + chunk_size)]
+        batch = documents[batch_start : (batch_start + chunk_size)]
         logger.info(
             f"Processing batch {idx}: docs {batch_start}–{batch_start + len(batch) - 1} "
             f"({100 * batch_start / total_docs:.2f}%)"
@@ -96,6 +89,4 @@ def _embed_documents_in_chunks(
         if engine == "chroma":
             database_construction_func = database_from_documents_qdrant
 
-        database_construction_func(
-            documents=batch, **args_database_constructor
-        )
+        database_construction_func(documents=batch, **args_database_constructor)

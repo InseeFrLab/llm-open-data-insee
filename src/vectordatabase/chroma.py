@@ -3,10 +3,8 @@ import logging
 import chromadb
 from chromadb.api import ClientAPI
 from chromadb.config import Settings
-
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
-
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +22,7 @@ def _initialize_collection_chroma(client: ClientAPI, collection_name: str):
     return collection
 
 
-def create_client_and_collection_chroma(
-    url: str, collection_name: str = None, **kwargs
-):
+def create_client_and_collection_chroma(url: str, collection_name: str = None, **kwargs):
     """
     Create and return a Qdrant client after initializing a vector collection.
     """
@@ -75,18 +71,14 @@ def chroma_vectorstore_as_retriever(
     collection_name: str,
     embedding_function: OpenAIEmbeddings,
     number_retrieved_docs: int = 10,
-    **kwargs
+    **kwargs,
 ):
-
     db = Chroma(
         client=client,
         collection_name=collection_name,
         embedding_function=embedding_function,
     )
 
-    retriever = db.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": number_retrieved_docs}
-    )
+    retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": number_retrieved_docs})
 
     return retriever

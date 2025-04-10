@@ -1,20 +1,8 @@
-from .qdrant import (
-    create_client_and_collection_qdrant, 
-    get_number_docs_collection_qdrant
-)
-from .chroma import (
-    create_client_and_collection_chroma,
-    get_number_docs_collection_chroma
-)
+from .chroma import create_client_and_collection_chroma, get_number_docs_collection_chroma
+from .qdrant import create_client_and_collection_qdrant, get_number_docs_collection_qdrant
 
 
-def create_client_and_collection(
-    url: str,
-    collection_name: str,
-    engine="qdrant",
-    **kwargs
-):
-
+def create_client_and_collection(url: str, collection_name: str, engine="qdrant", **kwargs):
     if engine not in ["qdrant", "chroma"]:
         raise ValueError("Only Qdrant and Chroma database are supported")
 
@@ -25,16 +13,14 @@ def create_client_and_collection(
 
     if engine == "qdrant":
         client = create_client_and_collection_qdrant(
-            api_key=kwargs['api_key'],
+            api_key=kwargs["api_key"],
             model_max_len=kwargs["model_max_len"],
-            vector_name=kwargs['vector_name'],
-            **args_to_pass
+            vector_name=kwargs["vector_name"],
+            **args_to_pass,
         )
     else:
-        client = create_client_and_collection_chroma(
-            **args_to_pass
-        )
-    
+        client = create_client_and_collection_chroma(**args_to_pass)
+
     return client
 
 

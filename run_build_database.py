@@ -9,27 +9,20 @@ from loguru import logger
 
 from src.config import set_config
 from src.data.corpus import constructor_corpus
-
 from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
-
 from src.model.prompt import similarity_search_instructions
-from src.utils.utils_vllm import get_model_max_len, get_models_from_env
 from src.results_logging.mlflow_utils import mlflow_log_source_files
-
+from src.utils.utils_vllm import get_models_from_env
+from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
+from src.vectordatabase.client import create_client_and_collection, get_number_docs_collection
 from src.vectordatabase.document_chunker import chunk_documents, parse_documents
-from src.vectordatabase.client import (
-    create_client_and_collection, get_number_docs_collection
-)
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
-from src.vectordatabase.qdrant import (
-    create_collection_alias_qrant, create_snapshot_collection_qdrant,
-    qdrant_vectorstore_as_retriever
-)
-from src.vectordatabase.chroma import (
-    chroma_vectorstore_as_retriever
-)
 from src.vectordatabase.output_parsing import langchain_documents_to_df
-
+from src.vectordatabase.qdrant import (
+    create_collection_alias_qrant,
+    create_snapshot_collection_qdrant,
+    qdrant_vectorstore_as_retriever,
+)
 
 load_dotenv(override=True)
 
@@ -97,9 +90,7 @@ parser.add_argument(
     default="qdrant",
     help="Vector database engine",
 )
-parser.add_argument(
-    "--verbose", action="store_true", help="Enable verbose output (default: False)"
-)
+parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
@@ -145,7 +136,7 @@ parameters_database_construction = {
     "chunking_strategy": args.chunking_strategy,
     "max_document_size": max_document_size,
     "chunk_overlap": chunk_overlap,
-    "engine": engine
+    "engine": engine,
 }
 
 if args.dataset == "dirag":
@@ -202,8 +193,9 @@ def run_build_database() -> None:
 
         if args.chunking_strategy != "None":
             documents = chunk_documents(
-                documents, strategy=args.chunking_strategy,
-                **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap}
+                documents,
+                strategy=args.chunking_strategy,
+                **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap},
             )
 
         # CREATE DATABASE COLLECTION -----------------------
@@ -216,12 +208,10 @@ def run_build_database() -> None:
             openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
         )
 
-        model_max_len = len(
-            emb_model.embed_query("retrieving hidden_size")
-        )
+        model_max_len = len(emb_model.embed_query("retrieving hidden_size"))
         # confusion between hidden_size and model_max_len
         # get_model_max_len(model_id=embedding_model)
-        
+
         unique_collection_name = f"{collection_name}_{run_id}"
 
         client = create_client_and_collection(
@@ -230,7 +220,7 @@ def run_build_database() -> None:
             collection_name=unique_collection_name,
             model_max_len=model_max_len,
             engine=engine,
-            vector_name=embedding_model
+            vector_name=embedding_model,
         )
 
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
@@ -243,16 +233,14 @@ def run_build_database() -> None:
             url=url_database_client,
             api_key=api_key_database_client,
             engine=engine,
-            client=client
+            client=client,
         )
 
         # SETTING ALIAS -----------------------
 
         if engine == "qdrant":
             create_collection_alias_qrant(
-                client=client,
-                initial_collection_name=unique_collection_name,
-                alias_collection_name=collection_name
+                client=client, initial_collection_name=unique_collection_name, alias_collection_name=collection_name
             )
 
         mlflow.log_params(
@@ -264,20 +252,16 @@ def run_build_database() -> None:
 
         # LOGGING DATABASE STATISTICS --------------------------
 
-        n_documents = get_number_docs_collection(
-            client=client, collection_name=unique_collection_name, engine=engine
-        )
+        n_documents = get_number_docs_collection(client=client, collection_name=unique_collection_name, engine=engine)
 
-        dict_metadata_collection = {
-            "n_documents": n_documents
-        }
+        dict_metadata_collection = {"n_documents": n_documents}
 
         if engine == "qdrant":
             collection_info = client.get_collection(collection_name=unique_collection_name)
             embedding_size = collection_info.config.params.vectors.get(embedding_model).size
             dict_metadata_collection = {
                 **{"embedding_size": embedding_size, "embedding_model": embedding_model},
-                **dict_metadata_collection
+                **dict_metadata_collection,
             }
 
         mlflow.log_params(dict_metadata_collection)
@@ -291,11 +275,10 @@ def run_build_database() -> None:
                 client=client,
                 collection_name=unique_collection_name,
                 url=url_database_client,
-                api_key=api_key_database_client
+                api_key=api_key_database_client,
             )
 
             logger.success("Database building successful")
-
 
         # TURNING DATABASE INTO RETRIEVER ----------------------
 
@@ -308,9 +291,8 @@ def run_build_database() -> None:
             collection_name=unique_collection_name,
             embedding_function=emb_model,
             vector_name=emb_model.model,
-            number_retrieved_docs=10
+            number_retrieved_docs=10,
         )
-
 
         # Log a result of a similarity search
         test_query = "Quels sont les chiffres du chômage en 2023 ?"
@@ -322,7 +304,6 @@ def run_build_database() -> None:
         mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents.json")
         mlflow.log_param("question_asked", query)
 
-
         # PART II : EVALUATION ---------------------------------
 
         logger.info("Importing evaluation dataset")
@@ -330,8 +311,6 @@ def run_build_database() -> None:
         faq = pd.read_parquet(f"s3://{s3_bucket}/{faq_s3_path}", filesystem=filesystem)
         # Extract all URLs from the 'sources' column
         faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
-
-
 
         # --------------------------------
         # III - RETRIEVER STATISTICS

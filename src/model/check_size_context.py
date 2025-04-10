@@ -1,6 +1,6 @@
 import numpy as np
-from loguru import logger
 from langchain_core.prompts import PromptTemplate
+from loguru import logger
 
 from src.vectordatabase.output_parsing import format_docs
 

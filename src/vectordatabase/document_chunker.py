@@ -1,10 +1,7 @@
 import logging
 
 import pandas as pd
-from langchain.text_splitter import (
-    RecursiveCharacterTextSplitter, CharacterTextSplitter
-)
-
+from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 
@@ -12,14 +9,12 @@ from .utils_db import parse_xmls
 
 logger = logging.getLogger(__name__)
 
-RECURSIVE_HEADERS_TO_CHUNK = ['#', '##', '###', '####', '#####', '######']
+RECURSIVE_HEADERS_TO_CHUNK = ["#", "##", "###", "####", "#####", "######"]
+
 
 def chunk_documents(
-    documents: list[Document], strategy: str = "recursive",
-    separators=RECURSIVE_HEADERS_TO_CHUNK,
-    **kwargs
+    documents: list[Document], strategy: str = "recursive", separators=RECURSIVE_HEADERS_TO_CHUNK, **kwargs
 ) -> list[Document]:
-
     logging.info("Building the list of document objects")
     logging.info(f"The following parameters have been applied: {kwargs}")
 
@@ -30,13 +25,8 @@ def chunk_documents(
         ).split_documents(documents)
     elif strategy.lower() == "character":
         docs_processed = CharacterTextSplitter(
-            separator="\n\n",
-            length_function=len,
-            is_separator_regex=False,
-            **kwargs).create_documents(
-                [d.page_content for d in documents], metadatas=[d.metadata for d in documents]
-            )
-
+            separator="\n\n", length_function=len, is_separator_regex=False, **kwargs
+        ).create_documents([d.page_content for d in documents], metadatas=[d.metadata for d in documents])
 
     logging.info(f"Number of created chunks: {len(docs_processed)} in the Vector Database")
 

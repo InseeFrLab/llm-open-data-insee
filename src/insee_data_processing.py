@@ -4,8 +4,9 @@ import os
 
 import pandas as pd
 import s3fs
-from src.data.process import complete_url_builder
 from markdownify import markdownify as md
+
+from src.data.process import complete_url_builder
 
 FILES = [
     "applishare_extract",

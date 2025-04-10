@@ -6,16 +6,14 @@ import s3fs
 import streamlit as st
 import torch
 from dotenv import load_dotenv
-
 from langchain_core.prompts import PromptTemplate
 
-from src.config import set_config
 from src.app.feedbacks import feedback_titles, render_feedback_section
 from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
 from src.app.utils import generate_answer_from_context, initialize_clients
+from src.config import set_config
 from src.model.prompt import question_instructions
 from src.utils.utils_vllm import get_models_from_env
-
 
 # ---------------- CONFIGURATION ---------------- #
 
@@ -35,7 +33,7 @@ config = set_config(
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
         "url_reranking_model": "ENV_URL_RERANKING_MODEL",
     },
-    database_manager=ENGINE
+    database_manager=ENGINE,
     # override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
 )
 
@@ -47,9 +45,8 @@ path_log = os.getenv("PATH_LOG_APP")
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
 
 models = get_models_from_env(
-    url_embedding="URL_EMBEDDING_MODEL",
-    url_generative="URL_GENERATIVE_MODEL",
-    url_reranking="URL_RERANKING_MODEL")
+    url_embedding="URL_EMBEDDING_MODEL", url_generative="URL_GENERATIVE_MODEL", url_reranking="URL_RERANKING_MODEL"
+)
 embedding_model = models.get("embedding")
 generative_model = models.get("completion")
 reranking_model = models.get("reranking")
@@ -59,23 +56,19 @@ reranking_model = models.get("reranking")
 
 
 @st.cache_resource(show_spinner=False)
-def initialize_clients_cache(
-    config: dict,
-    embedding_model=embedding_model,
-    engine=ENGINE,
-    **kwargs
-):
+def initialize_clients_cache(config: dict, embedding_model=embedding_model, engine=ENGINE, **kwargs):
     return initialize_clients(config=config, embedding_model=embedding_model, engine=engine, **kwargs)
 
 
 retriever, chat_client, qdrant_client = initialize_clients_cache(
-    config=config, embedding_model=embedding_model,
+    config=config,
+    embedding_model=embedding_model,
     use_reranking=True,
     url_reranker=os.getenv("URL_RERANKING_MODEL"),
-    model_reranker=models.get("reranking")
-    )
+    model_reranker=models.get("reranking"),
+)
 n_docs = "XXXXX"
-#n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
+# n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
 prompt = PromptTemplate.from_template(question_instructions)
 
 # ---------------- STREAMLIT UI ---------------- #
