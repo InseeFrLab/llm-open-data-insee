@@ -9,7 +9,8 @@ from .utils_db import parse_xmls
 
 logger = logging.getLogger(__name__)
 
-RECURSIVE_HEADERS_TO_CHUNK = ["#", "##", "###", "####", "#####", "######"]
+# RECURSIVE_HEADERS_TO_CHUNK = ["#", "##", "###", "####", "#####", "######"]
+RECURSIVE_HEADERS_TO_CHUNK = ["\n\n", "\n"]
 
 
 def chunk_documents(
