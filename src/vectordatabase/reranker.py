@@ -52,10 +52,12 @@ def rerank_top_documents(query, docs_retrieved, url_reranker, model_reranker, to
     """
     
     # For reranking we must use root rather than /v1 endpoint
-    url_reranker = url_reranker.replace("v1/", "")
+    url_reranker = url_reranker.replace("v1/", "rerank/")
 
     documents = [doc.page_content for doc in docs_retrieved]
-    result = rerank_documents(url_reranker, model_reranker, query, documents)
+    result = rerank_documents(
+        url=url_reranker, model=model_reranker, query=query, documents=documents
+    )
 
     docs_reranked = flatten_results(result)[:top_k]
     index_to_score = {
