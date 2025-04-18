@@ -22,11 +22,11 @@ def chunk_documents(
     # Initialize token splitter
     if strategy.lower() == "recursive":
         docs_processed = RecursiveCharacterTextSplitter(
-            separators=RECURSIVE_HEADERS_TO_CHUNK, **kwargs
-        ).split_documents(documents)
+            separators=separators, **kwargs
+        ).split_documents([documents[-1]])
     elif strategy.lower() == "character":
         docs_processed = CharacterTextSplitter(
-            separator="\n\n", length_function=len, is_separator_regex=False, **kwargs
+            separator=" ", length_function=len, is_separator_regex=False, **kwargs
         ).create_documents([d.page_content for d in documents], metadatas=[d.metadata for d in documents])
 
     logging.info(f"Number of created chunks: {len(docs_processed)} in the Vector Database")
