@@ -54,7 +54,9 @@ def create_client_and_collection_qdrant(
     return client
 
 
-def database_from_documents_qdrant(documents, emb_model, client, collection_name: str, **kwargs):
+def database_from_documents_qdrant(
+    documents, emb_model, client, collection_name: str, **kwargs
+):
     """
     Embed documents and create a Qdrant vector store from them.
     """

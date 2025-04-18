@@ -1,8 +1,8 @@
-from chromadb.api import ClientAPI
 from loguru import logger
+from chromadb.api import ClientAPI
 
+from .chroma import database_from_documents_chroma
 from .qdrant import database_from_documents_qdrant
-
 
 def chunk_documents_and_store(
     documents,
@@ -87,6 +87,6 @@ def _embed_documents_in_chunks(
 
         database_construction_func = database_from_documents_qdrant
         if engine == "chroma":
-            database_construction_func = database_from_documents_qdrant
+            database_construction_func = database_from_documents_chroma
 
         database_construction_func(documents=batch, **args_database_constructor)

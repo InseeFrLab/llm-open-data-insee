@@ -63,7 +63,7 @@ def initialize_clients_cache(config: dict, embedding_model=embedding_model, engi
 retriever, chat_client, qdrant_client = initialize_clients_cache(
     config=config,
     embedding_model=embedding_model,
-    use_reranking=True,
+    use_reranking=False,
     url_reranker=os.getenv("URL_RERANKING_MODEL"),
     model_reranker=models.get("reranking"),
 )
