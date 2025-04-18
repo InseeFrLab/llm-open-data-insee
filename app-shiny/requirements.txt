@@ -1,0 +1,4 @@
+chatlas[openai]
+dotenv
+faicons
+shiny @ git+https://github.com/posit-dev/py-shiny@main
