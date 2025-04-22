@@ -1,3 +1,4 @@
+from tenacity import retry
 from loguru import logger
 from chromadb.api import ClientAPI
 
@@ -53,7 +54,7 @@ def _filter_valid_documents(documents, content_attr: str, size_step: int):
 
     return filtered
 
-
+@retry
 def _embed_documents_in_chunks(
     documents,
     emb_model,
