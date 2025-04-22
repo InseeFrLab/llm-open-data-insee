@@ -15,13 +15,14 @@ def chunk_documents_and_store(
     size_step: int = None,
     engine: str = "qdrant",
     client: ClientAPI = None,
+    number_chunks: int=10
 ):
     total_docs = len(documents)
 
     if size_step is None:
-        size_step = max(total_docs // 10, 1)
+        size_step = max(total_docs // number_chunks, 1)
     if chunk_size is None:
-        chunk_size = max(total_docs // 10, 1)
+        chunk_size = max(total_docs // number_chunks, 1)
 
     logger.info(f"Number of documents to embed: {total_docs}")
 

@@ -17,11 +17,9 @@ from src.vectordatabase.output_parsing import format_docs, langchain_documents_t
 from loguru import logger
 
 from src.model.prompt import question_instructions
-
+from shiny.express import input
 
 # ---------------- CONFIGURATION ---------------- #
-
-load_dotenv(override=True)
 
 ENGINE = "chroma"
 USE_RERANKING = True
@@ -93,6 +91,8 @@ ui.page_opts(
     fillable_mobile=True,
 )
 
+ui.input_switch("switch", "RAG", True)
+
 # Create and display a Shiny chat component
 chat = ui.Chat(
     id="chat",
@@ -101,16 +101,19 @@ chat = ui.Chat(
 chat.ui()
 
 
-
 # Generate a response when the user submits a message
 @chat.on_user_submit
 async def handle_user_input(user_input: str):
-    best_documents = retriever.invoke(user_input)
-    best_documents_df = langchain_documents_to_df(best_documents)
-    logger.debug(user_input)
-    logger.debug(best_documents_df)
-    context = format_docs(best_documents)
-    question_with_context = prompt.format(question=user_input, context=context)
+    if input.switch() is True:
+        best_documents = retriever.invoke(user_input)
+        best_documents_df = langchain_documents_to_df(best_documents)
+        logger.debug(user_input)
+        logger.debug(best_documents_df)
+        context = format_docs(best_documents)
+        question_with_context = prompt.format(question=user_input, context=context)
+
+    else:
+        question_with_context = user_input
     logger.debug(question_with_context)
     response = await chat_client.stream_async(question_with_context)
     await chat.append_message_stream(response)
