@@ -21,7 +21,7 @@ from shiny.express import input
 
 # ---------------- CONFIGURATION ---------------- #
 
-ENGINE = "chroma"
+ENGINE = "qdrant"
 USE_RERANKING = True
 
 config = set_config(

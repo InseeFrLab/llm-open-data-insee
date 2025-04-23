@@ -60,7 +60,7 @@ def initialize_clients_cache(config: dict, embedding_model=embedding_model, engi
     return initialize_clients(config=config, embedding_model=embedding_model, engine=engine, **kwargs)
 
 
-retriever, chat_client, qdrant_client = initialize_clients_cache(
+retriever, chat_client = initialize_clients_cache(
     config=config,
     embedding_model=embedding_model,
     use_reranking=False,

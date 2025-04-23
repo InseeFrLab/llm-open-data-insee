@@ -65,6 +65,7 @@ def _embedding_client_api(config, embedding_model):
         model=embedding_model,
         base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
         api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+        tiktoken_enabled=False
     )
 
     return emb_model

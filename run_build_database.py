@@ -1,3 +1,4 @@
+import pickle
 import argparse
 
 import mlflow
@@ -91,6 +92,8 @@ parser.add_argument(
     help="Vector database engine",
 )
 parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
+parser.add_argument("--use_cache_parsed_docs", action="store_true", help="Retrieved previously prepared documents (default: False)")
+
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
 # python run_build_dataset.py max_pages 10
@@ -154,6 +157,12 @@ def run_build_database() -> None:
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
+        cache_file_documents = (
+            f"s3://projet-llm-insee-open-data/data/intermediate/dataset={args.dataset}/"
+            f"chunking_strategy={args.chunking_strategy}/"
+            f"max_document_size={args.max_document_size}/overlap={args.chunk_overlap}/"
+            f"documents.pkl"
+        ).replace("'", "")
 
         filtered_config = {
             k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])
@@ -185,7 +194,20 @@ def run_build_database() -> None:
 
         logger.info("Starting to parse XMLs")
 
-        documents = parse_documents(data=data, engine_output="langchain")
+        if args.use_cache_parsed_docs is True and filesystem.lexists(cache_file_documents) :
+            logger.info(f"Using documents stored at {cache_file_documents}")
+
+            with filesystem.open(cache_file_documents, "rb") as f:
+                documents = pickle.load(f)
+
+                if args.max_pages is not None:
+                    pages = data['url'].unique().tolist()
+                    documents = [docs for docs in documents if docs.metadata.get('url') in pages]
+        else:
+            documents = parse_documents(data=data, engine_output="langchain")
+            if args.max_pages is not None:
+                with filesystem.open(cache_file_documents, "wb") as f:
+                    pickle.dump(documents, f)
 
         logger.success("XMLs have been parsed")
 
@@ -206,6 +228,7 @@ def run_build_database() -> None:
             model=embedding_model,
             openai_api_base=config.get("OPENAI_API_BASE_EMBEDDING"),
             openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+            tiktoken_enabled=False
         )
 
         model_max_len = len(emb_model.embed_query("retrieving hidden_size"))

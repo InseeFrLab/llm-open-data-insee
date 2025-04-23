@@ -23,6 +23,7 @@ def initialize_clients(
         model=embedding_model,
         base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
         api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+        tiktoken_enabled=False
     )
 
     url_database_client = config.get(f"{engine.upper()}_URL")
