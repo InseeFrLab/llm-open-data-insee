@@ -64,7 +64,7 @@ def initialize_clients(
         base_url=config.get("OPENAI_API_BASE_GENERATIVE"),
         api_key=config.get("OPENAI_API_KEY_GENERATIVE"),
     )
-    return retriever, chat_client, retriever
+    return retriever, chat_client
 
 
 def get_conversation_title(chat_client, generative_model, full_text):

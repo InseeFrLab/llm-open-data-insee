@@ -181,7 +181,7 @@ def run_build_database() -> None:
 
         if args.max_pages is not None:
             logger.debug(f"Limiting database to {args.max_pages} pages")
-            data = data.head(50)
+            data = data.head(args.max_pages)
 
         logger.info("Starting to parse XMLs")
 
