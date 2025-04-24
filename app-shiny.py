@@ -1,119 +1,137 @@
-import os
-from datetime import datetime
-
-import pandas as pd
-import s3fs
-import streamlit as st
-import torch
-from dotenv import load_dotenv
-from langchain_core.prompts import PromptTemplate
-
-from src.app.utils import generate_answer_from_context, initialize_clients
-from src.config import set_config
-from src.model.prompt import question_instructions
-from src.utils.utils_vllm import get_models_from_env
-
-from src.vectordatabase.output_parsing import format_docs, langchain_documents_to_df
+from shiny import render, module, reactive
+from shiny import ui, App
+import faicons as fa
+import asyncio
+import json
+from chatlas import ChatOpenAI
 from loguru import logger
 
-from src.model.prompt import question_instructions
-from shiny.express import input
-
-# ---------------- CONFIGURATION ---------------- #
-
-ENGINE = "qdrant"
-USE_RERANKING = True
-
-config = set_config(
-    use_vault=True,
-    components=["s3", "mlflow", "database", "model"],
-    models_location={
-        "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
-        "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
-        "url_reranking_model": "ENV_URL_RERANKING_MODEL",
-    },
-    database_manager=ENGINE,
-    # override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
-)
-
-fs = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
-path_log = os.getenv("PATH_LOG_APP")
-
-models = get_models_from_env(
-    url_embedding="URL_EMBEDDING_MODEL", url_generative="URL_GENERATIVE_MODEL", url_reranking="URL_RERANKING_MODEL"
-)
-embedding_model = models.get("embedding")
-generative_model = models.get("completion")
-reranking_model = models.get("reranking")
-
-retriever, _ = initialize_clients(
-    config=config,
-    embedding_model=embedding_model,
-    use_reranking=False,
-    url_reranker=os.getenv("URL_RERANKING_MODEL"),
-    model_reranker=models.get("reranking"),
-    engine=ENGINE
-)
-
-# ------------------------------------------------------------------------------------
-# A basic Shiny Chat example powered by OpenAI.
-# ------------------------------------------------------------------------------------
-import os
-
-from dotenv import load_dotenv
-from chatlas import ChatOpenAI
-
-from shiny.express import ui
-
-with open("./prompt/system.md", "r", encoding="utf-8") as f:
-    system_prompt = f.read()
-
-with open("./prompt/question.md", "r", encoding="utf-8") as f:
-    question_prompt = f.read()
-
-prompt = PromptTemplate.from_template(question_prompt)
-
+ICONS = {
+    "positive": fa.icon_svg("thumbs-up"),
+    "negative": fa.icon_svg("thumbs-down"),
+    "stop": fa.icon_svg("stop")
+}
+welcome = "Posez moi des questions"
+system_prompt = "répond en français"
 
 chat_client = ChatOpenAI(
-    base_url=config.get("OPENAI_API_BASE_GENERATIVE"),
+    base_url="https://projet-models-hf-vllm.user.lab.sspcloud.fr/v1",
     api_key="EMPTY",
-    model=generative_model,
+    model="mistralai/Mistral-Small-24B-Instruct-2501",
     system_prompt=system_prompt,
 )
 
-logger.debug(system_prompt)
+def stop_button():
+    return ui.input_action_button(
+        "stop", "", icon=ICONS.get("stop"), class_="btn-link border-0"
+    )
 
 
-# Set some Shiny page options
-ui.page_opts(
-    title="Insee assistant Chat",
-    fillable=True,
+#@module.ui
+def gen_button(prefix):
+    return ui.TagList([
+        ui.input_action_button(
+                f"positive", "", icon = ICONS.get("positive"), class_="btn-link border-0"
+            ),
+        ui.input_action_button(
+                f"negative", "", icon = ICONS.get("negative"), class_="btn-link border-0"
+            )
+    ])
+
+
+app_ui = ui.page_fillable(
+    ui.panel_title("Hello Shiny Chat"),
+    ui.chat_ui("chat"),
+    # Important : déclaration de l'input stop
+    ui.input_action_button("stop", "", style="display:none"),
+    ui.output_text("value"),
     fillable_mobile=True,
 )
 
-ui.input_switch("switch", "RAG", True)
+@module.server
+def row_server(input, output, session):
+    @output
+    # @render.ui
+    # def buttonsOK():
+    #     return ui.TagList([
+    #         gen_button("mess1")
+    #     ])
+    @render.ui
+    def text_out():
+        return f'You entered "{input.positive()}"'
 
-# Create and display a Shiny chat component
-chat = ui.Chat(
-    id="chat",
-    messages=["Posez moi une question sur les publications de l'Insee"],
-)
-chat.ui()
+
+def server(input, output, session):
+
+    chat = ui.Chat(id="chat", messages=[welcome])
+    val = reactive.value(0)
+
+    @reactive.effect
+    @reactive.event(input.stop)
+    def _():
+        chat.latest_message_stream.cancel()
+        ui.notification_show("Stream cancelled", type="warning")
+
+    @reactive.effect
+    def _():
+        ui.update_action_button(
+            "cancel",
+            disabled=chat.latest_message_stream.status() != "running"
+        )
+
+    @render.download(filename="messages.json", label="Download messages")
+    def download():
+        yield json.dumps(chat.messages())
+
+    # # Define a callback to run when the user submits a message
+    # @chat.on_user_submit
+    # async def handle_user_input(user_input: str):
+    #     # Append a response to the chat
+    #     async with chat.message_stream_context() as outer:
+    #         await outer.append("Starting stream 🔄...\n\nProgress:")
+    #         async with chat.message_stream_context() as inner:
+    #             for x in [0, 50, 100]:
+    #                 await inner.replace(f" {x}%\n\n{stop_button()}")
+    #                 await asyncio.sleep(1)
+    #         await outer.append(f"\n\n{gen_button("row")}")
+
+    @chat.on_user_submit
+    async def handle_user_input(user_input: str):
+        async with chat.message_stream_context() as outer:
+
+            async with chat.message_stream_context() as inner:
+                full_text = ""
+                stream = await chat_client.stream_async(user_input)
+
+                async for chunk in stream:
+                    full_text += chunk
+                    await inner.replace(f"{full_text}\n\n{stop_button()}")
+
+                # Une fois le stream terminé, on remplace le message pour retirer le bouton
+                await inner.replace(full_text)
+
+            await outer.append(f"\n\n{gen_button('row')}")
 
 
-# Generate a response when the user submits a message
-@chat.on_user_submit
-async def handle_user_input(user_input: str):
-    if input.switch() is True:
-        best_documents = retriever.invoke(user_input)
-        best_documents_df = langchain_documents_to_df(best_documents)
-        logger.debug(user_input)
-        logger.debug(best_documents_df)
-        context = format_docs(best_documents)
-        question_with_context = prompt.format(question=user_input, context=context)
+# def server(input, output, session):
 
-    else:
-        question_with_context = user_input
-    logger.debug(question_with_context)
-    response = await chat_client.stream_async(question_with_context)
-    await chat.append_message_stream(response)
+#     with ui.hold() as df_ui:
+#     @render.ui
+#     def buttonsOK():
+#         return ui.TagList([
+#             gen_button("mess1")
+#         ])
+
+#     @chat.on_user_submit
+#     async def _():
+#         async with chat.message_stream_context() as outer:
+#             await outer.append("Starting stream 🔄...\n\nProgress:")
+#             async with chat.message_stream_context() as inner:
+#                 for x in [0, 50, 100]:
+#                     await inner.replace(f" {x}%")
+#                     await asyncio.sleep(1)
+#             await outer.append(df_ui)
+
+
+app = App(app_ui, server)
+
