@@ -2,7 +2,7 @@ import requests
 
 
 def tokenize_prompt(prompt: str, model: str, api_root_url: str):
-    api_root_url=api_root_url.replace("v1/", "")
+    api_root_url = api_root_url.replace("v1/", "")
     url = f"{api_root_url}/tokenize/"
     headers = {"accept": "application/json", "Content-Type": "application/json"}
     payload = {"model": model, "prompt": prompt, "add_special_tokens": True, "additionalProp1": {}}

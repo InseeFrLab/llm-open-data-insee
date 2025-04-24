@@ -34,7 +34,7 @@ def render_feedback_section(index, message, title, optional_text, key_prefix, un
             on_submit=lambda response, idx=index, msg=message: handle_feedback(
                 response, idx, st.session_state.history, unique_id=unique_id, feedback_type=feedback_type
             ),
-            feedback_type="faces",
+            feedback_type="thumbs",
             optional_text_label=optional_text,
             key=f"{key_prefix}_{index}",
         )

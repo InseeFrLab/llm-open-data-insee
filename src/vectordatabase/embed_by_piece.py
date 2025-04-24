@@ -1,8 +1,9 @@
-from loguru import logger
 from chromadb.api import ClientAPI
+from loguru import logger
 
 from .chroma import database_from_documents_chroma
 from .qdrant import database_from_documents_qdrant
+
 
 def chunk_documents_and_store(
     documents,
@@ -15,7 +16,7 @@ def chunk_documents_and_store(
     size_step: int = None,
     engine: str = "qdrant",
     client: ClientAPI = None,
-    number_chunks: int=10
+    number_chunks: int = 10,
 ):
     total_docs = len(documents)
 

@@ -1,16 +1,10 @@
-from shiny import render, module, reactive
-from shiny import ui, App
-import faicons as fa
-import asyncio
 import json
-from chatlas import ChatOpenAI
-from loguru import logger
 
-ICONS = {
-    "positive": fa.icon_svg("thumbs-up"),
-    "negative": fa.icon_svg("thumbs-down"),
-    "stop": fa.icon_svg("stop")
-}
+import faicons as fa
+from chatlas import ChatOpenAI
+from shiny import App, module, reactive, render, ui
+
+ICONS = {"positive": fa.icon_svg("thumbs-up"), "negative": fa.icon_svg("thumbs-down"), "stop": fa.icon_svg("stop")}
 welcome = "Posez moi des questions"
 system_prompt = "répond en français"
 
@@ -21,22 +15,19 @@ chat_client = ChatOpenAI(
     system_prompt=system_prompt,
 )
 
+
 def stop_button():
-    return ui.input_action_button(
-        "stop", "", icon=ICONS.get("stop"), class_="btn-link border-0"
-    )
+    return ui.input_action_button("stop", "", icon=ICONS.get("stop"), class_="btn-link border-0")
 
 
-#@module.ui
+# @module.ui
 def gen_button(prefix):
-    return ui.TagList([
-        ui.input_action_button(
-                f"positive", "", icon = ICONS.get("positive"), class_="btn-link border-0"
-            ),
-        ui.input_action_button(
-                f"negative", "", icon = ICONS.get("negative"), class_="btn-link border-0"
-            )
-    ])
+    return ui.TagList(
+        [
+            ui.input_action_button("positive", "", icon=ICONS.get("positive"), class_="btn-link border-0"),
+            ui.input_action_button("negative", "", icon=ICONS.get("negative"), class_="btn-link border-0"),
+        ]
+    )
 
 
 app_ui = ui.page_fillable(
@@ -47,6 +38,7 @@ app_ui = ui.page_fillable(
     ui.output_text("value"),
     fillable_mobile=True,
 )
+
 
 @module.server
 def row_server(input, output, session):
@@ -62,7 +54,6 @@ def row_server(input, output, session):
 
 
 def server(input, output, session):
-
     chat = ui.Chat(id="chat", messages=[welcome])
     val = reactive.value(0)
 
@@ -74,10 +65,7 @@ def server(input, output, session):
 
     @reactive.effect
     def _():
-        ui.update_action_button(
-            "cancel",
-            disabled=chat.latest_message_stream.status() != "running"
-        )
+        ui.update_action_button("cancel", disabled=chat.latest_message_stream.status() != "running")
 
     @render.download(filename="messages.json", label="Download messages")
     def download():
@@ -98,7 +86,6 @@ def server(input, output, session):
     @chat.on_user_submit
     async def handle_user_input(user_input: str):
         async with chat.message_stream_context() as outer:
-
             async with chat.message_stream_context() as inner:
                 full_text = ""
                 stream = await chat_client.stream_async(user_input)
@@ -134,4 +121,3 @@ def server(input, output, session):
 
 
 app = App(app_ui, server)
-

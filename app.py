@@ -1,4 +1,5 @@
 import os
+import tomllib
 from datetime import datetime
 
 import pandas as pd
@@ -7,13 +8,23 @@ import streamlit as st
 import torch
 from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
+from loguru import logger
 
 from src.app.feedbacks import feedback_titles, render_feedback_section
-from src.app.history import activate_old_conversation, create_unique_id, summarize_conversation
-from src.app.utils import generate_answer_from_context, initialize_clients
+from src.app.history import (
+    activate_old_conversation,
+    create_unique_id,
+    read_history_from_parquet,
+    restore_history,
+    snapshot_sidebar_conversations,
+    summarize_conversation,
+)
+from src.app.session import initialize_session_state, reset_session_state
+from src.app.utils import create_assistant_message, generate_answer_from_context, initialize_clients
 from src.config import set_config
 from src.model.prompt import question_instructions
 from src.utils.utils_vllm import get_models_from_env
+from src.vectordatabase.output_parsing import langchain_documents_to_df
 
 # ---------------- CONFIGURATION ---------------- #
 
@@ -54,6 +65,10 @@ reranking_model = models.get("reranking")
 
 # ---------------- INITIALIZATION ---------------- #
 
+DEFAULT_USERNAME = "anonymous"
+with open("./src/app/constants.toml", "rb") as f:
+    messages = tomllib.load(f)
+
 
 @st.cache_resource(show_spinner=False)
 def initialize_clients_cache(config: dict, embedding_model=embedding_model, engine=ENGINE, **kwargs):
@@ -67,36 +82,38 @@ retriever, chat_client = initialize_clients_cache(
     url_reranker=os.getenv("URL_RERANKING_MODEL"),
     model_reranker=models.get("reranking"),
 )
-n_docs = "XXXXX"
-# n_docs = get_number_docs_collection(qdrant_client, config.get("QDRANT_COLLECTION_NAME"))
+
+
 prompt = PromptTemplate.from_template(question_instructions)
 
-# ---------------- STREAMLIT UI ---------------- #
-st.set_page_config(page_title="Chat with AI")
 
-st.markdown(
-    """
-    <style>
-        .st-emotion-cache-janbn0 {
-            flex-direction: row-reverse;
-            text-align: right;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# ---------------- STREAMLIT UI ---------------- #
+
+st.set_page_config(page_title="insee.fr assistant")
+
+with open("./src/app/style.css") as f:
+    css = f.read()
+
+st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
 
 # ---------------- INITIALIZE SESSION STATES ---------------- #
-DEFAULT_USERNAME = "anonymous"
-st.session_state.setdefault("conversion_history", [])
-st.session_state.setdefault("history", [])
-st.session_state.setdefault("feedback", [])
-st.session_state.setdefault("active_chat_history", None)
-st.session_state.setdefault("clicked", False)
-st.session_state.setdefault("username", DEFAULT_USERNAME)
-st.session_state.setdefault("sidebar_conversations", None)
-st.session_state.setdefault("just_loaded_history", False)
-st.session_state.setdefault("has_initialized_conversation", False)
+
+
+initialize_session_state(
+    {
+        "conversion_history": [],
+        "history": [],
+        "feedback": [],
+        "active_chat_history": None,
+        "clicked": False,
+        "username": DEFAULT_USERNAME,
+        "sidebar_conversations": None,
+        "just_loaded_history": False,
+        "has_initialized_conversation": False,
+        "retriever": []
+    }
+)
 
 if "unique_id" not in st.session_state:
     st.session_state.unique_id = create_unique_id()
@@ -107,54 +124,56 @@ if st.session_state.active_chat_history is not None:
 unique_id = st.session_state.unique_id
 active_user = st.session_state.username
 
+
 # ---------------- SIDEBAR: HISTORY ---------------- #
+
 sc1, sc2 = st.sidebar.columns((6, 1))
 
 with st.sidebar:
     username = st.text_input("username", DEFAULT_USERNAME)
 
     if username != st.session_state.username:
-        st.session_state.username = username
-        st.session_state.sidebar_conversations = None
-        st.session_state.just_loaded_history = False
-        st.session_state.has_initialized_conversation = False
-
-        st.session_state.unique_id = create_unique_id()
-        st.session_state.history = []
-        st.session_state.feedback = []
-        st.session_state.active_chat_history = None
+        # CREATE SESSION STATE FOR NEW USERNAME IN LEFT SIDEBAR
+        reset_session_state(
+            {
+                "username": username,
+                "sidebar_conversations": None,
+                "just_loaded_history": False,
+                "has_initialized_conversation": False,
+                "unique_id": create_unique_id,  # notice: no parentheses
+                "history": [],
+                "feedback": [],
+                "active_chat_history": None,
+            }
+        )
 
         st.rerun()
 
     if st.button("➕ Nouvelle conversation", key="new_convo"):
-        st.session_state.unique_id = create_unique_id()
-        st.session_state.history = [
+        # RESTART SESSION START FOR NEW CONVERSATION
+
+        start_message = create_assistant_message(content=messages["MESSAGE_START"])
+
+        reset_session_state(
             {
-                "role": "assistant",
-                "content": f"Bonjour ! Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)",
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "id": st.session_state.unique_id,
+                "unique_id": create_unique_id,
+                "history": [start_message],
+                "feedback": [],
+                "active_chat_history": None,
+                "has_initialized_conversation": True,
+                "just_loaded_history": False,
             }
-        ]
-        st.session_state.feedback = []
-        st.session_state.active_chat_history = None
-        st.session_state.has_initialized_conversation = True
-        st.session_state.just_loaded_history = False
+        )
+
         st.rerun()
 
     if st.session_state.username == "anonymous":
-        st.markdown("### To get a conversation history, change the username")
+        st.markdown(messages["MESSAGE_PAST_CONVERSATION_ANON"])
     else:
-        st.markdown("### 💬 Past Conversations")
+        st.markdown(messages["MESSAGE_PAST_CONVERSATION"])
 
         if st.session_state.sidebar_conversations is None:
-            try:
-                directory = fs.ls(f"{path_log}/{username}/history")
-                directory = [dir for dir in directory if dir.endswith(".parquet")]
-            except FileNotFoundError:
-                directory = []
-
-            history_as_parquet = [pd.read_parquet(f, filesystem=fs) for f in directory]
+            history_as_parquet = read_history_from_parquet(path_log, username, fs)
 
             old_conversations = [
                 summarize_conversation(chat_client, generative_model, history)
@@ -166,11 +185,11 @@ with st.sidebar:
 
             # ✅ Save sidebar conversations as a snapshot
             if old_conversations:
-                df_conversations = pd.DataFrame(old_conversations)
-                df_conversations["date"] = pd.to_datetime(df_conversations["date"], errors="coerce")
-                df_conversations = df_conversations.sort_values(by="date", ascending=False)
-                df_conversations.to_parquet(
-                    f"{path_log}/{username}/conversation_history.parquet", index=False, filesystem=fs
+                snapshot_sidebar_conversations(
+                    old_conversations=old_conversations,
+                    path_log=path_log,
+                    username=username,
+                    filesystem=fs
                 )
 
         for conversations in st.session_state.sidebar_conversations:
@@ -181,18 +200,7 @@ with st.sidebar:
 
             if is_active:
                 st.markdown(
-                    f"""
-                    <div style='
-                        background-color: #2e3a48;
-                        padding: 0.5em;
-                        border-radius: 0.5em;
-                        margin-bottom: 0.3em;
-                        color: white;
-                        font-weight: bold;
-                    '>
-                        {title}
-                    </div>
-                    """,
+                    f'<div class="active-conversation">{title}</div>',
                     unsafe_allow_html=True,
                 )
             else:
@@ -201,40 +209,42 @@ with st.sidebar:
 
 
 # ---------------- INITIAL MESSAGE / LOAD HISTORY ---------------- #
+
 if st.session_state.active_chat_history is not None and not st.session_state.just_loaded_history:
+    # When clicking on an old conversation
+
     id_unique = st.session_state.active_chat_history
 
     # Read and sort history
-    history = pd.read_parquet(f"{path_log}/{username}/history/{id_unique}.parquet", filesystem=fs)
-    history["date"] = pd.to_datetime(history["date"], errors="coerce")
-    history = history.sort_values(by="date")
-    history["date"] = history["date"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    history = restore_history(path_log, username, id_unique, filesystem=fs)
 
     # Store back to session state
-    st.session_state.history = history.to_dict(orient="records")
+    reset_session_state({
+        "history": lambda: history.to_dict(orient="records"),
+        "unique_id": id_unique,
+        "just_loaded_history": True,
+    })
 
-    st.session_state.unique_id = id_unique
-    st.session_state.just_loaded_history = True
     st.rerun()
 
 if not st.session_state.has_initialized_conversation and st.session_state.active_chat_history is None:
-    st.session_state.history = [
-        {
-            "role": "assistant",
-            "content": f"Bonjour ! Interrogez moi sur le site insee.fr ({n_docs} pages dans ma base de connaissance)",
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "id": st.session_state.unique_id,
-        }
-    ]
+    # SESSION INITIALIZATION (PAGE LANDING OR NEW CONVERSATION)
+    st.session_state.history = [create_assistant_message(content=messages["MESSAGE_START"])]
     st.session_state.has_initialized_conversation = True
 
 # ---------------- CHAT MESSAGES & FEEDBACK ---------------- #
+
 for i, message in enumerate(st.session_state.history):
+    # Main panel: messages and added widgets
+
     with st.chat_message(message["role"]):
+
         st.markdown(message["content"])
 
         if message["role"] == "assistant" and i > 0:
             best_documents = retriever.invoke(st.session_state.history[i - 1]["content"])
+            st.session_state.retriever.append(langchain_documents_to_df(best_documents))
+            logger.debug(st.session_state.retriever)
 
             feedback_results = [
                 render_feedback_section(

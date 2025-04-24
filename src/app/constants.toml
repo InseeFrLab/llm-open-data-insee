@@ -1,0 +1,3 @@
+MESSAGE_START = "Bonjour ! Interrogez moi sur le site insee.fr"
+MESSAGE_PAST_CONVERSATION = "### 💬 Past Conversations"
+MESSAGE_PAST_CONVERSATION_ANON = "### To get conversation history, change the username"

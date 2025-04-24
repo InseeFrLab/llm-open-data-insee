@@ -1,9 +1,10 @@
-from langchain_core.prompts import PromptTemplate
+from datetime import datetime
+
+import streamlit as st
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
 from openai import OpenAI
 
-from src.model.prompt import question_instructions_summarizer, system_instructions
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection
 from src.vectordatabase.output_parsing import format_docs, langchain_documents_to_df
@@ -23,7 +24,7 @@ def initialize_clients(
         model=embedding_model,
         base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
         api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
-        tiktoken_enabled=False
+        tiktoken_enabled=False,
     )
 
     url_database_client = config.get(f"{engine.upper()}_URL")
@@ -68,21 +69,6 @@ def initialize_clients(
     return retriever, chat_client
 
 
-def get_conversation_title(chat_client, generative_model, full_text):
-    prompt_summarizer = PromptTemplate.from_template(question_instructions_summarizer)
-
-    prompt_summarizer = prompt_summarizer.format(conversation=full_text)
-
-    response = chat_client.chat.completions.create(
-        model=generative_model,
-        messages=[{"role": "user", "content": prompt_summarizer}],
-        stop=None,
-    )
-    conversation_title = response.choices[0].message.content
-
-    return conversation_title
-
-
 def generate_answer_from_context(retriever, chat_client, generative_model: str, prompt: str, question: str):
     best_documents = retriever.invoke(question)
     best_documents_df = langchain_documents_to_df(best_documents)
@@ -101,3 +87,12 @@ def generate_answer_from_context(retriever, chat_client, generative_model: str, 
         stream=True,
     )
     return stream
+
+
+def create_assistant_message(content: str = None, role: str = "assistant") -> dict:
+    return {
+        "role": role,
+        "content": content,
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "id": st.session_state.unique_id,
+    }

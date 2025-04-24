@@ -22,8 +22,7 @@ def _initialize_collection_chroma(client: ClientAPI, collection_name: str):
     return collection
 
 
-def create_client_and_collection_chroma(
-    url: str, collection_name: str = None, **kwargs):
+def create_client_and_collection_chroma(url: str, collection_name: str = None, **kwargs):
     """
     Create and return a Qdrant client after initializing a vector collection.
     """
@@ -41,9 +40,7 @@ def create_client_and_collection_chroma(
     return client
 
 
-def database_from_documents_chroma(
-    documents, emb_model, client, collection_name: str, **kwargs
-):
+def database_from_documents_chroma(documents, emb_model, client, collection_name: str, **kwargs):
     """
     Embed documents and create a Qdrant vector store from them.
     """
