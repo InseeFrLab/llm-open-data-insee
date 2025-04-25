@@ -5,18 +5,22 @@ import mlflow
 import pandas as pd
 import s3fs
 from dotenv import load_dotenv
+
 from langchain_openai import OpenAIEmbeddings
+from langchain_community.document_loaders import DataFrameLoader
+
 from loguru import logger
 
 from src.config import set_config
-from src.data.corpus import constructor_corpus
+from src.data.caching import parse_documents_or_load_from_cache
+
 from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.model.prompt import similarity_search_instructions
 from src.results_logging.mlflow_utils import mlflow_log_source_files
 from src.utils.utils_vllm import get_models_from_env
+
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection, get_number_docs_collection
-from src.vectordatabase.document_chunker import chunk_documents, parse_documents
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
 from src.vectordatabase.output_parsing import langchain_documents_to_df
 from src.vectordatabase.qdrant import (
@@ -58,7 +62,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_document_size",
     type=int,
-    default=2000,
+    default=1200,
     help="Threshold size for documents. "
     "If None (default), corpus is left asis. "
     "If value provided, passed to Langchain's CharacterTextSplitter is applied",
@@ -95,9 +99,7 @@ parser.add_argument(
     help="Vector database engine",
 )
 parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
-parser.add_argument(
-    "--use_cache_parsed_docs", action="store_true", help="Retrieved previously prepared documents (default: False)"
-)
+
 
 # Example usage:
 # python run_build_dataset.py max_pages 10 --dataset dirag
@@ -125,6 +127,21 @@ config = set_config(
     verbose=args.verbose,
 )
 
+
+filtered_config = {
+    k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])
+}
+
+embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", config_dict=config).get("embedding")
+
+url_database_client = config.get(f"{engine.upper()}_URL")
+api_key_database_client = config.get(f"{engine.upper()}_API_KEY")
+
+
+logger.debug(f"Using {embedding_model} for database retrieval")
+logger.debug(f"Setting {url_database_client} as vector database endpoint")
+
+
 # PARAMETERS ------------------------------------------
 
 S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
@@ -132,11 +149,24 @@ collection_name = args.collection_name
 s3_bucket = "projet-llm-insee-open-data"
 faq_s3_path = "data/FAQ_site/faq.parquet"
 
-url_database_client = config.get(f"{engine.upper()}_URL")
-api_key_database_client = config.get(f"{engine.upper()}_API_KEY")
 max_document_size = args.max_document_size
 chunk_overlap = args.chunk_overlap
-embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", config_dict=config).get("embedding")
+
+filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
+
+
+corpus_constructor_args = {
+    "field": args.dataset,
+    "web4g_path_uri": S3_PATH,
+    "fs": filesystem,
+    "search_cols": ["titre", "libelleAffichageGeo", "xml_intertitre"]
+}
+
+chunking_args = {
+    "strategy": args.chunking_strategy,
+    "chunk_size": max_document_size,
+    "chunk_overlap": chunk_overlap
+}
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
@@ -147,31 +177,24 @@ parameters_database_construction = {
     "engine": engine,
 }
 
+
+CACHE_DIR = f"s3://projet-llm-insee-open-data/data/intermediate/dataset={args.dataset}"
+path_cached_parsed_documents = f"{CACHE_DIR}/web4g_parsed/parsed_data.parquet"
+
+
 if args.dataset == "dirag":
     logger.warning("Restricting publications to DIRAG related content")
 
 
-logger.debug(f"Using {embedding_model} for database retrieval")
-logger.debug(f"Setting {url_database_client} as vector database endpoint")
-
+# MAIN PIPELINE --------------------------------------
 
 def run_build_database() -> None:
+
     mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
     mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
 
     with mlflow.start_run() as run:
         run_id = run.info.run_id
-        filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
-        cache_file_documents = (
-            f"s3://projet-llm-insee-open-data/data/intermediate/dataset={args.dataset}/"
-            f"chunking_strategy={args.chunking_strategy}/"
-            f"max_document_size={args.max_document_size}/overlap={args.chunk_overlap}/"
-            f"documents.pkl"
-        ).replace("'", "")
-
-        filtered_config = {
-            k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])
-        }
 
         mlflow.log_params(
             {
@@ -181,49 +204,32 @@ def run_build_database() -> None:
             }
         )
 
-        # LOAD AND PROCESS CORPUS -----------------------------------
-        logger.debug(f"Importing raw data {30 * '-'}")
+        # PARSING CORPUS -----------------------------------
 
-        data = constructor_corpus(
-            field=args.dataset,
-            web4g_path_uri=S3_PATH,
-            fs=filesystem,
-            search_cols=["titre", "libelleAffichageGeo", "xml_intertitre"],
+        logger.debug(f"Importing and parsing raw data {30 * '-'}")
+
+        data = parse_documents_or_load_from_cache(
+            path_for_cache = path_cached_parsed_documents,
+            load_from_cache=True,
+            max_pages=args.max_pages,
+            filesystem=filesystem,
+            corpus_constructor_args=corpus_constructor_args
         )
 
         data["mlflow_run_id"] = run_id  # Add mlflow run id in metadata
 
-        if args.max_pages is not None:
-            logger.debug(f"Limiting database to {args.max_pages} pages")
-            data = data.head(args.max_pages)
 
-        logger.info("Starting to parse XMLs")
+        # CHUNKING DOCUMENTS --------------------------
 
-        if args.use_cache_parsed_docs is True and filesystem.lexists(cache_file_documents):
-            logger.info(f"Using documents stored at {cache_file_documents}")
+        loader = DataFrameLoader(data, page_content_column="content")
+        documents = loader.load()
 
-            with filesystem.open(cache_file_documents, "rb") as f:
-                documents = pickle.load(f)
 
-                if args.max_pages is not None:
-                    pages = data["url"].unique().tolist()
-                    documents = [docs for docs in documents if docs.metadata.get("url") in pages]
-        else:
-            documents = parse_documents(data=data, engine_output="langchain")
-            if args.max_pages is None:
-                with filesystem.open(cache_file_documents, "wb") as f:
-                    pickle.dump(documents, f)
 
-        logger.success("XMLs have been parsed")
-
-        # SPLITTING STRATEGY -------------------------------
-
-        if args.chunking_strategy != "None":
-            documents = chunk_documents(
-                documents,
-                strategy=args.chunking_strategy,
-                **{"chunk_size": max_document_size, "chunk_overlap": chunk_overlap},
-            )
+        documents = chunk_documents_or_load_from_cache(
+            documents,
+            **chunking_args,
+        )
 
         # CREATE DATABASE COLLECTION -----------------------
 

@@ -3,6 +3,7 @@ toto.toml
 *.png
 data/
 core
+!src/data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
