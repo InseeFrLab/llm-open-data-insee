@@ -1,7 +1,9 @@
+from collections.abc import Iterable
+import jsonlines
+
 from loguru import logger
 
 import s3fs
-import pickle
 import pandas as pd
 
 from langchain_core.documents.base import Document
@@ -92,14 +94,14 @@ def chunk_documents_or_load_from_cache(
         )
         load_from_cache = False
 
-    if chunking_args.get("strategy") is None:
+    if chunking_args.get("strategy") == 'None':
         logger.info("Strategy is None, returning the initial documents")
         return documents_before_chunking
 
     if load_from_cache is True:
 
-        documents_chunked = _get_cache_pickle(
-            cache_file_documents=path_for_cache,
+        documents_chunked = _get_cache_jsonl(
+            file_path=path_for_cache,
             filesystem=filesystem
         )
 
@@ -107,11 +109,10 @@ def chunk_documents_or_load_from_cache(
 
         if max_pages is not None:
             logger.debug(f"Limiting database to {max_pages} pages")
-            unique_pages = set([docs.metadata['url'] for docs in documents])
+            unique_pages = set([docs.metadata['url'] for docs in documents_before_chunking])
             documents_chunked = [
                 docs for docs in documents_chunked if docs.metadata['url'] in unique_pages
             ]
-            data = data.head(max_pages)
 
 
     else:
@@ -126,9 +127,9 @@ def chunk_documents_or_load_from_cache(
 
         if max_pages is None:
             # Cache this dataset
-            _write_cache_pickle(
+            _write_cache_jsonl(
                 documents_chunked,
-                cache_file_documents=path_for_cache,
+                file_path=path_for_cache,
                 filesystem=filesystem
             )
 
@@ -149,25 +150,48 @@ def _get_cache_dataframe(
     return pd.read_parquet(cache_file_documents, filesystem=filesystem)
 
 
-def _get_cache_pickle(
-    cache_file_documents: str, filesystem: s3fs.S3FileSystem
-):
-
-    if filesystem.lexists(cache_file_documents) is False:
-        raise ValueError(f"No file found at {cache_file_documents}")
-
-    with filesystem.open(cache_file_documents, "rb") as f:
-        documents = pickle.load(f)
-
-    return documents
-
-
 def _write_cache_dataframe(
     df: pd.DataFrame, filesystem: s3fs.S3FileSystem, cache_file_documents: str
 ):
 
     df.to_parquet(cache_file_documents, filesystem=filesystem)
     logger.info(f"Dataset has been written at {cache_file_documents} location")
+
+
+def _get_cache_jsonl(file_path: str, filesystem: s3fs.S3FileSystem) -> list[Document]:
+    """
+    Load Document objects from a JSONL file on S3 using s3fs.
+
+    Args:
+    file_path: The S3 path where the JSONL file is stored
+        (e.g., "s3://bucket-name/path/to/file.jsonl").
+    filesystem: s3fs.S3FileSystem object for handling S3 file operations.
+
+    Returns:
+    List of Document objects loaded from the JSONL file.
+    """
+    documents = []
+    with filesystem.open(file_path, mode="r") as f, jsonlines.Reader(f) as reader:
+        for doc in reader:
+            documents.append(Document(**doc))
+            # Assuming Document can be instantiated from a dict
+    return documents
+
+
+def _write_cache_jsonl(documents: Iterable[Document], file_path: str, filesystem: s3fs.S3FileSystem) -> None:
+    """
+    Save a list of Document objects to a JSONL file on S3 using s3fs.
+
+    Args:
+    documents: Document objects to be saved
+    file_path: the S3 path where the JSONL file will be saved
+      (e.g., "s3://bucket-name/path/to/file.jsonl").
+    filesystem: s3fs.S3FileSystem object for handling S3 file operations.
+    """
+    with filesystem.open(file_path, mode="w") as f, jsonlines.Writer(f) as writer:
+        for doc in documents:
+            writer.write(doc.dict())  # Assuming Document has a .dict() method
+
 
 
 def _write_cache_pickle(

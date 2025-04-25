@@ -22,8 +22,8 @@ def chunk_documents(
     logging.info("Building the list of document objects")
     logging.info(f"The following parameters have been applied: {kwargs}")
 
-    if strategy is None:
-        return documents
+    if strategy is None or strategy == 'None':
+        docs_processed = documents
 
     # Initialize token splitter
     if strategy.lower() == "recursive":

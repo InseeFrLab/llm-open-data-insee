@@ -12,11 +12,13 @@ from langchain_community.document_loaders import DataFrameLoader
 from loguru import logger
 
 from src.config import set_config
-from src.data.caching import parse_documents_or_load_from_cache
 
-from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
+from src.data.caching import parse_documents_or_load_from_cache
+from src.data.caching import chunk_documents_or_load_from_cache
+
 from src.model.prompt import similarity_search_instructions
 from src.results_logging.mlflow_utils import mlflow_log_source_files
+from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.utils.utils_vllm import get_models_from_env
 
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
@@ -180,11 +182,17 @@ parameters_database_construction = {
 
 CACHE_DIR = f"s3://projet-llm-insee-open-data/data/intermediate/dataset={args.dataset}"
 path_cached_parsed_documents = f"{CACHE_DIR}/web4g_parsed/parsed_data.parquet"
-
+path_cached_chunked_documents = (
+    f"{CACHE_DIR}/web4g_chunked/"
+    f"strategy={args.chunking_strategy}/chunk_size={max_document_size}/"
+    f"chunk_overlap={chunk_overlap}/data.jsonl"
+)
 
 if args.dataset == "dirag":
     logger.warning("Restricting publications to DIRAG related content")
 
+
+print(chunking_args)
 
 # MAIN PIPELINE --------------------------------------
 
@@ -224,12 +232,18 @@ def run_build_database() -> None:
         loader = DataFrameLoader(data, page_content_column="content")
         documents = loader.load()
 
-
+        logger.info(f"Before chunking, we have {len(documents)} pages")
 
         documents = chunk_documents_or_load_from_cache(
-            documents,
-            **chunking_args,
+            documents_before_chunking = documents,
+            path_for_cache=path_cached_chunked_documents,
+            max_pages = args.max_pages,
+            load_from_cache=True,
+            filesystem=filesystem,
+            chunking_args=chunking_args
         )
+
+        logger.info(f"After chunking, we have {len(documents)} documents")
 
         # CREATE DATABASE COLLECTION -----------------------
 
