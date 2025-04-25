@@ -243,7 +243,8 @@ for i, message in enumerate(st.session_state.history):
 
         if message["role"] == "assistant" and i > 0:
             best_documents = retriever.invoke(st.session_state.history[i - 1]["content"])
-            st.session_state.retriever.append(langchain_documents_to_df(best_documents))
+            # best_documents_df = langchain_documents_to_df(best_documents)
+            st.session_state.retriever.append(best_documents)
             logger.debug(st.session_state.retriever)
 
             feedback_results = [
@@ -258,6 +259,8 @@ for i, message in enumerate(st.session_state.history):
                 )
                 for cfg in feedback_titles
             ]
+
+            # edited_df = st.data_editor(best_documents_df)
 
         if len(st.session_state["history"]) > 1:
             conversation_history = pd.DataFrame(st.session_state["history"])

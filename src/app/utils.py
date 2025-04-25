@@ -11,6 +11,8 @@ from src.vectordatabase.output_parsing import format_docs, langchain_documents_t
 from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
 from src.vectordatabase.reranker import RerankerRetriever
 
+with open("./prompt/system.md", encoding="utf-8") as f:
+    system_instructions = f.read()
 
 def initialize_clients(
     config: dict,

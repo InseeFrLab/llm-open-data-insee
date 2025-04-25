@@ -207,7 +207,7 @@ def run_build_database() -> None:
                     documents = [docs for docs in documents if docs.metadata.get("url") in pages]
         else:
             documents = parse_documents(data=data, engine_output="langchain")
-            if args.max_pages is not None:
+            if args.max_pages is None:
                 with filesystem.open(cache_file_documents, "wb") as f:
                     pickle.dump(documents, f)
 
