@@ -94,6 +94,11 @@ parser.add_argument(
     help="Vector database engine",
 )
 parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
+parser.add_argument(
+    "--invalidate_cache",
+    action="store_true",
+    help="Reconstruct cached documents (default: False) [not implemented right now]"
+)
 
 
 # Example usage:
@@ -124,6 +129,7 @@ config = set_config(
 
 
 filtered_config = {k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])}
+filtered_config.pop(f'{engine.upper()}_COLLECTION_NAME', None)
 
 embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", config_dict=config).get("embedding")
 
@@ -268,6 +274,7 @@ def run_build_database() -> None:
             api_key=api_key_database_client,
             engine=engine,
             client=client,
+            number_chunks=100
         )
 
         # SETTING ALIAS -----------------------
