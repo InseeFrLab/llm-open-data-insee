@@ -69,7 +69,9 @@ def get_config_database_qdrant(default_collection_name: str = "dirag_mistral_sma
 def get_config_database_chroma(default_collection_name: str = "dirag_mistral_small", **kwargs):
     if "verbose" in kwargs and kwargs["verbose"] is True:
         logger.info(
-            "Setting 'CHROMA_URL', 'CHROMA_CLIENT_AUTH_CREDENTIALS', 'CHROMA_CLIENT_AUTH_PROVIDER', 'CHROMA_SERVER_HOST' and 'CHROMA_SERVER_HTTP_PORT'"
+            """Setting 'CHROMA_URL', 'CHROMA_CLIENT_AUTH_CREDENTIALS',
+            'CHROMA_CLIENT_AUTH_PROVIDER', 'CHROMA_SERVER_HOST' and 'CHROMA_SERVER_HTTP_PORT'
+            """
         )
     config_database_client = {
         "CHROMA_URL": os.getenv("CHROMA_URL"),

@@ -40,14 +40,12 @@ def read_history_from_parquet(path_log: str, username: str, filesystem: s3fs.S3F
 def snapshot_sidebar_conversations(
     old_conversations: dict, path_log: str, username: str, filesystem: s3fs.S3FileSystem
 ):
-
     df_conversations = pd.DataFrame(old_conversations)
     df_conversations = _format_history_df(df_conversations)
     df_conversations.to_parquet(
-            f"{path_log}/{username}/conversation_history.parquet",
-            index=False,
-            filesystem=filesystem
-        )
+        f"{path_log}/{username}/conversation_history.parquet", index=False, filesystem=filesystem
+    )
+
 
 def _format_history_df(history):
     history["date"] = pd.to_datetime(history["date"], errors="coerce")
@@ -56,12 +54,8 @@ def _format_history_df(history):
     return history
 
 
-def restore_history(
-    path_log: str, username: str, id_unique: str, filesystem: s3fs.S3FileSystem
-):
-    history = pd.read_parquet(
-        f"{path_log}/{username}/history/{id_unique}.parquet", filesystem=filesystem
-    )
+def restore_history(path_log: str, username: str, id_unique: str, filesystem: s3fs.S3FileSystem):
+    history = pd.read_parquet(f"{path_log}/{username}/history/{id_unique}.parquet", filesystem=filesystem)
     history = _format_history_df(history)
     return history
 

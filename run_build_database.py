@@ -74,7 +74,10 @@ parser.add_argument(
     "--dataset",
     choices=["dirag", "complete"],
     default="complete",
-    help="Choose the dataset type: 'dirag' for restricted DIRAG data, 'complete' for the full web4g dataset (default: 'complete').",
+    help="""
+        Choose the dataset type: 'dirag' for restricted DIRAG data,
+        'complete' for the full web4g dataset (default: 'complete'),
+    """,
 )
 parser.add_argument(
     "--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)"

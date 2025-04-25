@@ -14,6 +14,7 @@ from src.vectordatabase.reranker import RerankerRetriever
 with open("./prompt/system.md", encoding="utf-8") as f:
     system_instructions = f.read()
 
+
 def initialize_clients(
     config: dict,
     embedding_model: str,

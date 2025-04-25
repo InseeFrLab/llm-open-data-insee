@@ -24,7 +24,6 @@ from src.app.utils import create_assistant_message, generate_answer_from_context
 from src.config import set_config
 from src.model.prompt import question_instructions
 from src.utils.utils_vllm import get_models_from_env
-from src.vectordatabase.output_parsing import langchain_documents_to_df
 
 # ---------------- CONFIGURATION ---------------- #
 
@@ -111,7 +110,7 @@ initialize_session_state(
         "sidebar_conversations": None,
         "just_loaded_history": False,
         "has_initialized_conversation": False,
-        "retriever": []
+        "retriever": [],
     }
 )
 
@@ -186,10 +185,7 @@ with st.sidebar:
             # ✅ Save sidebar conversations as a snapshot
             if old_conversations:
                 snapshot_sidebar_conversations(
-                    old_conversations=old_conversations,
-                    path_log=path_log,
-                    username=username,
-                    filesystem=fs
+                    old_conversations=old_conversations, path_log=path_log, username=username, filesystem=fs
                 )
 
         for conversations in st.session_state.sidebar_conversations:
@@ -219,11 +215,13 @@ if st.session_state.active_chat_history is not None and not st.session_state.jus
     history = restore_history(path_log, username, id_unique, filesystem=fs)
 
     # Store back to session state
-    reset_session_state({
-        "history": lambda: history.to_dict(orient="records"),
-        "unique_id": id_unique,
-        "just_loaded_history": True,
-    })
+    reset_session_state(
+        {
+            "history": lambda: history.to_dict(orient="records"),
+            "unique_id": id_unique,
+            "just_loaded_history": True,
+        }
+    )
 
     st.rerun()
 
@@ -238,7 +236,6 @@ for i, message in enumerate(st.session_state.history):
     # Main panel: messages and added widgets
 
     with st.chat_message(message["role"]):
-
         st.markdown(message["content"])
 
         if message["role"] == "assistant" and i > 0:
