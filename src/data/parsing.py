@@ -7,7 +7,6 @@ from bs4.element import Tag
 from loguru import logger
 from markdownify import MarkdownConverter, markdownify
 
-
 # logger = logging.getLogger(__name__)
 
 TABLE_ADHOC_SEPARATOR = "\n\n-----------------\n\n"
@@ -53,26 +52,21 @@ def prepend_text_to_tag(tag: Tag, text: str):
         tag.string = text
 
 
-def extract_tables_from_page(
-    soup: Tag,
-    drop_figures: bool = True
-    ):
+def extract_tables_from_page(soup: Tag, drop_figures: bool = True):
+    tables = soup.find_all("table")
 
-    tables = soup.find_all('table')
-
-    container = soup.new_tag('div')
-    extracted_tables = tables.copy()
+    container = soup.new_tag("div")
 
     # Remove table from the page (but keep them elsewhere)
     for idx, table in enumerate(tables):
         table.extract()
         container.append(table)
         if idx != len(tables) - 1:  # Don't add separator after the last table
-                separator = NavigableString(TABLE_ADHOC_SEPARATOR)
-                container.append(separator)
+            separator = NavigableString(TABLE_ADHOC_SEPARATOR)
+            container.append(separator)
 
     if drop_figures is True:
-        figures = soup.find_all('figure')
+        figures = soup.find_all("figure")
         # Dropping figures
         for figure in figures:
             figure.decompose()
@@ -263,18 +257,10 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
     - pd.DataFrame: A DataFrame with 'id' as the index and formatted content in the 'content' column
     """
 
-    args_markdown_converter = {
-        "escape_misc": False,
-        "escape_asterisks": False,
-        "bullets": "-",
-        "heading_style": "ATX"
-    }
+    args_markdown_converter = {"escape_misc": False, "escape_asterisks": False, "bullets": "-", "heading_style": "ATX"}
 
     data = data.reset_index(names="index")
-    parsed_pages: dict[str, list] = {
-        "id": [], "content": [], "abstract": [], "tables": []
-        }
-
+    parsed_pages: dict[str, list] = {"id": [], "content": [], "abstract": [], "tables": []}
 
     logstep = 1 + (len(data) // 10)
     for i, row in data.iterrows():
@@ -300,10 +286,7 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
             **args_markdown_converter,
         )
 
-        parsed_tables = md(
-            tables,
-            **args_markdown_converter
-        )
+        parsed_tables = md(tables, **args_markdown_converter)
 
         h2_tag = soup.find("h2")
         abstract = markdownify("\n".join([str(content) for content in h2_tag.contents])) if h2_tag is not None else ""
@@ -314,8 +297,7 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
         if parsed_tables:
             parsed_pages["tables"].append(remove_excessive_newlines(parsed_tables))
         else:
-            parsed_pages["tables"].append('')
-
+            parsed_pages["tables"].append("")
 
     data_as_md = pd.DataFrame(parsed_pages).set_index("id")
 
@@ -345,7 +327,7 @@ def parse_documents(data: pd.DataFrame) -> pd.DataFrame:
             "libelleAffichageGeo",
             "content",
             "abstract",
-            "tables"
+            "tables",
         ],
     ]
 
@@ -354,61 +336,8 @@ def parse_documents(data: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def parse_transform_documents(
-    data: pd.DataFrame,
-    page_column_content: str = "content",
-    engine_output: str = "pandas",
-) -> pd.DataFrame | list:
-    """
-    Parses and transforms document data, optionally splitting documents into smaller chunks.
-
-    This function processes a DataFrame containing document data by:
-    1. Parsing XML content.
-    2. Merging parsed content into the original DataFrame.
-    3. Converting the data into LangChain document format if needed.
-    4. Optionally splitting documents into smaller chunks if `max_document_size` is specified.
-
-    Args:
-        data (pd.DataFrame): Input DataFrame containing documents, with an 'id' column.
-        max_document_size (Optional[int], optional): The maximum number of tokens per document chunk.
-            If `None`, documents are not split. Defaults to `None`.
-        page_column_content (str, optional): The column containing document content. Defaults to "content".
-        engine_output (str, optional): The output format, either `"pandas"` or `"langchain"`.
-            Defaults to `"pandas"`.
-
-    Returns:
-        Union[pd.DataFrame, list]: A DataFrame if `engine_output="pandas"`, or a list of LangChain documents.
-
-    Raises:
-        ValueError: If `engine_output` is not `"pandas"` or `"langchain"`.
-    """
-
-    if engine_output not in {"pandas", "langchain"}:
-        raise ValueError("'engine_output' should be 'pandas' or 'langchain'")
-
-    df = parse_documents(data)
-
-    if engine_output == "pandas":
-        logger.debug("Returning Pandas DataFrame since 'engine_output' is set to 'pandas'")
-        return df
-
-    logger.debug("Transforming into LangChain document format")
-
-    # Load DataFrame into LangChain document format
-    loader = DataFrameLoader(df, page_content_column=page_column_content)
-    documents = loader.load()
-
-    return documents
-
-
-
 # CACHING PARSED DOCUMENTS ----------------------------
-
-
 
 
 def md(soup, **options):
     return MarkdownConverter(**options).convert_soup(soup)
-
-
-

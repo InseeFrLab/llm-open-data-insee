@@ -1,8 +1,6 @@
 import logging
 
-import pandas as pd
 from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import DataFrameLoader
 from langchain_core.documents.base import Document
 
 logger = logging.getLogger(__name__)
@@ -18,11 +16,10 @@ def chunk_documents(
     minimal_size_documents=500,
     **kwargs,
 ) -> list[Document]:
-
     logging.info("Building the list of document objects")
     logging.info(f"The following parameters have been applied: {kwargs}")
 
-    if strategy is None or strategy == 'None':
+    if strategy is None or strategy == "None":
         docs_processed = documents
 
     # Initialize token splitter
@@ -41,5 +38,3 @@ def chunk_documents(
         docs_processed = [docs for docs in docs_processed if len(docs.page_content) > minimal_size_documents]
 
     return docs_processed
-
-

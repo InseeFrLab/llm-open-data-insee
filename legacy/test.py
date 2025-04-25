@@ -55,7 +55,6 @@ def row_server(input, output, session):
 
 def server(input, output, session):
     chat = ui.Chat(id="chat", messages=[welcome])
-    val = reactive.value(0)
 
     @reactive.effect
     @reactive.event(input.stop)

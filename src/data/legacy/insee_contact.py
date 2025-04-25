@@ -1,9 +1,7 @@
 import json
-import logging
 
 import pandas as pd
 import s3fs
-
 from anonymize import anonymize_insee_contact_message
 from constants import LS_DATA_PATH, RAW_DATA
 from ner import ner_series
@@ -27,7 +25,6 @@ def process_insee_contact_data(config, path: str):
     # Save to s3
     with fs.open("projet-llm-insee-open-data/data/insee_contact/data_2019_eval.csv", "w") as f:
         df_eval.to_csv(f, index=False)
-
 
 
 def create_ls_task(question: str, answer: str) -> dict[str, dict[str, str]]:

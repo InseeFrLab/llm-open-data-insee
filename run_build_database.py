@@ -1,26 +1,19 @@
 import argparse
-import pickle
 
 import mlflow
 import pandas as pd
 import s3fs
 from dotenv import load_dotenv
-
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import DataFrameLoader
-
+from langchain_openai import OpenAIEmbeddings
 from loguru import logger
 
 from src.config import set_config
-
-from src.data.caching import parse_documents_or_load_from_cache
-from src.data.caching import chunk_documents_or_load_from_cache
-
+from src.data.caching import chunk_documents_or_load_from_cache, parse_documents_or_load_from_cache
+from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.model.prompt import similarity_search_instructions
 from src.results_logging.mlflow_utils import mlflow_log_source_files
-from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
 from src.utils.utils_vllm import get_models_from_env
-
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection, get_number_docs_collection
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
@@ -130,9 +123,7 @@ config = set_config(
 )
 
 
-filtered_config = {
-    k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])
-}
+filtered_config = {k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])}
 
 embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", config_dict=config).get("embedding")
 
@@ -161,14 +152,10 @@ corpus_constructor_args = {
     "field": args.dataset,
     "web4g_path_uri": S3_PATH,
     "fs": filesystem,
-    "search_cols": ["titre", "libelleAffichageGeo", "xml_intertitre"]
+    "search_cols": ["titre", "libelleAffichageGeo", "xml_intertitre"],
 }
 
-chunking_args = {
-    "strategy": args.chunking_strategy,
-    "chunk_size": max_document_size,
-    "chunk_overlap": chunk_overlap
-}
+chunking_args = {"strategy": args.chunking_strategy, "chunk_size": max_document_size, "chunk_overlap": chunk_overlap}
 
 parameters_database_construction = {
     "embedding_model": embedding_model,
@@ -196,8 +183,8 @@ print(chunking_args)
 
 # MAIN PIPELINE --------------------------------------
 
-def run_build_database() -> None:
 
+def run_build_database() -> None:
     mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
     mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
 
@@ -217,15 +204,14 @@ def run_build_database() -> None:
         logger.debug(f"Importing and parsing raw data {30 * '-'}")
 
         data = parse_documents_or_load_from_cache(
-            path_for_cache = path_cached_parsed_documents,
+            path_for_cache=path_cached_parsed_documents,
             load_from_cache=True,
             max_pages=args.max_pages,
             filesystem=filesystem,
-            corpus_constructor_args=corpus_constructor_args
+            corpus_constructor_args=corpus_constructor_args,
         )
 
         data["mlflow_run_id"] = run_id  # Add mlflow run id in metadata
-
 
         # CHUNKING DOCUMENTS --------------------------
 
@@ -235,12 +221,12 @@ def run_build_database() -> None:
         logger.info(f"Before chunking, we have {len(documents)} pages")
 
         documents = chunk_documents_or_load_from_cache(
-            documents_before_chunking = documents,
+            documents_before_chunking=documents,
             path_for_cache=path_cached_chunked_documents,
-            max_pages = args.max_pages,
+            max_pages=args.max_pages,
             load_from_cache=True,
             filesystem=filesystem,
-            chunking_args=chunking_args
+            chunking_args=chunking_args,
         )
 
         logger.info(f"After chunking, we have {len(documents)} documents")

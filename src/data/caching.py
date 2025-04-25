@@ -1,16 +1,14 @@
 from collections.abc import Iterable
-import jsonlines
 
+import jsonlines
+import pandas as pd
+import s3fs
+from langchain_core.documents.base import Document
 from loguru import logger
 
-import s3fs
-import pandas as pd
-
-from langchain_core.documents.base import Document
-
+from .chunking import chunk_documents
 from .corpus import constructor_corpus
 from .parsing import parse_documents
-from .chunking import chunk_documents
 
 
 def parse_documents_or_load_from_cache(
@@ -19,9 +17,8 @@ def parse_documents_or_load_from_cache(
     max_pages: int = None,
     filesystem: s3fs = None,
     corpus_constructor_args: dict = None,
-    force_rebuild: bool = False
+    force_rebuild: bool = False,
 ):
-
     if corpus_constructor_args is None:
         corpus_constructor_args = {}
 
@@ -29,18 +26,11 @@ def parse_documents_or_load_from_cache(
         load_from_cache = False
 
     if filesystem.lexists(path_for_cache) is False and load_from_cache is True:
-        logger.warning(
-            f"File does not exist in cache ({path_for_cache}), data will be reconstructed from scratch"
-        )
+        logger.warning(f"File does not exist in cache ({path_for_cache}), data will be reconstructed from scratch")
         load_from_cache = False
 
-
     if load_from_cache is True:
-
-        data = _get_cache_dataframe(
-            cache_file_documents=path_for_cache,
-            filesystem=filesystem
-        )
+        data = _get_cache_dataframe(cache_file_documents=path_for_cache, filesystem=filesystem)
 
         logger.info("Data have been retrieved from cache")
 
@@ -49,10 +39,7 @@ def parse_documents_or_load_from_cache(
             data = data.head(max_pages)
 
     else:
-
-        data = constructor_corpus(
-            **corpus_constructor_args
-        )
+        data = constructor_corpus(**corpus_constructor_args)
 
         if max_pages is not None:
             logger.debug(f"Limiting database to {max_pages} pages")
@@ -62,12 +49,7 @@ def parse_documents_or_load_from_cache(
 
         if max_pages is None:
             # Cache this dataset
-            _write_cache_dataframe(
-                data,
-                cache_file_documents=path_for_cache,
-                filesystem=filesystem
-            )
-
+            _write_cache_dataframe(data, cache_file_documents=path_for_cache, filesystem=filesystem)
 
     return data
 
@@ -79,9 +61,8 @@ def chunk_documents_or_load_from_cache(
     max_pages: int = None,
     filesystem: s3fs = None,
     force_rebuild: bool = False,
-    chunking_args: dict = None
+    chunking_args: dict = None,
 ):
-
     if chunking_args is None:
         chunking_args = {}
 
@@ -89,71 +70,46 @@ def chunk_documents_or_load_from_cache(
         load_from_cache = False
 
     if filesystem.lexists(path_for_cache) is False and load_from_cache is True:
-        logger.warning(
-            f"File does not exist in cache ({path_for_cache}), data will be reconstructed from scratch"
-        )
+        logger.warning(f"File does not exist in cache ({path_for_cache}), data will be reconstructed from scratch")
         load_from_cache = False
 
-    if chunking_args.get("strategy") == 'None':
+    if chunking_args.get("strategy") == "None":
         logger.info("Strategy is None, returning the initial documents")
         return documents_before_chunking
 
     if load_from_cache is True:
-
-        documents_chunked = _get_cache_jsonl(
-            file_path=path_for_cache,
-            filesystem=filesystem
-        )
+        documents_chunked = _get_cache_jsonl(file_path=path_for_cache, filesystem=filesystem)
 
         logger.info("Documents have been retrieved from cache")
 
         if max_pages is not None:
             logger.debug(f"Limiting database to {max_pages} pages")
-            unique_pages = set([docs.metadata['url'] for docs in documents_before_chunking])
-            documents_chunked = [
-                docs for docs in documents_chunked if docs.metadata['url'] in unique_pages
-            ]
-
+            unique_pages = set([docs.metadata["url"] for docs in documents_before_chunking])
+            documents_chunked = [docs for docs in documents_chunked if docs.metadata["url"] in unique_pages]
 
     else:
-        documents_chunked = chunk_documents(
-            documents_before_chunking,
-            **chunking_args
-        )
-        unique_pages = set([docs.metadata['url'] for docs in documents_before_chunking])
-        documents_chunked = [
-                docs for docs in documents_chunked if docs.metadata['url'] in unique_pages
-        ]
+        documents_chunked = chunk_documents(documents_before_chunking, **chunking_args)
+        unique_pages = set([docs.metadata["url"] for docs in documents_before_chunking])
+        documents_chunked = [docs for docs in documents_chunked if docs.metadata["url"] in unique_pages]
 
         if max_pages is None:
             # Cache this dataset
-            _write_cache_jsonl(
-                documents_chunked,
-                file_path=path_for_cache,
-                filesystem=filesystem
-            )
-
+            _write_cache_jsonl(documents_chunked, file_path=path_for_cache, filesystem=filesystem)
 
     return documents_chunked
 
 
-
 # UTILITIES --------------------------------------
 
-def _get_cache_dataframe(
-    cache_file_documents: str, filesystem: s3fs.S3FileSystem
-):
 
+def _get_cache_dataframe(cache_file_documents: str, filesystem: s3fs.S3FileSystem):
     if filesystem.lexists(cache_file_documents) is False:
         raise ValueError(f"No file found at {cache_file_documents}")
 
     return pd.read_parquet(cache_file_documents, filesystem=filesystem)
 
 
-def _write_cache_dataframe(
-    df: pd.DataFrame, filesystem: s3fs.S3FileSystem, cache_file_documents: str
-):
-
+def _write_cache_dataframe(df: pd.DataFrame, filesystem: s3fs.S3FileSystem, cache_file_documents: str):
     df.to_parquet(cache_file_documents, filesystem=filesystem)
     logger.info(f"Dataset has been written at {cache_file_documents} location")
 
@@ -191,15 +147,3 @@ def _write_cache_jsonl(documents: Iterable[Document], file_path: str, filesystem
     with filesystem.open(file_path, mode="w") as f, jsonlines.Writer(f) as writer:
         for doc in documents:
             writer.write(doc.dict())  # Assuming Document has a .dict() method
-
-
-
-def _write_cache_pickle(
-    data, filesystem: s3fs.S3FileSystem, cache_file_documents: str
-):
-
-    with filesystem.open(cache_file_documents, "wb") as f:
-        pickle.dump(data, f)
-
-    logger.info(f"Dataset has been written at {cache_file_documents} location")
-
