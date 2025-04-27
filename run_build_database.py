@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
+import openai
 from openai import OpenAI
 
 from src.config import set_config
@@ -86,9 +87,6 @@ parser.add_argument(
         Choose the dataset type: 'dirag' for restricted DIRAG data,
         'complete' for the full web4g dataset (default: 'complete'),
     """,
-)
-parser.add_argument(
-    "--log_database_snapshot", action="store_true", help="Should we log database snapshot ? (default: False)"
 )
 parser.add_argument(
     "--top_k_statistics",
@@ -227,6 +225,7 @@ logger.info("Connecting to vector database")
 def run_build_database() -> None:
     mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
     mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
+    mlflow.langchain.autolog()
 
     with mlflow.start_run(args.mlflow_run_id) as run:
         # new run or starting from an existing one
@@ -324,7 +323,7 @@ def run_build_database() -> None:
             number_retrieved_docs=10,
         )
 
-        # PART II : LOGGING PROMPTS ---------------------------------
+        # PART II : LOGGING PROMPTS AND MODELS ---------------------------------
 
         mlflow.register_prompt(
             name="system-prompt-generative-model",
@@ -335,6 +334,7 @@ def run_build_database() -> None:
             name="question-prompt-generative-model",
             template=question_prompt,
         )
+
 
         # PART III : RETRIEVER EVALUATION ---------------------------------
 
@@ -347,9 +347,14 @@ def run_build_database() -> None:
         annotations["url"] = annotations["url"].str.replace(" ", "")
         annotations["url"] = annotations["url"].str.split(";")
 
+
+        # Starting tracing OpenAI (not before because vector DB embedding is too much to trace)
+        mlflow.openai.autolog()
+
+
         answers_retriever, answers_generative = compare_retriever_with_expected_docs(
             retriever=retriever,
-            ground_truth_df=annotations[:3],
+            ground_truth_df=annotations,
             question_col="Question",
             ground_truth_col="url",
             with_generation=True,
