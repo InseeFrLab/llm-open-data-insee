@@ -1,14 +1,11 @@
-import logging
-import tempfile
 
-import mlflow
-import requests
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
-from qdrant_client import QdrantClient, models
+from loguru import logger
+from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 
 def _initialize_client_qdrant(url: str, api_key: str) -> QdrantClient:
@@ -76,31 +73,6 @@ def get_number_docs_collection_qdrant(
 ):
     collection_info = client.get_collection(collection_name=collection_name)
     return collection_info.points_count
-
-
-def create_collection_alias_qrant(client: QdrantClient, initial_collection_name: str, alias_collection_name: str):
-    client.update_collection_aliases(
-        change_aliases_operations=[
-            models.CreateAliasOperation(
-                create_alias=models.CreateAlias(
-                    collection_name=initial_collection_name, alias_name=alias_collection_name
-                )
-            )
-        ]
-    )
-
-
-def create_snapshot_collection_qdrant(client, collection_name, url, api_key):
-    snapshot = client.create_snapshot(collection_name=collection_name)
-    url_snapshot = f"{url}/collections/{collection_name}/snapshots/{snapshot.name}"
-
-    # Intermediate save snapshot in local for logging in MLFlow
-    response = requests.get(url_snapshot, headers={"api-key": api_key}, timeout=60 * 10)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".snapshot") as temp_file:
-        temp_file.write(response.content)
-        temp_file_path = temp_file.name  # Store temp file path
-
-    mlflow.log_artifact(local_path=temp_file_path)
 
 
 def qdrant_vectorstore_as_retriever(

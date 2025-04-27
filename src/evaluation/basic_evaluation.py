@@ -1,6 +1,186 @@
+import openai
 import pandas as pd
+from langchain_core.prompts import PromptTemplate
+from langchain_core.vectorstores.base import VectorStoreRetriever
 
-from src.vectordatabase.output_parsing import langchain_documents_to_df
+from src.vectordatabase.output_parsing import format_docs, langchain_documents_to_df
+
+with open("./prompt/question.md", encoding="utf-8") as f:
+    default_question_prompt = f.read()
+
+with open("./prompt/system.md", encoding="utf-8") as f:
+    default_system_prompt = f.read()
+
+default_model = "mistralai/Mistral-Small-24B-Instruct-2501"
+
+
+def compare_retrieved_from_ground_truth(
+    retriever: VectorStoreRetriever, question: str, valid_urls: list[str]
+) -> pd.DataFrame:
+    """
+    Compare documents retrieved by a retriever against a ground truth set of valid URLs.
+
+    This function queries a retriever with a specific question, converts the retrieved documents
+    into a DataFrame, and annotates each document with whether its URL is part of the expected ground truth.
+    Additional metadata such as the total number of expected pages and the original question is also added.
+
+    Args:
+        retriever (VectorStoreRetriever): The retriever instance used to fetch relevant documents.
+        question (str): The question to query the retriever.
+        valid_urls (List[str]): A list of URLs considered as ground truth for validation.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the retrieved documents, including validation flags
+                      and additional metadata for comparison.
+    """
+    retrieved_docs = retriever.invoke(question)
+
+    if isinstance(retrieved_docs, dict):
+        retrieved_docs = retrieved_docs["context"]
+
+    # Transform in pd.DataFrame to ease question by question comparison
+    result_retriever_raw = langchain_documents_to_df(retrieved_docs)
+
+    result_retriever_raw["url_expected"] = result_retriever_raw["url"].isin(valid_urls)
+
+    result_retriever_raw["number_pages_expected"] = len(valid_urls)
+    result_retriever_raw["question"] = question
+
+    return result_retriever_raw
+
+
+def collect_answers_retrievers(
+    retriever: VectorStoreRetriever,
+    question: str,
+    valid_urls: str | list[str],
+    with_generation: bool = False,
+    chat_client: openai.OpenAI = None,
+    chat_client_options: dict = None,
+) -> tuple[pd.DataFrame, VectorStoreRetriever, bool | str]:
+    """
+    Collect retrieved documents for a given question and optionally generate an answer using a chat model.
+
+    This function queries a retriever with a question, compares the retrieved documents to a ground truth
+    list of valid URLs, and optionally uses an OpenAI chat client to generate an answer based on the retrieved context.
+    Chat client options such as model, system prompt, and question prompt can be customized via `chat_client_options`.
+
+    Args:
+        retriever (VectorStoreRetriever): The retriever instance used to fetch relevant documents.
+        question (str): The question to query the retriever.
+        valid_urls (Union[str, List[str]]): A single URL or a list of URLs representing the ground truth for evaluation.
+        with_generation (bool, optional): If True, generates an answer using the chat client. Defaults to False.
+        chat_client (openai.OpenAI, optional): An instance of the OpenAI client used for answer generation. Required if `with_generation` is True.
+        chat_client_options (dict, optional): Dictionary containing chat model options such as:
+            - "model" (str): The model name to use (e.g., "gpt-4").
+            - "question_prompt" (str): Template to format the question and context.
+            - "system_prompt" (str): System-level prompt guiding the model's behavior.
+            Defaults to a predefined configuration if not provided.
+
+    Returns:
+        Tuple:
+            - pd.DataFrame: DataFrame comparing retrieved documents against ground truth.
+            - VectorStoreRetriever: The raw retrieved documents.
+            - Union[bool, str]: False if no generation is requested, otherwise the generated response text.
+    """
+
+    if isinstance(valid_urls, str):
+        valid_urls = [valid_urls]
+
+    if with_generation is True and chat_client is None:
+        raise ValueError("chat_client must be provided when with_generation is True")
+
+    default_options = {
+        "model": default_model,
+        "question_prompt": default_question_prompt,
+        "system_prompt": default_system_prompt,
+    }
+
+    if chat_client_options is None:
+        chat_client_options = default_options
+    else:
+        # Fill missing keys from default
+        for key, value in default_options.items():
+            chat_client_options.setdefault(key, value)
+
+    retrieved_docs = retriever.invoke(question)
+    docs_vs_truth = compare_retrieved_from_ground_truth(retriever, question, valid_urls)
+
+    if with_generation is False:
+        return docs_vs_truth, retrieved_docs, False
+
+    prompt = PromptTemplate.from_template(chat_client_options.get("question_prompt"))
+    context = format_docs(retrieved_docs)
+    question_with_context = prompt.format(question=question, context=context)
+
+    response = chat_client.chat.completions.create(
+        model=chat_client_options.get("model"),
+        messages=[
+            {"role": "system", "content": chat_client_options.get("system_prompt")},
+            {"role": "user", "content": question_with_context},
+        ],
+        stream=False,
+    )
+
+    response = response.choices[0].message.content
+
+    return docs_vs_truth, retrieved_docs, response
+
+
+def compare_retriever_with_expected_docs(
+    retriever: VectorStoreRetriever,
+    ground_truth_df: pd.DataFrame,
+    question_col: str,
+    ground_truth_col: str,
+    with_generation: bool = False,
+    chat_client: openai.OpenAI = None,
+    chat_client_options: dict = None,
+) -> tuple[pd.DataFrame, list[str | bool]]:
+    """
+    Compare retriever outputs with expected documents from a ground truth DataFrame.
+
+    For each question in the ground truth DataFrame, this function retrieves documents
+    using the retriever, evaluates them against the expected documents, and optionally
+    generates an answer using a language model, with configurable chat client options.
+
+    Args:
+        retriever (VectorStoreRetriever): The retriever used to fetch relevant documents.
+        ground_truth_df (pd.DataFrame): DataFrame containing the ground truth questions and expected documents.
+        question_col (str): Column name in the DataFrame containing the questions.
+        ground_truth_col (str): Column name in the DataFrame containing the expected documents or URLs.
+        with_generation (bool, optional): Whether to generate an answer using a language model. Defaults to False.
+        chat_client (openai.OpenAI, optional): An instance of OpenAI client used for answer generation. Required if `with_generation` is True.
+        chat_client_options (dict, optional): Dictionary with options for chat client, such as:
+            - "model" (str): The model name (e.g., "gpt-4").
+            - "question_prompt" (str): Template for formatting question + context.
+            - "system_prompt" (str): System-level prompt for guiding the model behavior.
+            If None, default values will be used.
+
+    Returns:
+        Tuple:
+            - pd.DataFrame: Concatenated DataFrame of retrieved document comparisons.
+            - List[Union[str, bool]]: List of generated responses or False if no generation was requested.
+    """
+    answers_retriever = []
+    answers_generative = []
+
+    for _idx, faq_items in ground_truth_df.iterrows():
+        docs, _, response = collect_answers_retrievers(
+            retriever=retriever,
+            question=faq_items[question_col],
+            valid_urls=faq_items[ground_truth_col],
+            with_generation=with_generation,
+            chat_client=chat_client,
+            chat_client_options=chat_client_options,
+        )
+        answers_retriever.append(docs)
+        answers_generative.append(response)
+
+    answers_retriever = pd.concat(answers_retriever)
+
+    return answers_retriever, answers_generative
+
+
+# OLD ----------------------------
 
 
 def transform_answers_bot(answers_bot: pd.DataFrame, k: int):

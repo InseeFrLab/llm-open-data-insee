@@ -1,26 +1,5 @@
-similarity_search_instructions = (
-    "Instruct: Given a specific query in French, retrieve the most relevant documents that answer the query"
-)
+with open("./prompt/question.md", encoding="utf-8") as f:
+    question_instructions = f.read()
 
-system_instructions = """
-Tu es un assistant spécialisé dans la statistique publique.
-Tu réponds à des questions concernant les données de l'Insee, l'institut national statistique Français.
-
-Réponds en FRANCAIS UNIQUEMENT. Utilise une mise en forme au format markdown.
-
-En utilisant UNIQUEMENT les informations présentes dans le contexte, réponds de manière argumentée à la question posée.
-
-Cite 5 sources maximum et mentionne l'url d'origine.
-
-Si tu ne peux pas induire ta réponse du contexte, ne réponds pas.
-"""
-
-question_instructions = """
-Voici la question à laquelle tu dois répondre :
-Question: {question}
-
-Voici le contexte sur lequel tu dois baser ta réponse :
-Contexte: {context}
-
-Réponse:
-"""
+with open("./prompt/system.md", encoding="utf-8") as f:
+    system_instructions = f.read()

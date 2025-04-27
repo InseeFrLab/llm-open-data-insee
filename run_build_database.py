@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import mlflow
 import pandas as pd
@@ -7,22 +8,17 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
+from openai import OpenAI
 
 from src.config import set_config
 from src.data.caching import chunk_documents_or_load_from_cache, parse_documents_or_load_from_cache
-from src.evaluation.basic_evaluation import answer_faq_by_bot, transform_answers_bot
-from src.model.prompt import similarity_search_instructions
+from src.evaluation.basic_evaluation import compare_retriever_with_expected_docs, transform_answers_bot
 from src.results_logging.mlflow_utils import mlflow_log_source_files
 from src.utils.utils_vllm import get_models_from_env
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection, get_number_docs_collection
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
-from src.vectordatabase.output_parsing import langchain_documents_to_df
-from src.vectordatabase.qdrant import (
-    create_collection_alias_qrant,
-    create_snapshot_collection_qdrant,
-    qdrant_vectorstore_as_retriever,
-)
+from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
 
 load_dotenv(override=True)
 
@@ -44,6 +40,12 @@ parser.add_argument(
     type=str,
     default="vector_database_building",
     help="Experiment name in mlflow",
+)
+parser.add_argument(
+    "--mlflow_run_id",
+    type=str,
+    default=None,
+    help="MLFlow run id we should restart from",
 )
 parser.add_argument(
     "--chunking_strategy",
@@ -69,6 +71,13 @@ parser.add_argument(
     help="Chunk overlap when documents are split. "
     "If value provided, passed to Langchain's CharacterTextSplitter is applied",
 )
+parser.add_argument(
+    "--chunking_strategy_number_of_splits",
+    type=int,
+    default=100,
+    help="How many splits of the dataset should we use to construct database",
+)
+
 parser.add_argument(
     "--dataset",
     choices=["dirag", "complete"],
@@ -97,7 +106,7 @@ parser.add_argument("--verbose", action="store_true", help="Enable verbose outpu
 parser.add_argument(
     "--invalidate_cache",
     action="store_true",
-    help="Reconstruct cached documents (default: False) [not implemented right now]"
+    help="Reconstruct cached documents (default: False) [not implemented right now]",
 )
 
 
@@ -129,9 +138,10 @@ config = set_config(
 
 
 filtered_config = {k: v for k, v in config.items() if not any(s in k.lower() for s in ["key", "token", "secret"])}
-filtered_config.pop(f'{engine.upper()}_COLLECTION_NAME', None)
+filtered_config.pop(f"{engine.upper()}_COLLECTION_NAME", None)
 
 embedding_model = get_models_from_env(url_embedding="URL_EMBEDDING_MODEL", config_dict=config).get("embedding")
+generative_model = get_models_from_env(url_embedding="URL_GENERATIVE_MODEL", config_dict=config).get("embedding")
 
 url_database_client = config.get(f"{engine.upper()}_URL")
 api_key_database_client = config.get(f"{engine.upper()}_API_KEY")
@@ -146,7 +156,6 @@ logger.debug(f"Setting {url_database_client} as vector database endpoint")
 S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
 collection_name = args.collection_name
 s3_bucket = "projet-llm-insee-open-data"
-faq_s3_path = "data/FAQ_site/faq.parquet"
 
 max_document_size = args.max_document_size
 chunk_overlap = args.chunk_overlap
@@ -185,16 +194,42 @@ if args.dataset == "dirag":
     logger.warning("Restricting publications to DIRAG related content")
 
 
-print(chunking_args)
+# LOADING EMBEDDING AND COMPLETION MODELS ---------------------------------
+
+emb_model = OpenAIEmbeddings(
+    model=embedding_model,
+    openai_api_base=config.get("OPENAI_API_BASE_EMBEDDING"),
+    openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+    tiktoken_enabled=False,
+)
+
+model_max_len = len(emb_model.embed_query("retrieving hidden_size"))
+
+chat_client = OpenAI(
+    base_url=config.get("OPENAI_API_BASE_GENERATIVE"),
+    api_key=config.get("OPENAI_API_KEY_GENERATIVE"),
+)
+
+# LOADING PROMPT -----------------------------------------------
+
+with open("./prompt/question.md", encoding="utf-8") as f:
+    question_prompt = f.read()
+
+with open("./prompt/system.md", encoding="utf-8") as f:
+    system_prompt = f.read()
+
 
 # MAIN PIPELINE --------------------------------------
+
+logger.info("Connecting to vector database")
 
 
 def run_build_database() -> None:
     mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
     mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
 
-    with mlflow.start_run() as run:
+    with mlflow.start_run(args.mlflow_run_id) as run:
+        # new run or starting from an existing one
         run_id = run.info.run_id
 
         mlflow.log_params(
@@ -239,19 +274,6 @@ def run_build_database() -> None:
 
         # CREATE DATABASE COLLECTION -----------------------
 
-        logger.info("Connecting to vector database")
-
-        emb_model = OpenAIEmbeddings(
-            model=embedding_model,
-            openai_api_base=config.get("OPENAI_API_BASE_EMBEDDING"),
-            openai_api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
-            tiktoken_enabled=False,
-        )
-
-        model_max_len = len(emb_model.embed_query("retrieving hidden_size"))
-        # confusion between hidden_size and model_max_len
-        # get_model_max_len(model_id=embedding_model)
-
         unique_collection_name = f"{collection_name}_{run_id}"
 
         client = create_client_and_collection(
@@ -264,62 +286,29 @@ def run_build_database() -> None:
         )
 
         # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
+
         logger.info("Putting documents in vector database")
-
-        chunk_documents_and_store(
-            documents,
-            emb_model,
-            collection_name=unique_collection_name,
-            url=url_database_client,
-            api_key=api_key_database_client,
-            engine=engine,
-            client=client,
-            number_chunks=100
-        )
-
-        # SETTING ALIAS -----------------------
-
-        if engine == "qdrant":
-            create_collection_alias_qrant(
-                client=client, initial_collection_name=unique_collection_name, alias_collection_name=collection_name
-            )
-
-        mlflow.log_params(
-            {
-                "COLLECTION_UNIQUE": unique_collection_name,
-                "COLLECTION_ALIAS": collection_name,
-            }
-        )
-
-        # LOGGING DATABASE STATISTICS --------------------------
 
         n_documents = get_number_docs_collection(client=client, collection_name=unique_collection_name, engine=engine)
 
-        dict_metadata_collection = {"n_documents": n_documents}
-
-        if engine == "qdrant":
-            collection_info = client.get_collection(collection_name=unique_collection_name)
-            embedding_size = collection_info.config.params.vectors.get(embedding_model).size
-            dict_metadata_collection = {
-                **{"embedding_size": embedding_size, "embedding_model": embedding_model},
-                **dict_metadata_collection,
-            }
-
-        mlflow.log_params(dict_metadata_collection)
-
-        # CREATING SNAPSHOT FOR LOGGING -------------------
-
-        if args.log_database_snapshot is True and engine == "qdrant":
-            logger.info("Logging database snapshot")
-
-            create_snapshot_collection_qdrant(
-                client=client,
+        if n_documents > 0 and args.invalidate_cache is False:
+            message = "Skipping documents embedding sincecollection has {n_documents} documents"
+            logger.info(message)
+        else:
+            chunk_documents_and_store(
+                documents,
+                emb_model,
                 collection_name=unique_collection_name,
                 url=url_database_client,
                 api_key=api_key_database_client,
+                engine=engine,
+                client=client,
+                number_chunks=args.chunking_strategy_number_of_splits,
             )
 
-            logger.success("Database building successful")
+        mlflow.log_params({"COLLECTION_UNIQUE": unique_collection_name, "embedding_model": embedding_model})
+
+        mlflow.log_metric("n_documents", n_documents)
 
         # TURNING DATABASE INTO RETRIEVER ----------------------
 
@@ -335,31 +324,40 @@ def run_build_database() -> None:
             number_retrieved_docs=10,
         )
 
-        # Log a result of a similarity search
-        test_query = "Quels sont les chiffres du chômage en 2023 ?"
-        query = f"{similarity_search_instructions}\nQuery: {test_query}"
-        mlflow.log_param("prompt_retriever", similarity_search_instructions)
-        retrieved_docs = retriever.invoke(query)
-        result_retriever_raw = langchain_documents_to_df(retrieved_docs)
+        # PART II : LOGGING PROMPTS ---------------------------------
 
-        mlflow.log_table(data=result_retriever_raw, artifact_file="retrieved_documents.json")
-        mlflow.log_param("question_asked", query)
+        mlflow.register_prompt(
+            name="system-prompt-generative-model",
+            template=system_prompt,
+        )
 
-        # PART II : EVALUATION ---------------------------------
+        mlflow.register_prompt(
+            name="question-prompt-generative-model",
+            template=question_prompt,
+        )
 
-        logger.info("Importing evaluation dataset")
-
-        faq = pd.read_parquet(f"s3://{s3_bucket}/{faq_s3_path}", filesystem=filesystem)
-        # Extract all URLs from the 'sources' column
-        faq["urls"] = faq["sources"].str.findall(r"https?://www\.insee\.fr[^\s]*").apply(lambda s: ", ".join(s))
-
-        # --------------------------------
-        # III - RETRIEVER STATISTICS
+        # PART III : RETRIEVER EVALUATION ---------------------------------
 
         logger.info("Evaluating model performance against expectations")
 
-        answers_bot = answer_faq_by_bot(retriever, faq)
-        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_bot, k=args.top_k_statistics)
+        annotations = pd.read_csv(os.environ["ANNOTATIONS_LOCATION"])
+        annotations = annotations.rename(
+            {"Lien(s) attendu(s) vers site insee (si plusieurs: séparer avec des  ;)": "url"}, axis="columns"
+        )
+        annotations["url"] = annotations["url"].str.replace(" ", "")
+        annotations["url"] = annotations["url"].str.split(";")
+
+        answers_retriever, answers_generative = compare_retriever_with_expected_docs(
+            retriever=retriever,
+            ground_truth_df=annotations[:3],
+            question_col="Question",
+            ground_truth_col="url",
+            with_generation=True,
+            chat_client=chat_client,
+            chat_client_options={"model": generative_model},
+        )
+
+        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_retriever, k=args.top_k_statistics)
 
         document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
         document_is_top = answers_bot_topk["cumsum_url_expected"].min()
@@ -374,14 +372,17 @@ def run_build_database() -> None:
         )
         mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
 
+
         # LOGGING OTHER USEFUL THINGS --------------------------
 
         logger.info("Storing additional metadata")
 
         # Store FAQ
-        mlflow_faq_raw = mlflow.data.from_pandas(faq, source=faq_s3_path, name="FAQ_data")
-        mlflow.log_input(mlflow_faq_raw, context="faq-raw")
-        mlflow.log_table(data=faq, artifact_file="faq_data.json")
+        annotations_raw = mlflow.data.from_pandas(
+            annotations, source=os.environ["ANNOTATIONS_LOCATION"], name="Annotations"
+        )
+        mlflow.log_input(annotations_raw, context="annotations")
+        mlflow.log_table(data=annotations, artifact_file="annotations.json")
 
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(

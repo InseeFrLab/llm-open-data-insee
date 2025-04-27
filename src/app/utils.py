@@ -21,14 +21,17 @@ def initialize_clients(
     number_retrieved_documents: str = 5,
     engine: str = "qdrant",
     use_reranking: bool = False,
-    **kwargs,
+    emb_model_client=None**kwargs,
 ):
-    emb_model = OpenAIEmbeddings(
-        model=embedding_model,
-        base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
-        api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
-        tiktoken_enabled=False,
-    )
+    if emb_model_client is None:
+        emb_model = OpenAIEmbeddings(
+            model=embedding_model,
+            base_url=config.get("OPENAI_API_BASE_EMBEDDING"),
+            api_key=config.get("OPENAI_API_KEY_EMBEDDING"),
+            tiktoken_enabled=False,
+        )
+    else:
+        emb_model = emb_model_client
 
     url_database_client = config.get(f"{engine.upper()}_URL")
     api_key_database_client = config.get(f"{engine.upper()}_API_KEY")

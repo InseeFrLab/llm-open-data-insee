@@ -22,7 +22,6 @@ from src.app.history import (
 from src.app.session import initialize_session_state, reset_session_state
 from src.app.utils import create_assistant_message, generate_answer_from_context, initialize_clients
 from src.config import set_config
-from src.model.prompt import question_instructions
 from src.utils.utils_vllm import get_models_from_env
 
 # ---------------- CONFIGURATION ---------------- #
@@ -32,7 +31,7 @@ load_dotenv(override=True)
 # Patch for https://github.com/VikParuchuri/marker/issues/442
 torch.classes.__path__ = []
 
-ENGINE = "qdrant"
+ENGINE = "chroma"
 USE_RERANKING = True
 
 config = set_config(
@@ -68,6 +67,9 @@ DEFAULT_USERNAME = "anonymous"
 with open("./src/app/constants.toml", "rb") as f:
     messages = tomllib.load(f)
 
+with open("./prompt/question.md", encoding="utf-8") as f:
+    question_prompt = f.read()
+
 
 @st.cache_resource(show_spinner=False)
 def initialize_clients_cache(config: dict, embedding_model=embedding_model, engine=ENGINE, **kwargs):
@@ -83,7 +85,7 @@ retriever, chat_client = initialize_clients_cache(
 )
 
 
-prompt = PromptTemplate.from_template(question_instructions)
+prompt = PromptTemplate.from_template(question_prompt)
 
 
 # ---------------- STREAMLIT UI ---------------- #
