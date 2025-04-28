@@ -21,7 +21,8 @@ def initialize_clients(
     number_retrieved_documents: str = 5,
     engine: str = "qdrant",
     use_reranking: bool = False,
-    emb_model_client=None**kwargs,
+    emb_model_client=None,
+    **kwargs,
 ):
     if emb_model_client is None:
         emb_model = OpenAIEmbeddings(
