@@ -11,6 +11,10 @@ with open("./prompt/question.md", encoding="utf-8") as f:
 with open("./prompt/system.md", encoding="utf-8") as f:
     default_system_prompt = f.read()
 
+with open("./prompt/system_no_context.md", encoding="utf-8") as f:
+    default_system_prompt_no_context = f.read()
+
+
 default_model = "mistralai/Mistral-Small-24B-Instruct-2501"
 
 
@@ -93,6 +97,7 @@ def collect_answers_retrievers(
         "model": default_model,
         "question_prompt": default_question_prompt,
         "system_prompt": default_system_prompt,
+        "system_prompt_no_context": default_system_prompt_no_context
     }
 
     if chat_client_options is None:
@@ -120,10 +125,19 @@ def collect_answers_retrievers(
         ],
         stream=False,
     )
+    response_no_context = chat_client.chat.completions.create(
+        model=chat_client_options.get("model"),
+        messages=[
+            {"role": "system", "content": chat_client_options.get("system_prompt_no_context")},
+            {"role": "user", "content": question},
+        ],
+        stream=False,
+    )
 
     response = response.choices[0].message.content
+    response_no_context = response_no_context.choices[0].message.content
 
-    return docs_vs_truth, retrieved_docs, response
+    return docs_vs_truth, retrieved_docs, response, response_no_context
 
 
 def compare_retriever_with_expected_docs(
@@ -162,9 +176,10 @@ def compare_retriever_with_expected_docs(
     """
     answers_retriever = []
     answers_generative = []
+    answers_generative_no_context = []
 
     for _idx, faq_items in ground_truth_df.iterrows():
-        docs, _, response = collect_answers_retrievers(
+        docs, _, response, response_no_context  = collect_answers_retrievers(
             retriever=retriever,
             question=faq_items[question_col],
             valid_urls=faq_items[ground_truth_col],
@@ -174,10 +189,11 @@ def compare_retriever_with_expected_docs(
         )
         answers_retriever.append(docs)
         answers_generative.append(response)
+        answers_generative_no_context.append(response_no_context)
 
     answers_retriever = pd.concat(answers_retriever)
 
-    return answers_retriever, answers_generative
+    return answers_retriever, answers_generative, answers_generative_no_context
 
 
 # OLD ----------------------------

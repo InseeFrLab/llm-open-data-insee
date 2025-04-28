@@ -43,20 +43,14 @@ def render_feedback_section(index, message, title, optional_text, key_prefix, un
 feedback_titles = [
     {
         "title": "Evaluation de la pertinence des documents renvoyés",
-        "optional_text": "Pertinence des documents",
+        "optional_text": "Les sources renvoyées sont-elles pertinentes ? Des sources plus pertinentes auraient-elles pu être citées?",
         "key_prefix": "feedback-retriever",
         "feedback_type": "retriever",
     },
     {
-        "title": "Evaluation de la qualité de la réponse à l'aune du contexte fourni (fond):",
-        "optional_text": "Qualité du fond",
+        "title": "Qualité de la réponse sur le fond et la forme",
+        "optional_text": "Les critères d'évaluation sont nombreux (structure de la réponse, mise en forme, etc.), n'hésitez pas à préciser les dimensions satisfaisantes comme insatisfaisantes. Si une réponse plus pertinente aurait pu être faite, n'hésitez pas à la proposer.",
         "key_prefix": "feedback-generation",
         "feedback_type": "generation_fond",
-    },
-    {
-        "title": "Evaluation de la qualité de la réponse (style, mise en forme, etc.):",
-        "optional_text": "Qualité de la forme",
-        "key_prefix": "feedback-generation-mef",
-        "feedback_type": "generation_forme",
-    },
+    }
 ]

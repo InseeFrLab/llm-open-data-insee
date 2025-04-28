@@ -66,7 +66,6 @@ reranking_model = models.get("reranking")
 DEFAULT_USERNAME = "anonymous"
 with open("./src/app/constants.toml", "rb") as f:
     messages = tomllib.load(f)
-
 with open("./prompt/question.md", encoding="utf-8") as f:
     question_prompt = f.read()
 

@@ -12,14 +12,18 @@ import openai
 from openai import OpenAI
 
 from src.config import set_config
+
 from src.data.caching import chunk_documents_or_load_from_cache, parse_documents_or_load_from_cache
-from src.evaluation.basic_evaluation import compare_retriever_with_expected_docs, transform_answers_bot
-from src.results_logging.mlflow_utils import mlflow_log_source_files
-from src.utils.utils_vllm import get_models_from_env
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection, get_number_docs_collection
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
 from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
+
+from src.evaluation.basic_evaluation import compare_retriever_with_expected_docs, transform_answers_bot
+from src.evaluation.hallucination import check_hallucination_rate
+
+from src.results_logging.mlflow_utils import mlflow_log_source_files
+from src.utils.utils_vllm import get_models_from_env
 
 load_dotenv(override=True)
 
@@ -352,7 +356,7 @@ def run_build_database() -> None:
         mlflow.openai.autolog()
 
 
-        answers_retriever, answers_generative = compare_retriever_with_expected_docs(
+        answers_retriever, answers_generative, answers_generative_no_context = compare_retriever_with_expected_docs(
             retriever=retriever,
             ground_truth_df=annotations,
             question_col="Question",
@@ -360,6 +364,13 @@ def run_build_database() -> None:
             with_generation=True,
             chat_client=chat_client,
             chat_client_options={"model": generative_model},
+        )
+
+        mlflow.log_metrics(
+            {
+                "hallucination_rate_rag": check_hallucination_rate(answers_generative),
+                "hallucination_rate_no_rag": check_hallucination_rate(answers_generative_no_context)
+            }
         )
 
         eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_retriever, k=args.top_k_statistics)

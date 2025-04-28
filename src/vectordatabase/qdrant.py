@@ -1,4 +1,3 @@
-
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from loguru import logger
