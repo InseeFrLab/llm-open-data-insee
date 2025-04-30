@@ -23,6 +23,79 @@ TAGS_TO_IGNORE = [
 # TODO: make it a parameter of the function (want tableau to be a parameter)
 
 
+# RAW DATA PARSING -------------------------------------
+
+def get_content(data, *keys):
+    """
+    Safely retrieves nested content from a dictionary or list using a sequence of keys and indices.
+
+    Args:
+        data (dict or list): The dictionary or list to retrieve content from.
+        *keys: A sequence of keys and/or indices to navigate the nested structure.
+
+    Returns:
+        str: The retrieved content or an empty string if any key or index is missing.
+    """
+    for key in keys:
+        if isinstance(data, list):
+            if not (isinstance(key, int) and 0 <= key < len(data)):
+                return ""
+            data = data[key]
+        elif isinstance(data, dict):
+            data = data.get(key, {})
+        else:
+            return ""
+    return data if isinstance(data, str) else data.get("contenu", "")
+
+
+def extract_rmes_data(data: dict):
+    """
+    Extracts and processes specific fields from the input data dictionary.
+
+    Args:
+        data (dict): The input data dictionary containing various fields.
+
+    Returns:
+        dict: A dictionary containing the processed fields.
+    """
+    id = get_content(data, "id")
+    titre = data.get("titre", "")
+    note_historique = md(data.get("noteHistorique", [{}])[0].get("contenu", ""), bullets="-")
+    label = get_content(data, "label", 0)
+    frequence_collecte = get_content(data, "frequenceCollecte", "label", 0)
+    resume = md(data.get("resume", [{}])[0].get("contenu", ""), bullets="-")
+    famille = get_content(data, "famille", "label", 0)
+    organismes_responsables = get_content(data, "organismesResponsables", 0, "label", 0)
+    partenaires = get_content(data, "partenaires", 0, "label", 0)
+    # services_collecteurs = get_content(data, "servicesCollecteurs", 0, "label", 0)
+    url = f"https://www.insee.fr/fr/metadonnees/source/serie/{id}"
+    # author = get_content(data, "autheur", 0)
+
+    parts = [
+        f"## {label}",
+        f"{titre}",
+        f"{url}\n",
+        "## Résumé",
+        f"{resume}\n",
+    ]
+
+    parts.append(f"### Historique\n{note_historique}\n") if note_historique else None
+    parts.append(f"### Famille\n{famille}\n") if famille else None
+    (parts.append(f"### Organisme responsable\n{organismes_responsables}\n") if organismes_responsables else None)
+    (parts.append(f"### Fréquence de collecte des données\n{frequence_collecte}\n") if frequence_collecte else None)
+    parts.append(f"### Partenaires\n{partenaires}\n") if partenaires else None
+    formatted_page = "\n".join(parts).replace("\\.", ".").replace("\\-", "-")
+
+    return id, label, url, formatted_page  # , resume, author
+
+
+def process_row(row):
+    return extract_rmes_data(json.loads(row))
+
+
+
+# XML PARSING -----------------------------------------------------
+
 def get_soup(xml_string: str) -> BeautifulSoup:
     """
     Parses an XML string and returns a BeautifulSoup object.

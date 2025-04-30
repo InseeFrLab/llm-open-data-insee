@@ -355,7 +355,7 @@ def run_build_database() -> None:
         # Starting tracing OpenAI (not before because vector DB embedding is too much to trace)
         mlflow.openai.autolog()
 
-
+        # TODO: Vérifier si y a pas moyen de faire en batch
         answers_retriever, answers_generative, answers_generative_no_context = compare_retriever_with_expected_docs(
             retriever=retriever,
             ground_truth_df=annotations,
@@ -365,6 +365,27 @@ def run_build_database() -> None:
             chat_client=chat_client,
             chat_client_options={"model": generative_model},
         )
+
+        answers_pipeline = pd.concat([
+            annotations,
+            pd.DataFrame({"answer_rag": answers_generative, "answer_no_rag": answers_generative_no_context})
+            ],
+            axis=1
+        )
+
+        url_suggested = answers_retriever.groupby('question').agg({
+            'url': lambda x: '; '.join(x.dropna().astype(str))
+        }).reset_index()
+
+        answers_pipeline = answers_pipeline.merge(
+            url_suggested,
+            left_on='Question',
+            right_on='question',
+            how='left'
+        )
+
+        mlflow.log_table(data=answers_pipeline, artifact_file="output/qabot_eval_results.json")
+
 
         mlflow.log_metrics(
             {
@@ -386,7 +407,7 @@ def run_build_database() -> None:
                 for _, row in answers_bot_topk.iterrows()
             }
         )
-        mlflow.log_table(data=eval_reponses_bot, artifact_file="output/eval_reponses_bot.json")
+        mlflow.log_table(data=eval_reponses_bot, artifact_file="evaluation/annotations_avec_reponses.json")
 
 
         # LOGGING OTHER USEFUL THINGS --------------------------
@@ -398,7 +419,7 @@ def run_build_database() -> None:
             annotations, source=os.environ["ANNOTATIONS_LOCATION"], name="Annotations"
         )
         mlflow.log_input(annotations_raw, context="annotations")
-        mlflow.log_table(data=annotations, artifact_file="annotations.json")
+        mlflow.log_table(data=annotations, artifact_file="evaluation/annotations.json")
 
         # Log raw dataset built from web4g
         mlflow_data_raw = mlflow.data.from_pandas(
