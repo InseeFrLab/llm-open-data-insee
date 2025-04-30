@@ -13,7 +13,7 @@ def chunk_documents(
     documents: list[Document],
     strategy: str = "recursive",
     separators=RECURSIVE_HEADERS_TO_CHUNK,
-    minimal_size_documents=500,
+    minimal_size_documents=200,
     **kwargs,
 ) -> list[Document]:
     logging.info("Building the list of document objects")

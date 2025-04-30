@@ -249,7 +249,7 @@ def run_build_database() -> None:
 
         data = parse_documents_or_load_from_cache(
             path_for_cache=path_cached_parsed_documents,
-            load_from_cache=True,
+            load_from_cache=not args.invalidate_cache,
             max_pages=args.max_pages,
             filesystem=filesystem,
             corpus_constructor_args=corpus_constructor_args,
@@ -268,7 +268,7 @@ def run_build_database() -> None:
             documents_before_chunking=documents,
             path_for_cache=path_cached_chunked_documents,
             max_pages=args.max_pages,
-            load_from_cache=True,
+            load_from_cache=not args.invalidate_cache,
             filesystem=filesystem,
             chunking_args=chunking_args,
         )
