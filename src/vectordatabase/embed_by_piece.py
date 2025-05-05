@@ -17,6 +17,7 @@ def chunk_documents_and_store(
     engine: str = "qdrant",
     client: ClientAPI = None,
     number_chunks: int = 10,
+    proportion_to_skip: int = 0
 ):
     total_docs = len(documents)
 
@@ -25,12 +26,20 @@ def chunk_documents_and_store(
     if chunk_size is None:
         chunk_size = max(total_docs // number_chunks, 1)
 
+    number_to_skip = int(number_chunks * proportion_to_skip)
+
     logger.info(f"Number of documents to embed: {total_docs}")
+    if number_to_skip > 0:
+        logger.warning(
+            f"Skipping the first {number_to_skip} chunk(s), equivalent to {100*proportion_to_skip:.2f}% of the dataset"
+        )
+
 
     filtered_documents = _filter_valid_documents(documents, content_attr=content_attr, size_step=size_step)
 
     _embed_documents_in_chunks(
-        filtered_documents, emb_model, collection_name, url, api_key, chunk_size, engine=engine, client=client
+        filtered_documents, emb_model, collection_name, url, api_key, chunk_size, engine=engine, client=client,
+        skip_chunks=number_to_skip
     )
 
 
@@ -64,9 +73,11 @@ def _embed_documents_in_chunks(
     chunk_size: int,
     engine="qdrant",
     client=None,
+    skip_chunks: int = 0,
 ):
     """
-    Splits documents into chunks and sends each chunk to the vector store.
+    Splits documents into chunks and sends each chunk to the vector store,
+    skipping the first `skip_chunks` chunks if specified.
     """
 
     if engine not in ["qdrant", "chroma"]:
@@ -75,20 +86,22 @@ def _embed_documents_in_chunks(
         raise ValueError("client is optional for qdrant engine but mandatory for chroma")
 
     total_docs = len(documents)
-
     args_database_constructor = {"emb_model": emb_model, "collection_name": collection_name, "client": client}
 
-    logger.info(f"Starting chunked ingestion with chunk size = {chunk_size}")
+    logger.info(f"Starting chunked ingestion with chunk size = {chunk_size}, skipping {skip_chunks} chunks")
 
-    for idx, batch_start in enumerate(range(0, total_docs, chunk_size), start=1):
+    total_chunks = (total_docs + chunk_size - 1) // chunk_size  # ceiling division
+
+    for idx, batch_start in enumerate(range(0, total_docs, chunk_size)):
+        if idx < skip_chunks:
+            continue
+
         batch = documents[batch_start : (batch_start + chunk_size)]
         logger.info(
-            f"Processing batch {idx}: docs {batch_start}–{batch_start + len(batch) - 1} "
+            f"Processing batch {idx + 1}/{total_chunks}: docs {batch_start}–{batch_start + len(batch) - 1} "
             f"({100 * batch_start / total_docs:.2f}%)"
         )
 
-        database_construction_func = database_from_documents_qdrant
-        if engine == "chroma":
-            database_construction_func = database_from_documents_chroma
+        database_construction_func = database_from_documents_qdrant if engine == "qdrant" else database_from_documents_chroma
 
         database_construction_func(documents=batch, **args_database_constructor)

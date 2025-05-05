@@ -82,7 +82,12 @@ parser.add_argument(
     default=100,
     help="How many splits of the dataset should we use to construct database",
 )
-
+parser.add_argument(
+    "--proportion_to_skip",
+    type=float,
+    default=0,
+    help="Proportion (between 0 and 1) of the initial chunks to skip when rerunning the ingestion process. Useful to avoid reprocessing already embedded documents.",
+)
 parser.add_argument(
     "--dataset",
     choices=["dirag", "complete"],
@@ -155,7 +160,7 @@ logger.debug(f"Setting {url_database_client} as vector database endpoint")
 
 # PARAMETERS ------------------------------------------
 
-S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
+S3_PATH = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined_new.parquet"
 collection_name = args.collection_name
 s3_bucket = "projet-llm-insee-open-data"
 
@@ -294,8 +299,8 @@ def run_build_database() -> None:
 
         n_documents = get_number_docs_collection(client=client, collection_name=unique_collection_name, engine=engine)
 
-        if n_documents > 0 and args.invalidate_cache is False:
-            message = "Skipping documents embedding sincecollection has {n_documents} documents"
+        if n_documents > 0 and args.invalidate_cache is False and args.proportion_to_skip==0:
+            message = "Skipping documents embedding since collection has {n_documents} documents"
             logger.info(message)
         else:
             chunk_documents_and_store(
@@ -307,6 +312,7 @@ def run_build_database() -> None:
                 engine=engine,
                 client=client,
                 number_chunks=args.chunking_strategy_number_of_splits,
+                proportion_to_skip=args.proportion_to_skip
             )
 
         mlflow.log_params({"COLLECTION_UNIQUE": unique_collection_name, "embedding_model": embedding_model})

@@ -4,7 +4,7 @@ import pandas as pd
 import s3fs
 from loguru import logger
 
-DEFAULT_WEB4G_LOCATION = "s3://projet-llm-insee-open-data/data/raw_data/applishare_solr_joined.parquet"
+DEFAULT_WEB4G_LOCATION = "s3://projet-llm-insee-open-data/data/raw_data/applishare_extract.parquet"
 DEFAULT_RMES_LOCATION = "s3://projet-llm-insee-open-data/data/processed_data/rmes_sources_content.parquet"
 DEFAULT_FS = s3fs.S3FileSystem(endpoint_url="https://minio.lab.sspcloud.fr")
 

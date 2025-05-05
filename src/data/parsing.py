@@ -395,7 +395,6 @@ def parse_documents(data: pd.DataFrame) -> pd.DataFrame:
             "categorie",
             "url",
             "dateDiffusion",
-            "theme",
             "collection",
             "libelleAffichageGeo",
             "content",
