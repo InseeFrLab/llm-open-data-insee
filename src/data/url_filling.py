@@ -1,5 +1,6 @@
 import re
 from tqdm import tqdm
+import pandas as pd
 
 def url_builder(row: pd.Series) -> str | None:
     """

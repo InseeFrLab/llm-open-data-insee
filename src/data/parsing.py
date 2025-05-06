@@ -1,3 +1,4 @@
+import unicodedata
 import re
 
 # import logging
@@ -48,50 +49,41 @@ def get_content(data, *keys):
     return data if isinstance(data, str) else data.get("contenu", "")
 
 
-def extract_rmes_data(data: dict):
+def process_xml_rmes_definitions(row):
     """
-    Extracts and processes specific fields from the input data dictionary.
+    Restructure le XML renvoyé par RMes API (metadata)
 
-    Args:
-        data (dict): The input data dictionary containing various fields.
+    Parameters:
+        row (pd.Series): Ligne du DataFrame contenant au moins 'xml_content' et 'titre'.
 
     Returns:
-        dict: A dictionary containing the processed fields.
+        tuple[str, str]: Contenu formaté (markdown), métadonnées brutes.
     """
-    id = get_content(data, "id")
-    titre = data.get("titre", "")
-    note_historique = md(data.get("noteHistorique", [{}])[0].get("contenu", ""), bullets="-")
-    label = get_content(data, "label", 0)
-    frequence_collecte = get_content(data, "frequenceCollecte", "label", 0)
-    resume = md(data.get("resume", [{}])[0].get("contenu", ""), bullets="-")
-    famille = get_content(data, "famille", "label", 0)
-    organismes_responsables = get_content(data, "organismesResponsables", 0, "label", 0)
-    partenaires = get_content(data, "partenaires", 0, "label", 0)
-    # services_collecteurs = get_content(data, "servicesCollecteurs", 0, "label", 0)
-    url = f"https://www.insee.fr/fr/metadonnees/source/serie/{id}"
-    # author = get_content(data, "autheur", 0)
+    content = row["xml_content"]
+    title = row["titre"]
 
-    parts = [
-        f"## {label}",
-        f"{titre}",
-        f"{url}\n",
-        "## Résumé",
-        f"{resume}\n",
-    ]
+    soup = BeautifulSoup(content)
 
-    parts.append(f"### Historique\n{note_historique}\n") if note_historique else None
-    parts.append(f"### Famille\n{famille}\n") if famille else None
-    (parts.append(f"### Organisme responsable\n{organismes_responsables}\n") if organismes_responsables else None)
-    (parts.append(f"### Fréquence de collecte des données\n{frequence_collecte}\n") if frequence_collecte else None)
-    parts.append(f"### Partenaires\n{partenaires}\n") if partenaires else None
-    formatted_page = "\n".join(parts).replace("\\.", ".").replace("\\-", "-")
+    # Supprime <definitionsliees> pour pas doublonner avec les définitions qu'on a déjà
+    tag = soup.find("definitionsliees")
+    if tag:
+        tag.decompose()
 
-    return id, label, url, formatted_page  # , resume, author
+    # Extraction de blocs de texte
+    chapo = extract_text_joined(soup, "chapo")
+    remarque = extract_text_joined(soup, "remarque")
+    metadata = extract_text_joined(soup, "chapometadonnees")
 
+    # Traitement des synonymes
+    synonymes_tags = soup.find_all("synonymes")
+    synonymes_list = [tag.get_text(strip=True) for tag in synonymes_tags if tag.get_text(strip=True)]
 
-def process_row(row):
-    return extract_rmes_data(json.loads(row))
+    synonymes = f"### Concepts synonymes: {'; '.join(synonymes_list)}" if synonymes_list else ""
 
+    # Contenu final
+    content = f"<h1>{title}</h1>\n\n<h2> Définition</h2>\n{chapo}\n\n<h2>Remarque</h2>\n{remarque}\n\n{synonymes}"
+
+    return content, metadata
 
 
 # XML PARSING -----------------------------------------------------
@@ -146,6 +138,34 @@ def extract_tables_from_page(soup: Tag, drop_figures: bool = True):
 
     # Remove all figures
     return soup, container
+
+
+def clean_text(text):
+    """
+    Compose all cleaning steps to normalize, remove control characters,
+    collapse whitespace, and fix excessive newlines.
+    """
+    text = normalize_unicode(text)
+    text = remove_control_chars(text)
+    text = collapse_whitespace(text)
+    text = remove_excessive_newlines(text)
+    return text.strip()
+
+
+def extract_text_joined(soup, tag_name, separator="\n"):
+    """
+    Extracts and joins text from all occurrences of a given tag.
+
+    Parameters:
+        soup (BeautifulSoup): The parsed HTML/XML soup.
+        tag_name (str): Name of the tag to extract.
+        separator (str): String to join text blocks (default: newline).
+
+    Returns:
+        str: Combined text content of all found tags, separated by `separator`.
+    """
+    return separator.join(tag.get_text(strip=True) for tag in soup.find_all(tag_name))
+
 
 
 def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
@@ -300,22 +320,30 @@ def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
     return soup_copy
 
 
+def normalize_unicode(text):
+    """Normalize Unicode characters using NFKC."""
+    return unicodedata.normalize("NFKC", text)
+
+def remove_control_chars(text):
+    """Remove non-printable characters, except newlines."""
+    return ''.join(ch for ch in text if ch.isprintable() or ch == '\n')
+
+def collapse_whitespace(text):
+    """Replace all non-newline whitespace (incl. \xa0, tabs) with a single space."""
+    return re.sub(r"[^\S\n]+", " ", text)
+
 def remove_excessive_newlines(text):
-    """
-    Replaces instances of more than two consecutive newlines with exactly two newlines.
-
-    Parameters:
-    text (str): The input text where excessive newlines need to be removed.
-
-    Returns:
-    str: The text with excessive newlines replaced by exactly two newlines.
-    """
-    # Replace instances of more than two consecutive newlines with exactly two newlines
-    cleaned_text = re.sub(r"\n{3,}", "\n\n", text)
-    return cleaned_text
+    """Replace 3+ consecutive newlines with exactly two newlines."""
+    return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_content") -> pd.DataFrame:
+def parse_xmls(
+    data: pd.DataFrame,
+    id: str = "id",
+    xml_column: str = "xml_content",
+    rename_tags: bool = True,
+    create_abstract: bool = True
+    ) -> pd.DataFrame:
     """
     Parses XML content from a DataFrame, extracts data, formats it,
     and returns a new DataFrame with the formatted content.
@@ -325,6 +353,7 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
     - id (str, optional): The column name for the unique identifier of each row. Defaults to "id".
     - xml_column (str, optional): The column name containing the XML content.
         Defaults to "xml_content".
+
 
     Returns:
     - pd.DataFrame: A DataFrame with 'id' as the index and formatted content in the 'content' column
@@ -348,7 +377,10 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
             continue
 
         # Extract the xml content and making it html compliant
-        soup = format_tags(get_soup(row[xml_column]), TAGS_TO_IGNORE)
+        if rename_tags is True:
+            soup = format_tags(get_soup(row[xml_column]), TAGS_TO_IGNORE)
+        else:
+            soup = BeautifulSoup(row[xml_column])
 
         # Isolating tables
         soup, tables = extract_tables_from_page(soup, drop_figures=True)
@@ -362,13 +394,16 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
         parsed_tables = md(tables, **args_markdown_converter)
 
         h2_tag = soup.find("h2")
-        abstract = markdownify("\n".join([str(content) for content in h2_tag.contents])) if h2_tag is not None else ""
+        if create_abstract is True:
+            abstract = markdownify("\n".join([str(content) for content in h2_tag.contents])) if h2_tag is not None else ""
+        else:
+            abstract = row['abstract']
 
         parsed_pages["id"].append(page_id)
-        parsed_pages["content"].append(remove_excessive_newlines(parsed_page))
+        parsed_pages["content"].append(clean_text(parsed_page))
         parsed_pages["abstract"].append(abstract.replace("Résumé :\n\n", ""))
         if parsed_tables:
-            parsed_pages["tables"].append(remove_excessive_newlines(parsed_tables))
+            parsed_pages["tables"].append(clean_text(parsed_tables))
         else:
             parsed_pages["tables"].append("")
 
@@ -377,9 +412,25 @@ def parse_xmls(data: pd.DataFrame, id: str = "id", xml_column: str = "xml_conten
     return data_as_md
 
 
-def parse_documents(data: pd.DataFrame) -> pd.DataFrame:
+def parse_documents(data: pd.DataFrame, xml_column: str = "xml_content") -> pd.DataFrame:
+
     logger.info("Parsing XML content")
-    parsed_pages = parse_xmls(data)
+
+    main_pages = data.loc[~data["id"].str.match(r"^[A-Za-z]")]
+    special_pages = data.loc[data["id"].str.match(r"^[A-Za-z]")]
+
+    logger.info("Parsing most pages")
+    parsed_pages = parse_xmls(main_pages, xml_column=xml_column)
+
+    logger.info("Parsing pages retrieved from API")
+    parsed_pages_special = parse_xmls(
+        special_pages, xml_column=xml_column,
+        rename_tags=False, create_abstract=False
+    )
+
+    data = pd.concat([
+        parsed_pages, parsed_pages_special
+    ])
 
     # Merge parsed XML data with the original DataFrame
     df = (
