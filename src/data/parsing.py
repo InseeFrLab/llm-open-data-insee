@@ -428,15 +428,15 @@ def parse_documents(data: pd.DataFrame, xml_column: str = "xml_content") -> pd.D
         rename_tags=False, create_abstract=False
     )
 
-    data = pd.concat([
-        parsed_pages, parsed_pages_special
+    parsed_pages = pd.concat([
+            parsed_pages, parsed_pages_special
     ])
 
-    # Merge parsed XML data with the original DataFrame
+        # Merge parsed XML data with the original DataFrame
     df = (
-        data.set_index("id")
-        .merge(pd.DataFrame(parsed_pages), left_index=True, right_index=True)
-        .drop(columns=["xml_content"], errors="ignore")  # Drop only if exists
+            data.drop(columns="abstract").set_index("id")
+            .merge(parsed_pages, left_index=True, right_index=True)
+            .drop(columns=["xml_content"], errors="ignore")  # Drop only if exists
     )
 
     df = df.loc[
