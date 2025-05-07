@@ -6,7 +6,7 @@ from streamlit_feedback import streamlit_feedback
 css_annotation_title = "text-align: right; font-weight: bold; font-style: italic;"
 
 
-def handle_feedback(response, index, history, unique_id, feedback_type="retriever"):
+def handle_feedback(response, index, history, unique_id, db_collection, feedback_type="retriever"):
     st.toast("✔️ Feedback received!")
     message = history[index]["content"]
     question = history[index - 1]["content"]
@@ -22,17 +22,19 @@ def handle_feedback(response, index, history, unique_id, feedback_type="retrieve
             "type": feedback_type,
             "submitted_at": submission_time,
             "unique_id": unique_id,
+            "collection_used": db_collection
         }
     )
     # st.write(st.session_state.feedback)
 
 
-def render_feedback_section(index, message, title, optional_text, key_prefix, unique_id, feedback_type):
+def render_feedback_section(index, message, title, optional_text, key_prefix, unique_id, db_collection, feedback_type):
     with st.container(key=f"{key_prefix}-{index}"):
         st.markdown(f"<p style='{css_annotation_title}'>{title}</p>", unsafe_allow_html=True)
         return streamlit_feedback(
             on_submit=lambda response, idx=index, msg=message: handle_feedback(
-                response, idx, st.session_state.history, unique_id=unique_id, feedback_type=feedback_type
+                response, idx, st.session_state.history, unique_id=unique_id,
+                db_collection=db_collection, feedback_type=feedback_type
             ),
             feedback_type="thumbs",
             optional_text_label=optional_text,

@@ -31,7 +31,7 @@ def read_history_from_parquet(path_log: str, username: str, filesystem: s3fs.S3F
         directory = [dir for dir in directory if dir.endswith(".parquet")]
     except FileNotFoundError:
         directory = []
-        return
+        return []
 
     history_as_parquet = [pd.read_parquet(f, filesystem=filesystem) for f in directory]
     return history_as_parquet

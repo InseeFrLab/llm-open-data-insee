@@ -46,9 +46,10 @@ config = set_config(
     # override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
 )
 
+
 fs = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
 path_log = os.getenv("PATH_LOG_APP")
-
+collection_name = config.get(f"{ENGINE.upper()}_COLLECTION_NAME")
 
 # Fix marker warning from torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
@@ -253,6 +254,7 @@ for i, message in enumerate(st.session_state.history):
                     optional_text=cfg["optional_text"],
                     key_prefix=cfg["key_prefix"],
                     unique_id=unique_id,
+                    db_collection=collection_name,
                     feedback_type=cfg["feedback_type"],
                 )
                 for cfg in feedback_titles
@@ -273,7 +275,12 @@ for i, message in enumerate(st.session_state.history):
 # ---------------- HANDLE USER INPUT ---------------- #
 if user_query := st.chat_input("Poser une question sur le site insee"):
     st.session_state.history.append(
-        {"role": "user", "content": user_query, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "id": unique_id}
+        {
+            "role": "user", "content": user_query,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "id": unique_id,
+            "collection": collection_name
+            }
     )
 
     with st.chat_message("user"):
@@ -296,6 +303,7 @@ if user_query := st.chat_input("Poser une question sur le site insee"):
             "content": response,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "id": unique_id,
+            "collection": collection_name
         }
     )
 
