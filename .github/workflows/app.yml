@@ -1,25 +1,3 @@
-name: Build API
-
-on:
-  push: main
-
-jobs:
-  image-build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Make free space
-        shell: bash
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
 name: Construction image Docker
 
 on:
