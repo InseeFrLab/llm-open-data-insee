@@ -1,16 +1,4 @@
-FROM ubuntu:22.04
-
-# Set noninteractive frontend to avoid prompts during install
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    python3-pip \
-    python3-venv \
-    git \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+FROM inseefrlab/onyxia-vscode-python:py3.12.9-2025.05.05
 
 ENV DEBIAN_FRONTEND=noninteractive
 

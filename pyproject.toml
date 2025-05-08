@@ -8,7 +8,6 @@ dependencies = [
     "accelerate>=0.26.0",
     "beautifulsoup4>=4.13.3",
     "bitsandbytes>=0.45.3",
-    "chainlit>=2.4.1",
     "chromadb>=0.6.3",
     "confz>=2.1.0",
     "hvac>=2.3.0",
@@ -50,7 +49,6 @@ line-length = 120
 indent-width = 4
 extend-include = ["*.ipynb"]
 extend-exclude = ["notebooks/*"]
-target-version = "py312"
 
 
 [dependency-groups]
