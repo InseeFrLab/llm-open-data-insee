@@ -4,22 +4,21 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 USER root
 
-RUN git clone https://github.com/InseeFrLab/llm-open-data-insee.git --depth 1
+# Create working directory
+WORKDIR /app
 
-# Check what's in the top-level after cloning
-RUN ls -al /llm-open-data-insee
+# Copy necessary files and directories
+COPY app.py .
+COPY pyproject.toml .
+COPY src/ src/
+COPY prompt/ prompt/
 
-# Optional: check whole cloned folder structure
-RUN find /llm-open-data-insee
-
-# Adjust to correct subdirectory (if needed)
-WORKDIR /llm-open-data-insee/llm-open-data-insee
-
-# Check that pyproject.toml is present
-RUN ls -al
-
+# Install uv and dependencies
 RUN pip install uv
 RUN uv pip install -r pyproject.toml --system
 
+# Expose default Streamlit port
 EXPOSE 8501
+
+# Run the Streamlit app
 CMD ["streamlit", "run", "app.py"]
