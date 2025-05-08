@@ -14,40 +14,11 @@ spec:
     spec:
       containers:
         - name: api
-          image: inseefrlab/llm-open-data-insee:latest
+          image: linogaliana/llm-statbot:latest
           imagePullPolicy: Always
-          env:
-            - name: AWS_S3_ENDPOINT
-              value: minio.lab.sspcloud.fr
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: s3-creds-api
-                  key: accessKey
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: s3-creds-api
-                  key: secretKey
-            - name: HF_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: hf-creds-api
-                  key: token
-            - name: S3_BUCKET
-              value: projet-llm-insee-open-data
-            - name: EMB_MODEL_NAME
-              value: OrdalieTech/Solon-embeddings-large-0.1
-            - name: LLM_MODEL_NAME
-              value: mistralai/Mistral-7B-Instruct-v0.2
-            - name: ASK_USER_BEFORE_LOGGING
-              value: 'false'
-            - name: RETRIEVER_ONLY
-              value: 'false'
-            - name: RERANKING_METHOD
-              # Possibles values : ['BM25', 'Cross-encoder', 'Ensemble']
-              # If left empty, defauts to None
-              value: ''
+          envFrom:
+            - secretRef:
+                name: sa-s3-statbot
           resources:
             requests:
               memory: "2Gi"
@@ -55,5 +26,3 @@ spec:
             limits:
               memory: "50Gi"
               cpu: "30"
-      nodeSelector:
-        nvidia.com/gpu.product: NVIDIA-H100-PCIe
