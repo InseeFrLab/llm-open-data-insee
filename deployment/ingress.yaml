@@ -17,3 +17,5 @@ spec:
                 name: rag-insee-data
                 port:
                   number: 80
+
+
