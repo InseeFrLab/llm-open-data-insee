@@ -8,10 +8,12 @@ RUN git clone https://github.com/InseeFrLab/llm-open-data-insee.git --depth 1
 
 WORKDIR /llm-open-data-insee
 
+RUN ls
+
 RUN pip install uv
 RUN uv pip install -r pyproject.toml --system
 
-EXPOSE 8000
+EXPOSE 8501
 CMD ["streamlit", "run", "app.py"]
 
 
