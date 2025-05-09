@@ -1,6 +1,6 @@
 from datetime import datetime
+import pandas as pd
 
-import streamlit as st
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
 from openai import OpenAI
@@ -96,10 +96,24 @@ def generate_answer_from_context(retriever, chat_client, generative_model: str, 
     return stream
 
 
-def create_assistant_message(content: str = None, role: str = "assistant") -> dict:
+def create_assistant_message(content: str = None, role: str = "assistant", unique_id: str = None) -> dict:
     return {
         "role": role,
         "content": content,
         "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "id": st.session_state.unique_id,
+        "id": unique_id,
     }
+
+
+def flatten_history_for_parquet(history):
+    flat_history = []
+    for message in history:
+        flat = {
+            "role": message.get("role"),
+            "content": message.get("content"),
+            "date": message.get("date"),
+            "id": message.get("id"),
+            "collection": message.get("collection"),
+        }
+        flat_history.append(flat)
+    return pd.DataFrame(flat_history)

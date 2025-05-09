@@ -1,4 +1,6 @@
 import os
+import sys
+import argparse
 import tomllib
 from datetime import datetime
 
@@ -20,15 +22,28 @@ from src.app.history import (
     summarize_conversation,
 )
 from src.app.session import initialize_session_state, reset_session_state
-from src.app.utils import create_assistant_message, generate_answer_from_context, initialize_clients
+from src.app.utils import create_assistant_message, generate_answer_from_context, initialize_clients, flatten_history_for_parquet
 from src.config import set_config
 from src.utils.utils_vllm import get_models_from_env
+
+# ---------------- COMMAND-LINE ARGUMENTS ---------------- #
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--log", action="store_true", help="Enable session state logging")
+args, _ = parser.parse_known_args()
+LOG_SESSION_STATE = args.log
+
+def log_session_state(msg="Session State"):
+    if LOG_SESSION_STATE:
+        logger.info(f"{msg}: {dict(st.session_state)}")
+
+if args.log:
+    logger.add("log.txt", rotation="1 MB", enqueue=True, backtrace=True, diagnose=True)
+
 
 # ---------------- CONFIGURATION ---------------- #
 
 load_dotenv(override=True)
-
-# Patch for https://github.com/VikParuchuri/marker/issues/442
 torch.classes.__path__ = []
 
 ENGINE = "chroma"
@@ -43,15 +58,12 @@ config = set_config(
         "url_reranking_model": "ENV_URL_RERANKING_MODEL",
     },
     database_manager=ENGINE,
-    # override={"QDRANT_COLLECTION_NAME": "dirag_experimentation_d9867c0409cf44e1b222f9f5ede05c06"},
 )
-
 
 fs = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
 path_log = os.getenv("PATH_LOG_APP")
 collection_name = config.get(f"{ENGINE.upper()}_COLLECTION_NAME")
 
-# Fix marker warning from torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)]
 
 models = get_models_from_env(
@@ -61,7 +73,6 @@ embedding_model = models.get("embedding")
 generative_model = models.get("completion")
 reranking_model = models.get("reranking")
 
-
 # ---------------- INITIALIZATION ---------------- #
 
 DEFAULT_USERNAME = "anonymous"
@@ -70,11 +81,9 @@ with open("./src/app/constants.toml", "rb") as f:
 with open("./prompt/question.md", encoding="utf-8") as f:
     question_prompt = f.read()
 
-
 @st.cache_resource(show_spinner=False)
 def initialize_clients_cache(config: dict, embedding_model=embedding_model, engine=ENGINE, **kwargs):
     return initialize_clients(config=config, embedding_model=embedding_model, engine=engine, **kwargs)
-
 
 retriever, chat_client = initialize_clients_cache(
     config=config,
@@ -84,9 +93,7 @@ retriever, chat_client = initialize_clients_cache(
     model_reranker=models.get("reranking"),
 )
 
-
 prompt = PromptTemplate.from_template(question_prompt)
-
 
 # ---------------- STREAMLIT UI ---------------- #
 
@@ -97,9 +104,7 @@ with open("./src/app/style.css") as f:
 
 st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
-
 # ---------------- INITIALIZE SESSION STATES ---------------- #
-
 
 initialize_session_state(
     {
@@ -115,16 +120,18 @@ initialize_session_state(
         "retriever": [],
     }
 )
+log_session_state("After initialize_session_state")
 
 if "unique_id" not in st.session_state:
     st.session_state.unique_id = create_unique_id()
+    log_session_state("Generated unique_id")
 
 if st.session_state.active_chat_history is not None:
     st.session_state.unique_id = st.session_state.active_chat_history
+    log_session_state("Restored active_chat_history")
 
 unique_id = st.session_state.unique_id
 active_user = st.session_state.username
-
 
 # ---------------- SIDEBAR: HISTORY ---------------- #
 
@@ -134,26 +141,23 @@ with st.sidebar:
     username = st.text_input("username", DEFAULT_USERNAME)
 
     if username != st.session_state.username:
-        # CREATE SESSION STATE FOR NEW USERNAME IN LEFT SIDEBAR
         reset_session_state(
             {
                 "username": username,
                 "sidebar_conversations": None,
                 "just_loaded_history": False,
                 "has_initialized_conversation": False,
-                "unique_id": create_unique_id,  # notice: no parentheses
+                "unique_id": create_unique_id,
                 "history": [],
                 "feedback": [],
                 "active_chat_history": None,
             }
         )
-
+        log_session_state("After username change")
         st.rerun()
 
     if st.button("➕ Nouvelle conversation", key="new_convo"):
-        # RESTART SESSION START FOR NEW CONVERSATION
-
-        start_message = create_assistant_message(content=messages["MESSAGE_START"])
+        start_message = create_assistant_message(content=messages["MESSAGE_START"], unique_id=unique_id)
 
         reset_session_state(
             {
@@ -165,7 +169,7 @@ with st.sidebar:
                 "just_loaded_history": False,
             }
         )
-
+        log_session_state("New conversation started")
         st.rerun()
 
     if st.session_state.username == "anonymous":
@@ -183,8 +187,8 @@ with st.sidebar:
             ]
 
             st.session_state.sidebar_conversations = old_conversations
+            log_session_state("Loaded sidebar conversations")
 
-            # ✅ Save sidebar conversations as a snapshot
             if old_conversations:
                 snapshot_sidebar_conversations(
                     old_conversations=old_conversations, path_log=path_log, username=username, filesystem=fs
@@ -203,20 +207,14 @@ with st.sidebar:
                 )
             else:
                 if st.button(title, key=f"{convo_id}", on_click=activate_old_conversation, args=(convo_id, title)):
-                    pass
-
+                    log_session_state(f"Conversation selected: {convo_id}")
 
 # ---------------- INITIAL MESSAGE / LOAD HISTORY ---------------- #
 
 if st.session_state.active_chat_history is not None and not st.session_state.just_loaded_history:
-    # When clicking on an old conversation
-
     id_unique = st.session_state.active_chat_history
-
-    # Read and sort history
     history = restore_history(path_log, username, id_unique, filesystem=fs)
 
-    # Store back to session state
     reset_session_state(
         {
             "history": lambda: history.to_dict(orient="records"),
@@ -224,27 +222,23 @@ if st.session_state.active_chat_history is not None and not st.session_state.jus
             "just_loaded_history": True,
         }
     )
-
+    log_session_state("History restored")
     st.rerun()
 
 if not st.session_state.has_initialized_conversation and st.session_state.active_chat_history is None:
-    # SESSION INITIALIZATION (PAGE LANDING OR NEW CONVERSATION)
-    st.session_state.history = [create_assistant_message(content=messages["MESSAGE_START"])]
+    st.session_state.history = [create_assistant_message(content=messages["MESSAGE_START"], unique_id=unique_id)]
     st.session_state.has_initialized_conversation = True
+    log_session_state("Session initialized with welcome message")
 
 # ---------------- CHAT MESSAGES & FEEDBACK ---------------- #
 
 for i, message in enumerate(st.session_state.history):
-    # Main panel: messages and added widgets
-
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
         if message["role"] == "assistant" and i > 0:
             best_documents = retriever.invoke(st.session_state.history[i - 1]["content"])
-            # best_documents_df = langchain_documents_to_df(best_documents)
             st.session_state.retriever.append(best_documents)
-            logger.debug(st.session_state.retriever)
 
             feedback_results = [
                 render_feedback_section(
@@ -260,11 +254,10 @@ for i, message in enumerate(st.session_state.history):
                 for cfg in feedback_titles
             ]
 
-            # edited_df = st.data_editor(best_documents_df)
-
         if len(st.session_state["history"]) > 1:
-            conversation_history = pd.DataFrame(st.session_state["history"])
+            conversation_history = flatten_history_for_parquet(st.session_state["history"])
             feedback_history = pd.DataFrame(st.session_state["feedback"])
+            logger.debug(conversation_history)
             conversation_history.to_parquet(
                 f"{path_log}/{username}/history/{unique_id}.parquet", index=False, filesystem=fs
             )
@@ -273,15 +266,18 @@ for i, message in enumerate(st.session_state.history):
             )
 
 # ---------------- HANDLE USER INPUT ---------------- #
+
 if user_query := st.chat_input("Poser une question sur le site insee"):
     st.session_state.history.append(
         {
-            "role": "user", "content": user_query,
+            "role": "user",
+            "content": user_query,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "id": unique_id,
             "collection": collection_name
-            }
+        }
     )
+    log_session_state("After user query")
 
     with st.chat_message("user"):
         st.markdown(user_query)
@@ -306,5 +302,6 @@ if user_query := st.chat_input("Poser une question sur le site insee"):
             "collection": collection_name
         }
     )
+    log_session_state("After assistant response")
 
     st.rerun()
