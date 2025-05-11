@@ -1,16 +1,9 @@
-MESSAGE_START = """__Bonjour et bienvenue__ 👋
+MESSAGE_START = """**Hello and welcome** 👋
 
-Je suis un agent conversationnel expérimental, conçu pour répondre à vos questions à partir des données et publications disponibles sur le site [insee.fr](https://www.insee.fr). 
+I am a demonstration instance of a conversational agent developed for the UNECE GenAI Workshop (May 2025).  
+I'm designed to answer your questions using data and publications available on [insee.fr](https://www.insee.fr).
 
-N'hésitez pas à me poser vos questions sur les nombreux thèmes couverts par l'Insee 📊 (démographie, économie, statistiques régionales, etc.) 
-
-> ⚠️ **Disclaimer** :  
-> Je suis encore en phase de test. Mes réponses sont générées automatiquement à partir des informations accessibles sur le site de l’INSEE, mais elles peuvent comporter des approximations ou ne pas être parfaitement à jour.
-> 
-> N'hésitez pas à utiliser les boutons d'évaluation proposés après une réponse pour aider les gentils humains qui me développent à m'améliorer. 
->
-> Mon but est de vous aider à trouver de l'information fiable sur le site [insee.fr](https://www.insee.fr). Cependant, pour toute décision importante, vérifiez l'information sur le [site de l'Insee](https://www.insee.fr).
-
+Feel free to ask me about a wide range of topics covered by Insee 📊 — including demographics, the economy, regional statistics, and more.
 """
 
 MESSAGE_PAST_CONVERSATION = "### 💬 Past Conversations"

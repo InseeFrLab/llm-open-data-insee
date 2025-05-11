@@ -258,12 +258,6 @@ for i, message in enumerate(st.session_state.history):
             conversation_history = flatten_history_for_parquet(st.session_state["history"])
             feedback_history = pd.DataFrame(st.session_state["feedback"])
             logger.debug(conversation_history)
-            conversation_history.to_parquet(
-                f"{path_log}/{username}/history/{unique_id}.parquet", index=False, filesystem=fs
-            )
-            feedback_history.to_parquet(
-                f"{path_log}/{username}/feedbacks/{unique_id}.parquet", index=False, filesystem=fs
-            )
 
 # ---------------- HANDLE USER INPUT ---------------- #
 
