@@ -1,7 +1,7 @@
-Voici la question à laquelle tu dois répondre :
+Here is the question you need to answer:  
 Question: {question}
 
-Voici le contexte sur lequel tu dois baser ta réponse :
-Contexte: {context}
+Here is the context you must use to base your answer on:  
+Context: {context}
 
-Réponse:
+Answer:
