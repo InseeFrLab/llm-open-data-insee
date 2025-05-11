@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: rag-insee-data
+  name: rag-insee-data-unece
 spec:
   type: ClusterIP
   ports:
@@ -9,4 +9,4 @@ spec:
       targetPort: 8501
       protocol: TCP
   selector:
-    app: rag-insee-data
+    app: rag-insee-data-unece

@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: rag-insee-data
+  name: rag-insee-data-unece
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: rag-insee-data
+      app: rag-insee-data-unece
   template:
     metadata:
       labels:
-        app: rag-insee-data
+        app: rag-insee-data-unece
     spec:
       containers:
         - name: api
-          image: linogaliana/llm-statbot:latest
+          image: linogaliana/llm-statbot:unece
           imagePullPolicy: Always
           envFrom:
             - secretRef:
