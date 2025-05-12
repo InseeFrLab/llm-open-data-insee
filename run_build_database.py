@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
+
+from langfuse import Langfuse
 import openai
 from openai import OpenAI
 
@@ -219,11 +221,10 @@ chat_client = OpenAI(
 
 # LOADING PROMPT -----------------------------------------------
 
-with open("./prompt/question.md", encoding="utf-8") as f:
-    question_prompt = f.read()
 
-with open("./prompt/system.md", encoding="utf-8") as f:
-    system_prompt = f.read()
+langfuse = Langfuse()
+system_prompt = langfuse.get_prompt("system_prompt", label="latest").prompt
+question_prompt = langfuse.get_prompt("user_prompt", label="latest").prompt
 
 
 # MAIN PIPELINE --------------------------------------

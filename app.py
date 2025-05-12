@@ -8,8 +8,9 @@ import pandas as pd
 import s3fs
 import streamlit as st
 import torch
+from langfuse import Langfuse
+
 from dotenv import load_dotenv
-from langchain_core.prompts import PromptTemplate
 from loguru import logger
 
 from src.app.feedbacks import feedback_titles, render_feedback_section
@@ -51,7 +52,7 @@ USE_RERANKING = True
 
 config = set_config(
     use_vault=True,
-    components=["s3", "mlflow", "database", "model"],
+    components=["s3", "mlflow", 'langfuse', "database", "model"],
     models_location={
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
@@ -59,6 +60,7 @@ config = set_config(
     },
     database_manager=ENGINE,
 )
+
 
 fs = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
 path_log = os.getenv("PATH_LOG_APP")
@@ -78,8 +80,8 @@ reranking_model = models.get("reranking")
 DEFAULT_USERNAME = "anonymous"
 with open("./src/app/constants.toml", "rb") as f:
     messages = tomllib.load(f)
-with open("./prompt/question.md", encoding="utf-8") as f:
-    question_prompt = f.read()
+
+
 
 @st.cache_resource(show_spinner=False)
 def initialize_clients_cache(config: dict, embedding_model=embedding_model, engine=ENGINE, **kwargs):
@@ -92,8 +94,6 @@ retriever, chat_client = initialize_clients_cache(
     url_reranker=os.getenv("URL_RERANKING_MODEL"),
     model_reranker=models.get("reranking"),
 )
-
-prompt = PromptTemplate.from_template(question_prompt)
 
 # ---------------- STREAMLIT UI ---------------- #
 
@@ -288,7 +288,6 @@ if user_query := st.chat_input("Poser une question sur le site insee"):
                 retriever=retriever,
                 chat_client=chat_client,
                 generative_model=generative_model,
-                prompt=prompt,
                 question=user_query,
             )
         )
