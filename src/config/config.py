@@ -134,6 +134,20 @@ def get_config_vllm(url_embedding_model: str = None, url_generative_model: str =
     return config
 
 
+def get_config_langfuse(**kwargs):
+
+    if kwargs.get("verbose"):
+        logger.info("Setting environment variables starting with 'LANGFUSE'")
+
+    config_langfuse = {
+        key: value
+        for key, value in os.environ.items()
+        if key.startswith("LANGFUSE")
+    }
+
+    return config_langfuse
+
+
 def set_config(
     use_vault: bool = False,
     components: list = None,
@@ -179,6 +193,9 @@ def set_config(
 
     if "model" in components:
         config = {**config, **get_config_vllm(**models_location, **kwargs)}
+
+    if "langfuse" in components:
+        config = {**config, **get_config_langfuse(**kwargs)}
 
     if override is not None:
         for key, value in override.items():

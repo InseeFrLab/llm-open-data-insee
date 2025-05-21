@@ -4,14 +4,16 @@ import os
 import mlflow
 import pandas as pd
 import s3fs
+from loguru import logger
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_openai import OpenAIEmbeddings
-from loguru import logger
-import openai
-from openai import OpenAI
+
+from langfuse import Langfuse
+from langfuse.openai import OpenAI
 
 from src.config import set_config
+from src.utils.utils_vllm import get_models_from_env
 
 from src.data.caching import chunk_documents_or_load_from_cache, parse_documents_or_load_from_cache
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
@@ -19,11 +21,11 @@ from src.vectordatabase.client import create_client_and_collection, get_number_d
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
 from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
 
-from src.evaluation.basic_evaluation import compare_retriever_with_expected_docs, transform_answers_bot
+from src.evaluation.basic_evaluation import (
+    compare_retriever_with_expected_docs, transform_answers_bot
+)
 from src.evaluation.hallucination import check_hallucination_rate
-
 from src.results_logging.mlflow_utils import mlflow_log_source_files
-from src.utils.utils_vllm import get_models_from_env
 
 load_dotenv(override=True)
 
@@ -55,7 +57,7 @@ parser.add_argument(
 parser.add_argument(
     "--chunking_strategy",
     type=str,
-    default="None",
+    default="character",
     choices=["None", "Recursive", "recursive", "Character", "character"],
     help="Chunking strategy for documents"
     "If None (default), corpus is left asis. "
@@ -64,7 +66,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_document_size",
     type=int,
-    default=1200,
+    default=1100,
     help="Threshold size for documents. "
     "If None (default), corpus is left asis. "
     "If value provided, passed to Langchain's CharacterTextSplitter is applied",
@@ -106,7 +108,7 @@ parser.add_argument(
 parser.add_argument(
     "--database_engine",
     type=str,
-    default="qdrant",
+    default="chroma",
     help="Vector database engine",
 )
 parser.add_argument("--verbose", action="store_true", help="Enable verbose output (default: False)")
@@ -132,7 +134,7 @@ engine = args.database_engine
 
 config = set_config(
     use_vault=True,
-    components=["s3", "mlflow", "database", "model"],
+    components=["s3", "mlflow", "langfuse", "database", "model"],
     mlflow_experiment_name=args.mlflow_experiment_name,
     database_manager=engine,
     models_location={
@@ -168,7 +170,6 @@ max_document_size = args.max_document_size
 chunk_overlap = args.chunk_overlap
 
 filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
-
 
 corpus_constructor_args = {
     "field": args.dataset,
@@ -219,11 +220,10 @@ chat_client = OpenAI(
 
 # LOADING PROMPT -----------------------------------------------
 
-with open("./prompt/question.md", encoding="utf-8") as f:
-    question_prompt = f.read()
 
-with open("./prompt/system.md", encoding="utf-8") as f:
-    system_prompt = f.read()
+langfuse = Langfuse()
+system_prompt = langfuse.get_prompt("system_prompt", label="latest").prompt
+question_prompt = langfuse.get_prompt("user_prompt", label="latest").prompt
 
 
 # MAIN PIPELINE --------------------------------------
