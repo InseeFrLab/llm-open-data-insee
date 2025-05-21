@@ -1,10 +1,4 @@
-MESSAGE_START = """**Hello and welcome** 👋
-
-I am a demonstration instance of a conversational agent developed for the UNECE GenAI Workshop (May 2025).  
-I'm designed to answer your questions using data and publications available on [insee.fr](https://www.insee.fr).
-
-Feel free to ask me about a wide range of topics covered by Insee 📊 — including demographics, the economy, regional statistics, and more.
-"""
+MESSAGE_START = """This demo instance is resource-hungry and is no longer active. Follow the project on [Github](https://github.com/InseeFrLab/llm-open-data-insee/tree/main) for updates."""
 
 MESSAGE_PAST_CONVERSATION = "### 💬 Past Conversations"
 MESSAGE_PAST_CONVERSATION_ANON = "### To get conversation history, change the username"
