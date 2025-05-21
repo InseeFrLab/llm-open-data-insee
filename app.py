@@ -8,7 +8,6 @@ import pandas as pd
 import s3fs
 import streamlit as st
 import torch
-from langfuse import Langfuse
 
 from dotenv import load_dotenv
 from loguru import logger

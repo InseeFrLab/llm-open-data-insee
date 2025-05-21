@@ -9,12 +9,14 @@ from langfuse import Langfuse
 from langfuse.decorators import observe
 from langfuse.openai import OpenAI
 
+from src.config import set_config
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection
 from src.vectordatabase.output_parsing import format_docs, langchain_documents_to_df
 from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
 from src.vectordatabase.reranker import RerankerRetriever
 
+set_config(use_vault=True, components="langfuse")
 
 langfuse = Langfuse()
 system_prompt = langfuse.get_prompt("system_prompt", label="latest")
