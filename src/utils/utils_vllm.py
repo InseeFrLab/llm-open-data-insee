@@ -15,14 +15,12 @@ def get_models_from_env(
     config_dict: dict = None,
 ):
     embedding_model = _get_model_from_env(url_embedding)
-    generative_model = _get_model_from_env(url_generative)
-    reranking_model = _get_model_from_env(url_reranking)
+    generative_model: str = _get_model_from_env(url_generative)
 
     logger.debug(f"Embedding model used: {embedding_model}")
     logger.debug(f"Generative model used: {generative_model}")
-    logger.debug(f"Reranking model used: {reranking_model}")
 
-    return {"embedding": embedding_model, "completion": generative_model, "reranking": reranking_model}
+    return {"embedding": embedding_model, "completion": generative_model}
 
 
 def _get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None) -> str:

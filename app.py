@@ -46,8 +46,8 @@ if args.log:
 load_dotenv(override=True)
 torch.classes.__path__ = []
 
-ENGINE = "chroma"
-USE_RERANKING = True
+ENGINE = "qdrant"
+USE_RERANKING = False
 
 config = set_config(
     use_vault=True,
@@ -71,7 +71,6 @@ models = get_models_from_env(
 )
 embedding_model = models.get("embedding")
 generative_model = models.get("completion")
-reranking_model = models.get("reranking")
 
 # ---------------- INITIALIZATION ---------------- #
 
