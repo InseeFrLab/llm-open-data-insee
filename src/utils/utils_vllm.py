@@ -15,14 +15,12 @@ def get_models_from_env(
     config_dict: dict = None,
 ):
     embedding_model = _get_model_from_env(url_embedding)
-    generative_model = _get_model_from_env(url_generative)
-    reranking_model = _get_model_from_env(url_reranking)
+    generative_model: str = _get_model_from_env(url_generative)
 
     logger.debug(f"Embedding model used: {embedding_model}")
     logger.debug(f"Generative model used: {generative_model}")
-    logger.debug(f"Reranking model used: {reranking_model}")
 
-    return {"embedding": embedding_model, "completion": generative_model, "reranking": reranking_model}
+    return {"embedding": embedding_model, "completion": generative_model}
 
 
 def _get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: dict = None) -> str:
@@ -31,7 +29,14 @@ def _get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: d
     if url_model:
         logger.debug(f"Model called from {url_model} API (inferred from {env_var_api} environment variable)")
         try:
-            response = requests.get(f"{url_model}models")
+
+            headers = {
+                "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"
+            }
+
+            response = requests.get(
+                f"{url_model}models",
+                headers=headers)
             response.raise_for_status()  # Ensure the request was successful
             available_models = response.json().get("data", [])
 
