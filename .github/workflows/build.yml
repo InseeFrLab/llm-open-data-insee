@@ -31,4 +31,4 @@ jobs:
         with:
           file: docker/Dockerfile_build
           push: true
-          tags: linogaliana/llm-statbot:latest
+          tags: linogaliana/llm-statbot:build
