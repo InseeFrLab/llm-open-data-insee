@@ -1,17 +1,20 @@
 import argparse
 import os
+import uuid
 
 import mlflow
 import pandas as pd
 import s3fs
+from loguru import logger
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_openai import OpenAIEmbeddings
-from loguru import logger
-import openai
-from openai import OpenAI
+
+from langfuse import Langfuse
+from langfuse.openai import OpenAI
 
 from src.config import set_config
+from src.utils.utils_vllm import get_models_from_env
 
 from src.data.caching import chunk_documents_or_load_from_cache, parse_documents_or_load_from_cache
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
@@ -19,11 +22,11 @@ from src.vectordatabase.client import create_client_and_collection, get_number_d
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
 from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
 
-from src.evaluation.basic_evaluation import compare_retriever_with_expected_docs, transform_answers_bot
+from src.evaluation.basic_evaluation import (
+    compare_retriever_with_expected_docs, transform_answers_bot
+)
 from src.evaluation.hallucination import check_hallucination_rate
-
 from src.results_logging.mlflow_utils import mlflow_log_source_files
-from src.utils.utils_vllm import get_models_from_env
 
 load_dotenv(override=True)
 
@@ -55,7 +58,7 @@ parser.add_argument(
 parser.add_argument(
     "--chunking_strategy",
     type=str,
-    default="None",
+    default="character",
     choices=["None", "Recursive", "recursive", "Character", "character"],
     help="Chunking strategy for documents"
     "If None (default), corpus is left asis. "
@@ -64,7 +67,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_document_size",
     type=int,
-    default=1200,
+    default=1100,
     help="Threshold size for documents. "
     "If None (default), corpus is left asis. "
     "If value provided, passed to Langchain's CharacterTextSplitter is applied",
@@ -132,7 +135,7 @@ engine = args.database_engine
 
 config = set_config(
     use_vault=True,
-    components=["s3", "mlflow", "database", "model"],
+    components=["s3", "mlflow", "langfuse", "database", "model"],
     mlflow_experiment_name=args.mlflow_experiment_name,
     database_manager=engine,
     models_location={
@@ -168,7 +171,6 @@ max_document_size = args.max_document_size
 chunk_overlap = args.chunk_overlap
 
 filesystem = s3fs.S3FileSystem(endpoint_url=config.get("endpoint_url"))
-
 
 corpus_constructor_args = {
     "field": args.dataset,
@@ -219,11 +221,10 @@ chat_client = OpenAI(
 
 # LOADING PROMPT -----------------------------------------------
 
-with open("./prompt/question.md", encoding="utf-8") as f:
-    question_prompt = f.read()
 
-with open("./prompt/system.md", encoding="utf-8") as f:
-    system_prompt = f.read()
+langfuse = Langfuse()
+system_prompt = langfuse.get_prompt("system_prompt", label="latest").prompt
+question_prompt = langfuse.get_prompt("user_prompt", label="latest").prompt
 
 
 # MAIN PIPELINE --------------------------------------
@@ -232,214 +233,167 @@ logger.info("Connecting to vector database")
 
 
 def run_build_database() -> None:
-    mlflow.set_tracking_uri(config.get("MLFLOW_TRACKING_URI"))
-    mlflow.set_experiment(config.get("MLFLOW_EXPERIMENT_NAME"))
-    mlflow.langchain.autolog()
+    # PARSING CORPUS -----------------------------------
 
-    with mlflow.start_run(args.mlflow_run_id) as run:
-        # new run or starting from an existing one
-        run_id = run.info.run_id
+    logger.debug(f"Importing and parsing raw data {30 * '-'}")
 
-        mlflow.log_params(
-            {
-                **filtered_config,
-                **parameters_database_construction,
-                **{"dataset": args.dataset, "max_pages": args.max_pages, "max_document_size": max_document_size},
-            }
-        )
+    data = parse_documents_or_load_from_cache(
+        path_for_cache=path_cached_parsed_documents,
+        load_from_cache=not args.invalidate_cache,
+        max_pages=args.max_pages,
+        filesystem=filesystem,
+        corpus_constructor_args=corpus_constructor_args,
+    )
 
-        # PARSING CORPUS -----------------------------------
+    data.loc[data["titre"].str.startswith("Zone de peuplement industriel ou urbain")]    
 
-        logger.debug(f"Importing and parsing raw data {30 * '-'}")
+    # CHUNKING DOCUMENTS --------------------------
 
-        data = parse_documents_or_load_from_cache(
-            path_for_cache=path_cached_parsed_documents,
-            load_from_cache=not args.invalidate_cache,
-            max_pages=args.max_pages,
-            filesystem=filesystem,
-            corpus_constructor_args=corpus_constructor_args,
-        )
+    loader = DataFrameLoader(data, page_content_column="content")
+    documents = loader.load()
 
-        data["mlflow_run_id"] = run_id  # Add mlflow run id in metadata
+    logger.info(f"Before chunking, we have {len(documents)} pages")
 
-        # CHUNKING DOCUMENTS --------------------------
+    documents = chunk_documents_or_load_from_cache(
+        documents_before_chunking=documents,
+        path_for_cache=path_cached_chunked_documents,
+        max_pages=args.max_pages,
+        load_from_cache=not args.invalidate_cache,
+        filesystem=filesystem,
+        chunking_args=chunking_args,
+    )
 
-        loader = DataFrameLoader(data, page_content_column="content")
-        documents = loader.load()
+    logger.info(f"After chunking, we have {len(documents)} documents")
 
-        logger.info(f"Before chunking, we have {len(documents)} pages")
+    # CREATE DATABASE COLLECTION -----------------------
 
-        documents = chunk_documents_or_load_from_cache(
-            documents_before_chunking=documents,
-            path_for_cache=path_cached_chunked_documents,
-            max_pages=args.max_pages,
-            load_from_cache=not args.invalidate_cache,
-            filesystem=filesystem,
-            chunking_args=chunking_args,
-        )
+    if args.mlflow_run_id is None:
+        unique_collection_name = f"{collection_name}_{uuid.uuid4()}"
+    else:
+        unique_collection_name = f"{collection_name}_{mlflow_run_id}"
 
-        logger.info(f"After chunking, we have {len(documents)} documents")
 
-        # CREATE DATABASE COLLECTION -----------------------
+    client = create_client_and_collection(
+        url=url_database_client,
+        api_key=api_key_database_client,
+        collection_name=unique_collection_name,
+        model_max_len=model_max_len,
+        engine=engine,
+        vector_name=embedding_model,
+    )
 
-        unique_collection_name = f"{collection_name}_{run_id}"
+    # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
 
-        client = create_client_and_collection(
+    logger.info("Putting documents in vector database")
+
+    n_documents = get_number_docs_collection(
+        client=client,
+        collection_name=unique_collection_name,
+        engine=engine,
+    )
+
+    if n_documents > 0 and args.invalidate_cache is False and args.proportion_to_skip == 0:
+        message = f"Skipping documents embedding since collection has {n_documents} documents"
+        logger.info(message)
+    else:
+        chunk_documents_and_store(
+            documents,
+            emb_model,
+            collection_name=unique_collection_name,
             url=url_database_client,
             api_key=api_key_database_client,
-            collection_name=unique_collection_name,
-            model_max_len=model_max_len,
             engine=engine,
-            vector_name=embedding_model,
-        )
-
-        # EMBEDDING DOCUMENTS IN VECTOR DATABASE -----------------------
-
-        logger.info("Putting documents in vector database")
-
-        n_documents = get_number_docs_collection(client=client, collection_name=unique_collection_name, engine=engine)
-
-        if n_documents > 0 and args.invalidate_cache is False and args.proportion_to_skip==0:
-            message = "Skipping documents embedding since collection has {n_documents} documents"
-            logger.info(message)
-        else:
-            chunk_documents_and_store(
-                documents,
-                emb_model,
-                collection_name=unique_collection_name,
-                url=url_database_client,
-                api_key=api_key_database_client,
-                engine=engine,
-                client=client,
-                number_chunks=args.chunking_strategy_number_of_splits,
-                proportion_to_skip=args.proportion_to_skip
-            )
-
-        mlflow.log_params({"COLLECTION_UNIQUE": unique_collection_name, "embedding_model": embedding_model})
-
-        mlflow.log_metric("n_documents", n_documents)
-
-        # TURNING DATABASE INTO RETRIEVER ----------------------
-
-        constructor_retriever = qdrant_vectorstore_as_retriever
-        if engine == "chroma":
-            constructor_retriever = chroma_vectorstore_as_retriever
-
-        retriever = constructor_retriever(
             client=client,
-            collection_name=unique_collection_name,
-            embedding_function=emb_model,
-            vector_name=emb_model.model,
-            number_retrieved_docs=10,
+            number_chunks=args.chunking_strategy_number_of_splits,
+            proportion_to_skip=args.proportion_to_skip,
         )
 
-        # PART II : LOGGING PROMPTS AND MODELS ---------------------------------
+    # TURNING DATABASE INTO RETRIEVER ----------------------
 
-        mlflow.register_prompt(
-            name="system-prompt-generative-model",
-            template=system_prompt,
-        )
+    constructor_retriever = qdrant_vectorstore_as_retriever
+    if engine == "chroma":
+        constructor_retriever = chroma_vectorstore_as_retriever
 
-        mlflow.register_prompt(
-            name="question-prompt-generative-model",
-            template=question_prompt,
-        )
+    retriever = constructor_retriever(
+        client=client,
+        collection_name=unique_collection_name,
+        embedding_function=emb_model,
+        vector_name=emb_model.model,
+        number_retrieved_docs=10,
+    )
 
+    # RETRIEVER EVALUATION ---------------------------------
 
-        # PART III : RETRIEVER EVALUATION ---------------------------------
+    logger.info("Evaluating model performance against expectations")
 
-        logger.info("Evaluating model performance against expectations")
+    annotations = pd.read_csv(os.environ["ANNOTATIONS_LOCATION"])
+    annotations = annotations.rename(
+        {"Lien(s) attendu(s) vers site insee (si plusieurs: séparer avec des  ;)": "url"},
+        axis="columns",
+    )
+    annotations["url"] = annotations["url"].str.replace(" ", "")
+    annotations["url"] = annotations["url"].str.split(";")
 
-        annotations = pd.read_csv(os.environ["ANNOTATIONS_LOCATION"])
-        annotations = annotations.rename(
-            {"Lien(s) attendu(s) vers site insee (si plusieurs: séparer avec des  ;)": "url"}, axis="columns"
-        )
-        annotations["url"] = annotations["url"].str.replace(" ", "")
-        annotations["url"] = annotations["url"].str.split(";")
+    # TODO: Vérifier si y a pas moyen de faire en batch
+    answers_retriever, answers_generative, answers_generative_no_context = compare_retriever_with_expected_docs(
+        retriever=retriever,
+        ground_truth_df=annotations,
+        question_col="Question",
+        ground_truth_col="url",
+        with_generation=True,
+        chat_client=chat_client,
+        chat_client_options={"model": generative_model},
+    )
 
-
-        # Starting tracing OpenAI (not before because vector DB embedding is too much to trace)
-        mlflow.openai.autolog()
-
-        # TODO: Vérifier si y a pas moyen de faire en batch
-        answers_retriever, answers_generative, answers_generative_no_context = compare_retriever_with_expected_docs(
-            retriever=retriever,
-            ground_truth_df=annotations,
-            question_col="Question",
-            ground_truth_col="url",
-            with_generation=True,
-            chat_client=chat_client,
-            chat_client_options={"model": generative_model},
-        )
-
-        answers_pipeline = pd.concat([
+    answers_pipeline = pd.concat(
+        [
             annotations,
-            pd.DataFrame({"answer_rag": answers_generative, "answer_no_rag": answers_generative_no_context})
-            ],
-            axis=1
+            pd.DataFrame(
+                {
+                    "answer_rag": answers_generative,
+                    "answer_no_rag": answers_generative_no_context,
+                }
+            ),
+        ],
+        axis=1,
+    )
+
+    url_suggested = answers_retriever.groupby("question").agg(
+        {
+            "url": lambda x: "; ".join(x.dropna().astype(str))
+        }
+    ).reset_index()
+
+    answers_pipeline = answers_pipeline.merge(
+        url_suggested,
+        left_on="Question",
+        right_on="question",
+        how="left",
+    )
+
+    hallucination_rate_rag = check_hallucination_rate(answers_generative)
+    hallucination_rate_no_rag = check_hallucination_rate(answers_generative_no_context)
+
+    eval_reponses_bot, answers_bot_topk = transform_answers_bot(
+        answers_retriever,
+        k=args.top_k_statistics,
+    )
+
+    document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
+    document_is_top = answers_bot_topk["cumsum_url_expected"].min()
+
+    logger.info(f"n_documents: {n_documents}")
+    logger.info(f"hallucination_rate_rag: {hallucination_rate_rag}")
+    logger.info(f"hallucination_rate_no_rag: {hallucination_rate_no_rag}")
+    logger.info(f"document_is_first: {100 * document_is_top}")
+    logger.info(f"document_among_topk: {100 * document_among_topk}")
+
+    for _, row in answers_bot_topk.iterrows():
+        logger.info(
+            f"document_in_top_{int(row['document_position'])}: {100 * row['cumsum_url_expected']}"
         )
 
-        url_suggested = answers_retriever.groupby('question').agg({
-            'url': lambda x: '; '.join(x.dropna().astype(str))
-        }).reset_index()
-
-        answers_pipeline = answers_pipeline.merge(
-            url_suggested,
-            left_on='Question',
-            right_on='question',
-            how='left'
-        )
-
-        mlflow.log_table(data=answers_pipeline, artifact_file="output/qabot_eval_results.json")
-
-
-        mlflow.log_metrics(
-            {
-                "hallucination_rate_rag": check_hallucination_rate(answers_generative),
-                "hallucination_rate_no_rag": check_hallucination_rate(answers_generative_no_context)
-            }
-        )
-
-        eval_reponses_bot, answers_bot_topk = transform_answers_bot(answers_retriever, k=args.top_k_statistics)
-
-        document_among_topk = answers_bot_topk["cumsum_url_expected"].max()
-        document_is_top = answers_bot_topk["cumsum_url_expected"].min()
-
-        mlflow.log_metric("document_is_first", 100 * document_is_top)
-        mlflow.log_metric("document_among_topk", 100 * document_among_topk)
-        mlflow.log_metrics(
-            {
-                f"document_in_top_{int(row['document_position'])}": 100 * row["cumsum_url_expected"]
-                for _, row in answers_bot_topk.iterrows()
-            }
-        )
-        mlflow.log_table(data=eval_reponses_bot, artifact_file="evaluation/annotations_avec_reponses.json")
-
-
-        # LOGGING OTHER USEFUL THINGS --------------------------
-
-        logger.info("Storing additional metadata")
-
-        # Store FAQ
-        annotations_raw = mlflow.data.from_pandas(
-            annotations, source=os.environ["ANNOTATIONS_LOCATION"], name="Annotations"
-        )
-        mlflow.log_input(annotations_raw, context="annotations")
-        mlflow.log_table(data=annotations, artifact_file="evaluation/annotations.json")
-
-        # Log raw dataset built from web4g
-        mlflow_data_raw = mlflow.data.from_pandas(
-            data.head(10),
-            source=S3_PATH,
-            name="web4g_data",
-        )
-        mlflow.log_input(mlflow_data_raw, context="pre-embedding")
-        mlflow.log_table(data=data.head(10), artifact_file="web4g_data.json")
-
-        # Log src/*.py and run_build_database.py
-        mlflow_log_source_files()
-
-        logger.info("Program ended with success.")
+    logger.info("Program ended with success.")
 
 
 if __name__ == "__main__":

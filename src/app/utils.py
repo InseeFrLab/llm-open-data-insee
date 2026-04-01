@@ -1,18 +1,26 @@
+import os
 from datetime import datetime
 import pandas as pd
 
 from langchain_openai import OpenAIEmbeddings
 from loguru import logger
-from openai import OpenAI
 
+from langfuse import Langfuse
+from langfuse.decorators import observe
+from langfuse.openai import OpenAI
+
+from src.config import set_config
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection
 from src.vectordatabase.output_parsing import format_docs, langchain_documents_to_df
 from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
 from src.vectordatabase.reranker import RerankerRetriever
 
-with open("./prompt/system.md", encoding="utf-8") as f:
-    system_instructions = f.read()
+set_config(use_vault=True, components="langfuse")
+
+langfuse = Langfuse()
+system_prompt = langfuse.get_prompt("system_prompt", label="latest")
+user_prompt = langfuse.get_prompt("user_prompt", label="latest")
 
 
 def initialize_clients(
@@ -66,7 +74,9 @@ def initialize_clients(
 
     if use_reranking is True:
         if "url_reranker" not in kwargs or "model_reranker" not in kwargs:
-            raise ValueError("url_reranker and model_reranker need to be provided if use_reranking is True")
+            raise ValueError(
+                "url_reranker and model_reranker need to be provided if use_reranking is True"
+            )
         retriever = RerankerRetriever(retriever=retriever, **kwargs)
 
     chat_client = OpenAI(
@@ -75,23 +85,29 @@ def initialize_clients(
     )
     return retriever, chat_client
 
-
-def generate_answer_from_context(retriever, chat_client, generative_model: str, prompt: str, question: str):
+@observe()
+def generate_answer_from_context(
+    retriever, chat_client,
+    generative_model: str,
+    question: str
+):
     best_documents = retriever.invoke(question)
     best_documents_df = langchain_documents_to_df(best_documents)
     logger.debug(best_documents_df)
     context = format_docs(best_documents)
-    question_with_context = prompt.format(question=question, context=context)
+    question_with_context = user_prompt.compile(question=question, context=context)
 
     logger.debug(question_with_context)
 
     stream = chat_client.chat.completions.create(
+        name="query_generative_app",
         model=generative_model,
         messages=[
-            {"role": "system", "content": system_instructions},
+            {"role": "system", "content": system_prompt.compile() },
             {"role": "user", "content": question_with_context},
         ],
         stream=True,
+        langfuse_prompt=system_prompt
     )
     return stream
 
