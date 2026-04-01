@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: build-database
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: build-database
+          image: linogaliana/llm-statbot:build
+          imagePullPolicy: Always
+          command: ["uv", "run", "run_build_database.py"]
+          envFrom:
+            - secretRef:
+                name: vault-secret
+            - secretRef:
+                name: sa-s3-statbot
+          resources:
+            requests:
+              memory: "8Gi"
+              cpu: "1"
+            limits:
+              memory: "60Gi"
+              cpu: "30"
