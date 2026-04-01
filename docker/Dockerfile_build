@@ -10,6 +10,7 @@ WORKDIR /app
 # Copy necessary files and directories
 COPY pyproject.toml .
 COPY src/ src/
+COPY prompt/ prompt/
 COPY run_build_database.py .
 
 # Install uv and dependencies
