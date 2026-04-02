@@ -12,6 +12,7 @@ spec:
           image: linogaliana/llm-statbot:build
           imagePullPolicy: Always
           command: ["uv", "run", "run_build_database.py"]
+          args: ["--chunking_strategy_number_of_splits", "400"]
           envFrom:
             - secretRef:
                 name: vault-secret

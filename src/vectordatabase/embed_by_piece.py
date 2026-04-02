@@ -78,6 +78,7 @@ def _embed_documents_in_chunks(
     """
     Splits documents into chunks and sends each chunk to the vector store,
     skipping the first `skip_chunks` chunks if specified.
+    Continues processing even if some batches fail and logs failed batches.
     """
 
     if engine not in ["qdrant", "chroma"]:
@@ -86,22 +87,56 @@ def _embed_documents_in_chunks(
         raise ValueError("client is optional for qdrant engine but mandatory for chroma")
 
     total_docs = len(documents)
-    args_database_constructor = {"emb_model": emb_model, "collection_name": collection_name, "client": client}
+    args_database_constructor = {
+        "emb_model": emb_model,
+        "collection_name": collection_name,
+        "client": client,
+    }
 
     logger.info(f"Starting chunked ingestion with chunk size = {chunk_size}, skipping {skip_chunks} chunks")
 
     total_chunks = (total_docs + chunk_size - 1) // chunk_size  # ceiling division
+
+    # stockage des batchs en erreur
+    failed_batches = []
 
     for idx, batch_start in enumerate(range(0, total_docs, chunk_size)):
         if idx < skip_chunks:
             continue
 
         batch = documents[batch_start : (batch_start + chunk_size)]
+
         logger.info(
             f"Processing batch {idx + 1}/{total_chunks}: docs {batch_start}–{batch_start + len(batch) - 1} "
             f"({100 * batch_start / total_docs:.2f}%)"
         )
 
-        database_construction_func = database_from_documents_qdrant if engine == "qdrant" else database_from_documents_chroma
+        database_construction_func = (
+            database_from_documents_qdrant
+            if engine == "qdrant"
+            else database_from_documents_chroma
+        )
 
-        database_construction_func(documents=batch, **args_database_constructor)
+        try:
+            database_construction_func(documents=batch, **args_database_constructor)
+
+        except Exception as e:
+            logger.error(
+                f"❌ Error on batch {idx} (docs {batch_start}-{batch_start + len(batch) - 1}): {e}",
+                exc_info=True,
+            )
+
+            # 🧠 on garde la trace
+            failed_batches.append({
+                "batch_index": idx,
+                "start": batch_start,
+                "end": batch_start + len(batch) - 1,
+                "error": str(e),
+            })
+
+            # 👉 continue vers le batch suivant
+            continue
+
+    logger.info(f"Ingestion finished with {len(failed_batches)} failed batches")
+
+    return failed_batches

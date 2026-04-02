@@ -30,7 +30,9 @@ Pour l'industrialiser
 
 
 ```python
-git add deployment/build/job.yaml -f
+kubectl delete job build-database
+kubectl apply -f deployment/build/job.yaml
+kubectl logs -f job/build-database
 ```
 
 
