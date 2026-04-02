@@ -121,9 +121,8 @@ def _embed_documents_in_chunks(
             database_construction_func(documents=batch, **args_database_constructor)
 
         except Exception as e:
-            logger.error(
+            logger.debug(
                 f"❌ Error on batch {idx} (docs {batch_start}-{batch_start + len(batch) - 1}): {e}",
-                exc_info=True,
             )
 
             # 🧠 on garde la trace
