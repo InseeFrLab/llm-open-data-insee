@@ -6,7 +6,7 @@ from langchain_openai import OpenAIEmbeddings
 from loguru import logger
 
 from langfuse import Langfuse
-from langfuse.decorators import observe
+from langfuse import observe
 from langfuse.openai import OpenAI
 
 from src.config import set_config
