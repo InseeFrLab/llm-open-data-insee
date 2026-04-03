@@ -270,7 +270,7 @@ def run_build_database() -> None:
     if args.mlflow_run_id is None:
         unique_collection_name = f"{collection_name}_{uuid.uuid4()}"
     else:
-        unique_collection_name = f"{collection_name}_{mlflow_run_id}"
+        unique_collection_name = f"{collection_name}_{args.mlflow_run_id}"
 
 
     client = create_client_and_collection(

@@ -18,6 +18,8 @@ spec:
           imagePullPolicy: Always
           envFrom:
             - secretRef:
+                name: vault-secret
+            - secretRef:
                 name: sa-s3-statbot
           resources:
             requests:

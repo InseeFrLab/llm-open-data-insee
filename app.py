@@ -238,6 +238,8 @@ for i, message in enumerate(st.session_state.history):
             best_documents = retriever.invoke(st.session_state.history[i - 1]["content"])
             st.session_state.retriever.append(best_documents)
 
+            logger.debug(best_documents)
+
             feedback_results = [
                 render_feedback_section(
                     index=i,

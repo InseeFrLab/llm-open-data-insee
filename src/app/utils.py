@@ -97,6 +97,7 @@ def generate_answer_from_context(
     context = format_docs(best_documents)
     question_with_context = user_prompt.compile(question=question, context=context)
 
+    logger.debug("---------- Question with context --------")
     logger.debug(question_with_context)
 
     stream = chat_client.chat.completions.create(
