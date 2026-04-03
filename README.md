@@ -4,10 +4,10 @@ Ce dépôt rassemble tous les codes permettant de construire un statbot entraîn
 
 L'approche repose sur le principe du **RAG** : les pages les plus pertinentes du site [insee.fr](https://insee.fr) servent de contexte à un LLM pour générer une réponse plus satisfaisante. Ce projet est antérieur, de quelques mois, à la *hype* des agents qui pourraient fournir une approche complémentaire au RAG. 
 
-> [!TIP] Ressources complémentaires
+> [!TIP]
 > Pour en savoir plus sur le projet, se référer à cette présentation au [*Workshop IA de l'UNECE* (2024)](https://linogaliana.github.io/slides-workshopgenAI-unece2025/) ou à la conférence [*World Statistical Congress* (2025)](https://www.linkedin.com/posts/linogaliana_slides-isi-wsc-conference-activity-7381687643308240896-TAhV/).
 
-> [!CAUTION] Attention
+> [!CAUTION]
 > Ce projet est une preuve de concept mais n'a pas vocation à fournir une information statistique fiable. Il peut fournir des informations datées, imprécises ou incorrectes: comme pour toute réponse automatique par IA, méfiez-vous de la réponse !
 
 ## Architecture méthodologique du projet
@@ -23,7 +23,7 @@ Le principe général de la structuration d'un projet RAG est le suivant:
 
 Pour l'**évaluation**, nous confrontons le RAG à des questions/réponses constituées par des experts. Nous évaluons le projet à l'aune de plusieurs métriques d'intérêt définies avec des experts métiers (taux d'hallucination, capacité à citer la source attendue, taux de satisfaction, etc.)
 
-> [!TIP] Ressources complémentaires
+> [!TIP]
 > Pour en savoir plus sur l'évaluation de ce projet, voir cette présentation au [*World Statistical Congress* (2025)](https://www.linkedin.com/posts/linogaliana_slides-isi-wsc-conference-activity-7381687643308240896-TAhV/) et les ressources de qualité proposées par [Hamel Husain](https://hamel.dev/).
 
 
