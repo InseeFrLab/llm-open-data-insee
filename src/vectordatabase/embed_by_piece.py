@@ -17,7 +17,7 @@ def chunk_documents_and_store(
     engine: str = "qdrant",
     client: ClientAPI = None,
     number_chunks: int = 10,
-    proportion_to_skip: int = 0
+    proportion_to_skip: int = 0,
 ):
     total_docs = len(documents)
 
@@ -31,15 +31,21 @@ def chunk_documents_and_store(
     logger.info(f"Number of documents to embed: {total_docs}")
     if number_to_skip > 0:
         logger.warning(
-            f"Skipping the first {number_to_skip} chunk(s), equivalent to {100*proportion_to_skip:.2f}% of the dataset"
+            f"Skipping the first {number_to_skip} chunk(s), equivalent to {100 * proportion_to_skip:.2f}% of the dataset"
         )
-
 
     filtered_documents = _filter_valid_documents(documents, content_attr=content_attr, size_step=size_step)
 
     _embed_documents_in_chunks(
-        filtered_documents, emb_model, collection_name, url, api_key, chunk_size, engine=engine, client=client,
-        skip_chunks=number_to_skip
+        filtered_documents,
+        emb_model,
+        collection_name,
+        url,
+        api_key,
+        chunk_size,
+        engine=engine,
+        client=client,
+        skip_chunks=number_to_skip,
     )
 
 
@@ -112,9 +118,7 @@ def _embed_documents_in_chunks(
         )
 
         database_construction_func = (
-            database_from_documents_qdrant
-            if engine == "qdrant"
-            else database_from_documents_chroma
+            database_from_documents_qdrant if engine == "qdrant" else database_from_documents_chroma
         )
 
         try:
@@ -126,12 +130,14 @@ def _embed_documents_in_chunks(
             )
 
             # 🧠 on garde la trace
-            failed_batches.append({
-                "batch_index": idx,
-                "start": batch_start,
-                "end": batch_start + len(batch) - 1,
-                "error": str(e),
-            })
+            failed_batches.append(
+                {
+                    "batch_index": idx,
+                    "start": batch_start,
+                    "end": batch_start + len(batch) - 1,
+                    "error": str(e),
+                }
+            )
 
             # 👉 continue vers le batch suivant
             continue

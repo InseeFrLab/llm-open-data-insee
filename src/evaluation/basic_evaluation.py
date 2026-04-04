@@ -97,7 +97,7 @@ def collect_answers_retrievers(
         "model": default_model,
         "question_prompt": default_question_prompt,
         "system_prompt": default_system_prompt,
-        "system_prompt_no_context": default_system_prompt_no_context
+        "system_prompt_no_context": default_system_prompt_no_context,
     }
 
     if chat_client_options is None:
@@ -179,7 +179,7 @@ def compare_retriever_with_expected_docs(
     answers_generative_no_context = []
 
     for _idx, faq_items in ground_truth_df.iterrows():
-        docs, _, response, response_no_context  = collect_answers_retrievers(
+        docs, _, response, response_no_context = collect_answers_retrievers(
             retriever=retriever,
             question=faq_items[question_col],
             valid_urls=faq_items[ground_truth_col],

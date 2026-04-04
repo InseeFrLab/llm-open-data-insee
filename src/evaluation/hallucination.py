@@ -1,6 +1,6 @@
 import re
+
 import requests
-from typing import List
 
 
 # Function to extract URLs
@@ -17,7 +17,7 @@ def check_url(url):
         return False
 
 
-def check_hallucination_rate(list_answers_generative: List[str]):
+def check_hallucination_rate(list_answers_generative: list[str]):
     # Main checking loop
     results = []
     for idx, text in enumerate(list_answers_generative):

@@ -29,14 +29,9 @@ def _get_model_from_env(env_var_api: str = "URL_EMBEDDING_MODEL", config_dict: d
     if url_model:
         logger.debug(f"Model called from {url_model} API (inferred from {env_var_api} environment variable)")
         try:
+            headers = {"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"}
 
-            headers = {
-                "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"
-            }
-
-            response = requests.get(
-                f"{url_model}models",
-                headers=headers)
+            response = requests.get(f"{url_model}models", headers=headers)
             response.raise_for_status()  # Ensure the request was successful
             available_models = response.json().get("data", [])
 

@@ -1,6 +1,5 @@
-import re
-from tqdm import tqdm
 import pandas as pd
+
 
 def url_builder(row: pd.Series) -> str | None:
     """
@@ -77,10 +76,6 @@ def complete_url_builder(table: pd.DataFrame) -> pd.Series:
 
     base_url = "https://www.insee.fr/fr"
 
-    table['url'] = (
-        base_url + "/" +
-        table["categorie"].map(dict_url) + "/" +
-        table["id"]
-    )
+    table["url"] = base_url + "/" + table["categorie"].map(dict_url) + "/" + table["id"]
 
     return table

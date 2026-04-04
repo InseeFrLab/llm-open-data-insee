@@ -1,6 +1,5 @@
-import os
-import sys
 import argparse
+import os
 import tomllib
 from datetime import datetime
 
@@ -8,7 +7,6 @@ import pandas as pd
 import s3fs
 import streamlit as st
 import torch
-
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -22,7 +20,12 @@ from src.app.history import (
     summarize_conversation,
 )
 from src.app.session import initialize_session_state, reset_session_state
-from src.app.utils import create_assistant_message, generate_answer_from_context, initialize_clients, flatten_history_for_parquet
+from src.app.utils import (
+    create_assistant_message,
+    flatten_history_for_parquet,
+    generate_answer_from_context,
+    initialize_clients,
+)
 from src.config import set_config
 from src.utils.utils_vllm import get_models_from_env
 
@@ -35,7 +38,7 @@ parser.add_argument(
     "--use_vault",
     type=lambda x: str(x).lower() in ("true", "1", "yes"),
     default=True,
-    help="Enable or disable vault usage (default: True)"
+    help="Enable or disable vault usage (default: True)",
 )
 
 args, _ = parser.parse_known_args()
@@ -46,6 +49,7 @@ USE_VAULT = args.use_vault
 def log_session_state(msg="Session State"):
     if LOG_SESSION_STATE:
         logger.info(f"{msg}: {dict(st.session_state)}")
+
 
 if args.log:
     logger.add("log.txt", rotation="1 MB", enqueue=True, backtrace=True, diagnose=True)
@@ -61,7 +65,7 @@ USE_RERANKING = False
 
 config = set_config(
     use_vault=USE_VAULT,
-    components=["s3", "mlflow", 'langfuse', "database", "model"],
+    components=["s3", "mlflow", "langfuse", "database", "model"],
     models_location={
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
         "url_generative_model": "ENV_URL_GENERATIVE_MODEL",
@@ -90,10 +94,10 @@ with open("./src/app/constants.toml", "rb") as f:
     messages = tomllib.load(f)
 
 
-
 @st.cache_resource(show_spinner=False)
 def initialize_clients_cache(config: dict, embedding_model=embedding_model, engine=ENGINE, **kwargs):
     return initialize_clients(config=config, embedding_model=embedding_model, engine=engine, **kwargs)
+
 
 retriever, chat_client = initialize_clients_cache(
     config=config,
@@ -284,7 +288,7 @@ if user_query := st.chat_input("Poser une question sur le site insee"):
             "content": user_query,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "id": unique_id,
-            "collection": collection_name
+            "collection": collection_name,
         }
     )
     log_session_state("After user query")
@@ -308,7 +312,7 @@ if user_query := st.chat_input("Poser une question sur le site insee"):
             "content": response,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "id": unique_id,
-            "collection": collection_name
+            "collection": collection_name,
         }
     )
     log_session_state("After assistant response")

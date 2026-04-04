@@ -1,7 +1,7 @@
 import logging
 
-from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from langchain_core.documents.base import Document
+from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 

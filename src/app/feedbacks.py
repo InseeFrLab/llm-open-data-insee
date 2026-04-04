@@ -22,7 +22,7 @@ def handle_feedback(response, index, history, unique_id, db_collection, feedback
             "type": feedback_type,
             "submitted_at": submission_time,
             "unique_id": unique_id,
-            "collection_used": db_collection
+            "collection_used": db_collection,
         }
     )
     # st.write(st.session_state.feedback)
@@ -33,8 +33,12 @@ def render_feedback_section(index, message, title, optional_text, key_prefix, un
         st.markdown(f"<p style='{css_annotation_title}'>{title}</p>", unsafe_allow_html=True)
         return streamlit_feedback(
             on_submit=lambda response, idx=index, msg=message: handle_feedback(
-                response, idx, st.session_state.history, unique_id=unique_id,
-                db_collection=db_collection, feedback_type=feedback_type
+                response,
+                idx,
+                st.session_state.history,
+                unique_id=unique_id,
+                db_collection=db_collection,
+                feedback_type=feedback_type,
             ),
             feedback_type="thumbs",
             optional_text_label=optional_text,
@@ -54,5 +58,5 @@ feedback_titles = [
         "optional_text": "Les critères d'évaluation sont nombreux (structure de la réponse, mise en forme, etc.), n'hésitez pas à préciser les dimensions satisfaisantes comme insatisfaisantes. Si une réponse plus pertinente aurait pu être faite, n'hésitez pas à la proposer.",
         "key_prefix": "feedback-generation",
         "feedback_type": "generation_fond",
-    }
+    },
 ]

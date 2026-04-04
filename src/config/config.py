@@ -139,11 +139,7 @@ def get_config_langfuse(**kwargs):
     if kwargs.get("verbose"):
         logger.info("Setting environment variables starting with 'LANGFUSE'")
 
-    config_langfuse = {
-        key: value
-        for key, value in os.environ.items()
-        if key.startswith("LANGFUSE")
-    }
+    config_langfuse = {key: value for key, value in os.environ.items() if key.startswith("LANGFUSE")}
 
     return config_langfuse
 

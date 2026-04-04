@@ -2,31 +2,24 @@ import argparse
 import os
 import uuid
 
-import mlflow
 import pandas as pd
 import s3fs
-from loguru import logger
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_openai import OpenAIEmbeddings
-
 from langfuse import Langfuse
 from langfuse.openai import OpenAI
+from loguru import logger
 
 from src.config import set_config
-from src.utils.utils_vllm import get_models_from_env
-
 from src.data.caching import chunk_documents_or_load_from_cache, parse_documents_or_load_from_cache
+from src.evaluation.basic_evaluation import compare_retriever_with_expected_docs, transform_answers_bot
+from src.evaluation.hallucination import check_hallucination_rate
+from src.utils.utils_vllm import get_models_from_env
 from src.vectordatabase.chroma import chroma_vectorstore_as_retriever
 from src.vectordatabase.client import create_client_and_collection, get_number_docs_collection
 from src.vectordatabase.embed_by_piece import chunk_documents_and_store
 from src.vectordatabase.qdrant import qdrant_vectorstore_as_retriever
-
-from src.evaluation.basic_evaluation import (
-    compare_retriever_with_expected_docs, transform_answers_bot
-)
-from src.evaluation.hallucination import check_hallucination_rate
-from src.results_logging.mlflow_utils import mlflow_log_source_files
 
 load_dotenv(override=True)
 
@@ -245,7 +238,7 @@ def run_build_database() -> None:
         corpus_constructor_args=corpus_constructor_args,
     )
 
-    data.loc[data["titre"].str.startswith("Zone de peuplement industriel ou urbain")]    
+    data.loc[data["titre"].str.startswith("Zone de peuplement industriel ou urbain")]
 
     # CHUNKING DOCUMENTS --------------------------
 
@@ -271,7 +264,6 @@ def run_build_database() -> None:
         unique_collection_name = f"{collection_name}_{uuid.uuid4()}"
     else:
         unique_collection_name = f"{collection_name}_{args.mlflow_run_id}"
-
 
     client = create_client_and_collection(
         url=url_database_client,
@@ -358,11 +350,9 @@ def run_build_database() -> None:
         axis=1,
     )
 
-    url_suggested = answers_retriever.groupby("question").agg(
-        {
-            "url": lambda x: "; ".join(x.dropna().astype(str))
-        }
-    ).reset_index()
+    url_suggested = (
+        answers_retriever.groupby("question").agg({"url": lambda x: "; ".join(x.dropna().astype(str))}).reset_index()
+    )
 
     answers_pipeline = answers_pipeline.merge(
         url_suggested,
@@ -389,9 +379,7 @@ def run_build_database() -> None:
     logger.info(f"document_among_topk: {100 * document_among_topk}")
 
     for _, row in answers_bot_topk.iterrows():
-        logger.info(
-            f"document_in_top_{int(row['document_position'])}: {100 * row['cumsum_url_expected']}"
-        )
+        logger.info(f"document_in_top_{int(row['document_position'])}: {100 * row['cumsum_url_expected']}")
 
     logger.info("Program ended with success.")
 

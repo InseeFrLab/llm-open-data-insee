@@ -1,5 +1,5 @@
-import unicodedata
 import re
+import unicodedata
 
 # import logging
 import pandas as pd
@@ -25,6 +25,7 @@ TAGS_TO_IGNORE = [
 
 
 # RAW DATA PARSING -------------------------------------
+
 
 def get_content(data, *keys):
     """
@@ -87,6 +88,7 @@ def process_xml_rmes_definitions(row):
 
 
 # XML PARSING -----------------------------------------------------
+
 
 def get_soup(xml_string: str) -> BeautifulSoup:
     """
@@ -165,7 +167,6 @@ def extract_text_joined(soup, tag_name, separator="\n"):
         str: Combined text content of all found tags, separated by `separator`.
     """
     return separator.join(tag.get_text(strip=True) for tag in soup.find_all(tag_name))
-
 
 
 def format_tags(soup: Tag, tags_to_ignore: list[str]) -> Tag:
@@ -324,13 +325,16 @@ def normalize_unicode(text):
     """Normalize Unicode characters using NFKC."""
     return unicodedata.normalize("NFKC", text)
 
+
 def remove_control_chars(text):
     """Remove non-printable characters, except newlines."""
-    return ''.join(ch for ch in text if ch.isprintable() or ch == '\n')
+    return "".join(ch for ch in text if ch.isprintable() or ch == "\n")
+
 
 def collapse_whitespace(text):
     """Replace all non-newline whitespace (incl. \xa0, tabs) with a single space."""
     return re.sub(r"[^\S\n]+", " ", text)
+
 
 def remove_excessive_newlines(text):
     """Replace 3+ consecutive newlines with exactly two newlines."""
@@ -342,8 +346,8 @@ def parse_xmls(
     id: str = "id",
     xml_column: str = "xml_content",
     rename_tags: bool = True,
-    create_abstract: bool = True
-    ) -> pd.DataFrame:
+    create_abstract: bool = True,
+) -> pd.DataFrame:
     """
     Parses XML content from a DataFrame, extracts data, formats it,
     and returns a new DataFrame with the formatted content.
@@ -395,9 +399,11 @@ def parse_xmls(
 
         h2_tag = soup.find("h2")
         if create_abstract is True:
-            abstract = markdownify("\n".join([str(content) for content in h2_tag.contents])) if h2_tag is not None else ""
+            abstract = (
+                markdownify("\n".join([str(content) for content in h2_tag.contents])) if h2_tag is not None else ""
+            )
         else:
-            abstract = row['abstract']
+            abstract = row["abstract"]
 
         parsed_pages["id"].append(page_id)
         parsed_pages["content"].append(clean_text(parsed_page))
@@ -423,20 +429,16 @@ def parse_documents(data: pd.DataFrame, xml_column: str = "xml_content") -> pd.D
     parsed_pages = parse_xmls(main_pages, xml_column=xml_column)
 
     logger.info("Parsing pages retrieved from API")
-    parsed_pages_special = parse_xmls(
-        special_pages, xml_column=xml_column,
-        rename_tags=False, create_abstract=False
-    )
+    parsed_pages_special = parse_xmls(special_pages, xml_column=xml_column, rename_tags=False, create_abstract=False)
 
-    parsed_pages = pd.concat([
-            parsed_pages, parsed_pages_special
-    ])
+    parsed_pages = pd.concat([parsed_pages, parsed_pages_special])
 
-        # Merge parsed XML data with the original DataFrame
+    # Merge parsed XML data with the original DataFrame
     df = (
-            data.drop(columns="abstract").set_index("id")
-            .merge(parsed_pages, left_index=True, right_index=True)
-            .drop(columns=["xml_content"], errors="ignore")  # Drop only if exists
+        data.drop(columns="abstract")
+        .set_index("id")
+        .merge(parsed_pages, left_index=True, right_index=True)
+        .drop(columns=["xml_content"], errors="ignore")  # Drop only if exists
     )
 
     df = df.loc[
