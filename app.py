@@ -29,9 +29,19 @@ from src.utils.utils_vllm import get_models_from_env
 # ---------------- COMMAND-LINE ARGUMENTS ---------------- #
 
 parser = argparse.ArgumentParser()
+
 parser.add_argument("--log", action="store_true", help="Enable session state logging")
+parser.add_argument(
+    "--use_vault",
+    type=lambda x: str(x).lower() in ("true", "1", "yes"),
+    default=True,
+    help="Enable or disable vault usage (default: True)"
+)
+
 args, _ = parser.parse_known_args()
 LOG_SESSION_STATE = args.log
+USE_VAULT = args.use_vault
+
 
 def log_session_state(msg="Session State"):
     if LOG_SESSION_STATE:
@@ -50,7 +60,7 @@ ENGINE = "qdrant"
 USE_RERANKING = False
 
 config = set_config(
-    use_vault=True,
+    use_vault=USE_VAULT,
     components=["s3", "mlflow", 'langfuse', "database", "model"],
     models_location={
         "url_embedding_model": "ENV_URL_EMBEDDING_MODEL",
