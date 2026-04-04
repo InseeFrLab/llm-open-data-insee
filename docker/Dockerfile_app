@@ -15,10 +15,10 @@ COPY prompt/ prompt/
 
 # Install uv and dependencies
 RUN pip install uv
-RUN uv pip install -r pyproject.toml --system
+RUN uv sync
 
 # Expose default Streamlit port
 EXPOSE 8501
 
 # Run the Streamlit app
-CMD ["streamlit", "run", "app.py"]
+CMD ["uv", "run", "streamlit", "run", "app.py"]

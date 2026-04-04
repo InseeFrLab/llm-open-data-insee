@@ -14,7 +14,9 @@ spec:
     spec:
       containers:
         - name: api
-          image: linogaliana/llm-statbot:latest
+          image: linogaliana/llm-statbot:app
+          command: ["uv", "run", "streamlit", "run", "app.py"]
+          args: ["--", "--use_vault", "False"]
           imagePullPolicy: Always
           envFrom:
             - secretRef:
