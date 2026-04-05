@@ -214,6 +214,7 @@ chat_client = OpenAI(
 
 # LOADING PROMPT -----------------------------------------------
 
+set_config(components="langfuse")
 
 langfuse = Langfuse()
 system_prompt = langfuse.get_prompt("system_prompt", label="latest").prompt
