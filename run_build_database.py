@@ -7,7 +7,7 @@ import s3fs
 from dotenv import load_dotenv
 from langchain_community.document_loaders import DataFrameLoader
 from langchain_openai import OpenAIEmbeddings
-from langfuse import Langfuse
+from langfuse import get_client
 from langfuse.openai import OpenAI
 from loguru import logger
 
@@ -216,7 +216,7 @@ chat_client = OpenAI(
 
 set_config(components="langfuse")
 
-langfuse = Langfuse()
+langfuse = get_client()
 system_prompt = langfuse.get_prompt("system_prompt", label="latest").prompt
 question_prompt = langfuse.get_prompt("user_prompt", label="latest").prompt
 

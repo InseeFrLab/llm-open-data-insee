@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pandas as pd
 from langchain_openai import OpenAIEmbeddings
-from langfuse import Langfuse, observe
+from langfuse import get_client, observe
 from langfuse.openai import OpenAI
 from loguru import logger
 
@@ -15,7 +15,7 @@ from src.vectordatabase.reranker import RerankerRetriever
 
 set_config(components="langfuse")
 
-langfuse = Langfuse()
+langfuse = get_client()
 system_prompt = langfuse.get_prompt("system_prompt", label="latest")
 user_prompt = langfuse.get_prompt("user_prompt", label="latest")
 
